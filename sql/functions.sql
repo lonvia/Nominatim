@@ -1967,6 +1967,16 @@ BEGIN
       --DEBUG: RAISE WARNING 'insert into road location table (full)';
     END IF;
 
+    IF NEW.importance is null THEN
+      SELECT 0.75 - (NEW.rank_search::float/40)
+              + 0.00001 * max(ai_p.importance * (ai_p.rank_address + 2))
+        FROM place_addressline ai_s, placex ai_p
+       WHERE ai_s.place_id = NEW.place_id
+         AND ai_p.place_id = ai_s.address_place_id AND ai_s.isaddress
+         AND ai_p.importance is not null
+        INTO NEW.importance;
+    END IF;
+
     result := insertSearchName(NEW.partition, NEW.place_id, NEW.country_code, name_vector, nameaddress_vector, NEW.rank_search, NEW.rank_address, NEW.importance, place_centroid, NEW.geometry);
     --DEBUG: RAISE WARNING 'added to serach name (full)';
 
