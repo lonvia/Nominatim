@@ -1253,6 +1253,7 @@ DECLARE
   location_parent GEOMETRY;
   location_isaddress BOOLEAN;
   location_keywords INTEGER[];
+  location_importance FLOAT;
 
   default_language TEXT;
   name_vector INTEGER[];
@@ -1811,6 +1812,8 @@ BEGIN
   location_rank_search := 0;
   location_distance := 0;
   location_parent := NULL;
+  -- for places without wikipedia link, derive the importance from the address parts
+  linked_importance := null;
   -- added ourself as address already
   address_havelevel[NEW.rank_address] := true;
   --DEBUG: RAISE WARNING '  getNearFeatures(%,''%'',%,''%'')',NEW.partition, place_centroid, search_maxrank, isin_tokens;
@@ -1867,7 +1870,16 @@ BEGIN
 
         address_havelevel[location.rank_address] := true;
         IF NOT location.isguess THEN
-          SELECT geometry FROM placex WHERE place_id = location.place_id INTO location_parent;
+          SELECT geometry, importance FROM placex
+           WHERE place_id = location.place_id
+            INTO location_parent, location_importance;
+
+          IF location_importance is not null THEN
+            linked_importance :=
+              GREATEST(linked_importance,
+                       0.75 - (NEW.rank_search::float/40)
+                        + 0.00001 * location_importance * (location.rank_address + 2));
+          END IF;
         END IF;
 
         IF location.rank_address > parent_place_id_rank THEN
@@ -1904,6 +1916,18 @@ BEGIN
               END IF;
 
               address_havelevel[location.rank_address] := true;
+
+              IF NEW.importance IS NULL THEN
+                  SELECT importance FROM placex WHERE place_id = location.place_id
+                    INTO location_importance;
+
+                  IF location_importance is not null THEN
+                    linked_importance :=
+                      GREATEST(linked_importance,
+                               0.75 - (NEW.rank_search::float/40)
+                                + 0.00001 * location_importance * (location.rank_address + 2));
+                  END IF;
+              END IF;
 
               IF location.rank_address > parent_place_id_rank THEN
                 NEW.parent_place_id = location.place_id;
@@ -1967,17 +1991,7 @@ BEGIN
       --DEBUG: RAISE WARNING 'insert into road location table (full)';
     END IF;
 
-    IF NEW.importance is null THEN
-      SELECT 0.75 - (NEW.rank_search::float/40)
-              + 0.00001 * max(ai_p.importance * (ai_p.rank_address + 2))
-        FROM place_addressline ai_s, placex ai_p
-       WHERE ai_s.place_id = NEW.place_id
-         AND ai_p.place_id = ai_s.address_place_id AND ai_s.isaddress
-         AND ai_p.importance is not null
-        INTO NEW.importance;
-    END IF;
-
-    result := insertSearchName(NEW.partition, NEW.place_id, NEW.country_code, name_vector, nameaddress_vector, NEW.rank_search, NEW.rank_address, NEW.importance, place_centroid, NEW.geometry);
+    result := insertSearchName(NEW.partition, NEW.place_id, NEW.country_code, name_vector, nameaddress_vector, NEW.rank_search, NEW.rank_address, coalesce(NEW.importance, linked_importance), place_centroid, NEW.geometry);
     --DEBUG: RAISE WARNING 'added to serach name (full)';
 
   END IF;
