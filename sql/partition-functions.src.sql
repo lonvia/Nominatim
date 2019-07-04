@@ -6,12 +6,12 @@ BEGIN
 -- start
   IF in_partition = -partition- THEN
     FOR r IN 
-      SELECT place_id, keywords, rank_address, rank_search, min(ST_Distance(feature, centroid)) as distance, isguess, postcode, centroid FROM (
-        SELECT * FROM location_area_large_-partition- WHERE ST_Intersects(geometry, feature) and rank_search < maxrank
+      SELECT place_id, keywords, rank_address, min(ST_Distance(feature, centroid)) as distance, isguess, postcode, centroid FROM (
+        SELECT * FROM location_area_large_-partition- WHERE ST_Intersects(geometry, feature) and rank_address < maxrank
         UNION ALL
-        SELECT * FROM location_area_country WHERE ST_Intersects(geometry, feature) and rank_search < maxrank
+        SELECT * FROM location_area_country WHERE ST_Intersects(geometry, feature) and rank_address < maxrank
       ) as location_area
-      GROUP BY place_id, keywords, rank_address, rank_search, isguess, postcode, centroid
+      GROUP BY place_id, keywords, rank_address, isguess, postcode, centroid
       ORDER BY rank_address, isin_tokens && keywords desc, isguess asc,
         ST_Distance(feature, centroid) *
           CASE 
@@ -55,8 +55,8 @@ $$
 LANGUAGE plpgsql;
 
 create or replace function insertLocationAreaLarge(
-  in_partition INTEGER, in_place_id BIGINT, in_country_code VARCHAR(2), in_keywords INTEGER[],
-  in_rank_search INTEGER, in_rank_address INTEGER, in_estimate BOOLEAN, postcode TEXT,
+  in_partition INTEGER, in_place_id BIGINT, in_keywords INTEGER[],
+  in_rank_address SMALLINT, in_admin_level SMALLINT, in_estimate BOOLEAN, postcode TEXT,
   in_centroid GEOMETRY, in_geometry GEOMETRY) RETURNS BOOLEAN AS $$
 DECLARE
 BEGIN
@@ -65,15 +65,15 @@ BEGIN
   END IF;
 
   IF in_rank_search <= 4 THEN
-    INSERT INTO location_area_country (partition, place_id, country_code, keywords, rank_search, rank_address, isguess, centroid, geometry)
-      values (in_partition, in_place_id, in_country_code, in_keywords, in_rank_search, in_rank_address, in_estimate, in_centroid, in_geometry);
+    INSERT INTO location_area_country (place_id, keywords, rank_address, admin_level, isguess, centroid, geometry)
+      values (in_place_id, in_keywords, in_rank_address, in_admin_level, in_estimate, in_centroid, in_geometry);
     RETURN TRUE;
   END IF;
 
 -- start
   IF in_partition = -partition- THEN
-    INSERT INTO location_area_large_-partition- (partition, place_id, country_code, keywords, rank_search, rank_address, isguess, postcode, centroid, geometry)
-      values (in_partition, in_place_id, in_country_code, in_keywords, in_rank_search, in_rank_address, in_estimate, postcode, in_centroid, in_geometry);
+    INSERT INTO location_area_large_-partition- (place_id, keywords, rank_address, admin_level, isguess, postcode, centroid, geometry)
+      values (in_place_id, in_keywords, in_rank_address, in_admin_level, in_estimate, postcode, in_centroid, in_geometry);
     RETURN TRUE;
   END IF;
 -- end

@@ -632,8 +632,8 @@ CREATE OR REPLACE FUNCTION add_location(
     country_code varchar(2),
     partition INTEGER,
     keywords INTEGER[],
-    rank_search INTEGER,
-    rank_address INTEGER,
+    rank_address SMALLINT,
+    admin_level SMALLINT,
     in_postcode TEXT,
     geometry GEOMETRY
   ) 
@@ -665,7 +665,7 @@ BEGIN
     centroid := ST_Centroid(geometry);
 
     FOR secgeo IN select split_geometry(geometry) AS geom LOOP
-      x := insertLocationAreaLarge(partition, place_id, country_code, keywords, rank_search, rank_address, false, postcode, centroid, secgeo);
+      x := insertLocationAreaLarge(partition, place_id, keywords, rank_address, admin_level, false, postcode, centroid, secgeo);
     END LOOP;
 
   ELSE
@@ -690,7 +690,7 @@ BEGIN
 --    RAISE WARNING 'adding % diameter %', place_id, diameter;
 
     secgeo := ST_Buffer(geometry, diameter);
-    x := insertLocationAreaLarge(partition, place_id, country_code, keywords, rank_search, rank_address, true, postcode, ST_Centroid(geometry), secgeo);
+    x := insertLocationAreaLarge(partition, place_id, keywords, rank_address, admin_level, true, postcode, ST_Centroid(geometry), secgeo);
 
   END IF;
 
@@ -1535,7 +1535,7 @@ BEGIN
       -- process but it takes too long
       -- Just be happy with inheriting from parent road only
       IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
-        result := add_location(NEW.place_id, NEW.country_code, NEW.partition, name_vector, NEW.rank_search, NEW.rank_address, upper(trim(NEW.address->'postcode')), NEW.geometry);
+        result := add_location(NEW.place_id, NEW.partition, name_vector, NEW.rank_address, NEW.admin_level, upper(trim(NEW.address->'postcode')), NEW.geometry);
         --DEBUG: RAISE WARNING 'Place added to location table';
       END IF;
 
@@ -1869,7 +1869,7 @@ BEGIN
   IF NEW.name IS NOT NULL THEN
 
     IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
-      result := add_location(NEW.place_id, NEW.country_code, NEW.partition, name_vector, NEW.rank_search, NEW.rank_address, upper(trim(NEW.address->'postcode')), NEW.geometry);
+      result := add_location(NEW.place_id, NEW.partition, name_vector, NEW.rank_address, NEW.admin_level, upper(trim(NEW.address->'postcode')), NEW.geometry);
       --DEBUG: RAISE WARNING 'added to location (full)';
     END IF;
 

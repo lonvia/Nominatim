@@ -57,10 +57,8 @@ drop table IF EXISTS location_area CASCADE;
 CREATE TABLE location_area (
   place_id BIGINT,
   keywords INTEGER[],
-  partition SMALLINT,
-  rank_search SMALLINT NOT NULL,
   rank_address SMALLINT NOT NULL,
-  country_code VARCHAR(2),
+  admin_level SMALLINT,
   isguess BOOL,
   postcode TEXT,
   centroid GEOMETRY(Point, 4326),
