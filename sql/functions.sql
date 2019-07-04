@@ -649,11 +649,15 @@ DECLARE
   postcode TEXT;
 BEGIN
 
-  IF rank_search > 25 THEN
-    RAISE EXCEPTION 'Adding location with rank > 25 (% rank %)', place_id, rank_search;
+  IF rank_address > 25 THEN
+    RAISE EXCEPTION 'Adding location with rank > 25 (% rank %)', place_id, rank_address;
   END IF;
 
-  x := deleteLocationArea(partition, place_id, rank_search);
+  x := deleteLocationArea(partition, place_id, rank_address);
+
+  IF rank_address = 0 THEN
+    RETURN TRUE;
+  END IF;
 
   -- add postcode only if it contains a single entry, i.e. ignore postcode lists
   postcode := NULL;
@@ -665,32 +669,34 @@ BEGIN
     centroid := ST_Centroid(geometry);
 
     FOR secgeo IN select split_geometry(geometry) AS geom LOOP
-      x := insertLocationAreaLarge(partition, place_id, keywords, rank_address, admin_level, false, postcode, centroid, secgeo);
+      x := insertLocationAreaLarge(partition, place_id, country_code, keywords,
+                                   rank_address, admin_level, false, postcode,
+                                   centroid, secgeo);
     END LOOP;
 
   ELSE
 
     diameter := 0.02;
-    IF rank_address = 0 THEN
-      diameter := 0.02;
-    ELSEIF rank_search <= 14 THEN
+    IF rank_address <= 14 THEN
       diameter := 1.2;
-    ELSEIF rank_search <= 15 THEN
+    ELSEIF rank_address <= 15 THEN
       diameter := 1;
-    ELSEIF rank_search <= 16 THEN
+    ELSEIF rank_address <= 16 THEN
       diameter := 0.5;
-    ELSEIF rank_search <= 17 THEN
+    ELSEIF rank_address <= 17 THEN
       diameter := 0.2;
-    ELSEIF rank_search <= 21 THEN
+    ELSEIF rank_address <= 21 THEN
       diameter := 0.05;
-    ELSEIF rank_search = 25 THEN
+    ELSEIF rank_address = 25 THEN
       diameter := 0.005;
     END IF;
 
 --    RAISE WARNING 'adding % diameter %', place_id, diameter;
 
     secgeo := ST_Buffer(geometry, diameter);
-    x := insertLocationAreaLarge(partition, place_id, keywords, rank_address, admin_level, true, postcode, ST_Centroid(geometry), secgeo);
+    x := insertLocationAreaLarge(partition, place_id, country_code, keywords,
+                                 rank_address, admin_level, true, postcode,
+                                 ST_Centroid(geometry), secgeo);
 
   END IF;
 
@@ -1535,7 +1541,7 @@ BEGIN
       -- process but it takes too long
       -- Just be happy with inheriting from parent road only
       IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
-        result := add_location(NEW.place_id, NEW.partition, name_vector, NEW.rank_address, NEW.admin_level, upper(trim(NEW.address->'postcode')), NEW.geometry);
+        result := add_location(NEW.place_id, NEW.counrty_code, NEW.partition, name_vector, NEW.rank_address, NEW.admin_level, upper(trim(NEW.address->'postcode')), NEW.geometry);
         --DEBUG: RAISE WARNING 'Place added to location table';
       END IF;
 
@@ -1824,7 +1830,7 @@ BEGIN
 
       -- RAISE WARNING '% isaddress: %', location.place_id, location_isaddress;
       -- Add it to the list of search terms
-      IF NOT %REVERSE-ONLY% AND location.rank_search > 4 THEN
+      IF NOT %REVERSE-ONLY% THEN
           nameaddress_vector := array_merge(nameaddress_vector, location.keywords::integer[]);
       END IF;
       INSERT INTO place_addressline (place_id, address_place_id, fromarea, isaddress, distance, cached_rank_address)
@@ -1869,7 +1875,7 @@ BEGIN
   IF NEW.name IS NOT NULL THEN
 
     IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
-      result := add_location(NEW.place_id, NEW.partition, name_vector, NEW.rank_address, NEW.admin_level, upper(trim(NEW.address->'postcode')), NEW.geometry);
+      result := add_location(NEW.place_id, NEW.country_code, NEW.partition, name_vector, NEW.rank_address, NEW.admin_level, upper(trim(NEW.address->'postcode')), NEW.geometry);
       --DEBUG: RAISE WARNING 'added to location (full)';
     END IF;
 

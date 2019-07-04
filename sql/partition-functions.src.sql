@@ -6,19 +6,12 @@ BEGIN
 -- start
   IF in_partition = -partition- THEN
     FOR r IN 
-      SELECT place_id, keywords, rank_address, min(ST_Distance(feature, centroid)) as distance, isguess, postcode, centroid FROM (
-        SELECT * FROM location_area_large_-partition- WHERE ST_Intersects(geometry, feature) and rank_address < maxrank
-        UNION ALL
-        SELECT * FROM location_area_country WHERE ST_Intersects(geometry, feature) and rank_address < maxrank
-      ) as location_area
-      GROUP BY place_id, keywords, rank_address, isguess, postcode, centroid
+      SELECT place_id, keywords, rank_address, admin_level, min(ST_Distance(feature, centroid)) as distance, isguess, postcode, centroid
+      FROM location_area_large_-partition-
+      WHERE ST_Intersects(geometry, feature) and rank_address < maxrank
+      GROUP BY place_id, keywords, rank_address, admin_level, isguess, postcode, centroid
       ORDER BY rank_address, isin_tokens && keywords desc, isguess asc,
-        ST_Distance(feature, centroid) *
-          CASE 
-               WHEN rank_address = 16 AND rank_search = 15 THEN 0.2 -- capital city
-               WHEN rank_address = 16 AND rank_search = 16 THEN 0.25 -- city
-               WHEN rank_address = 16 AND rank_search = 17 THEN 0.5 -- town
-               ELSE 1 END ASC -- everything else
+        ST_Distance(feature, centroid)
     LOOP
       RETURN NEXT r;
     END LOOP;
@@ -55,18 +48,14 @@ $$
 LANGUAGE plpgsql;
 
 create or replace function insertLocationAreaLarge(
-  in_partition INTEGER, in_place_id BIGINT, in_keywords INTEGER[],
+  in_partition INTEGER, in_place_id BIGINT, in_country_code VARCHAR(2), in_keywords INTEGER[],
   in_rank_address SMALLINT, in_admin_level SMALLINT, in_estimate BOOLEAN, postcode TEXT,
   in_centroid GEOMETRY, in_geometry GEOMETRY) RETURNS BOOLEAN AS $$
 DECLARE
 BEGIN
-  IF in_rank_address = 0 THEN
-    RETURN TRUE;
-  END IF;
-
-  IF in_rank_search <= 4 THEN
-    INSERT INTO location_area_country (place_id, keywords, rank_address, admin_level, isguess, centroid, geometry)
-      values (in_place_id, in_keywords, in_rank_address, in_admin_level, in_estimate, in_centroid, in_geometry);
+  IF in_rank_address <= 4 THEN
+    INSERT INTO location_area_country (place_id, country_code, isguess, geometry)
+      values (in_place_id, in_country_code, in_estimate, in_geometry);
     RETURN TRUE;
   END IF;
 

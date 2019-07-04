@@ -18,7 +18,7 @@ create type nearfeaturecentr as (
   place_id BIGINT,
   keywords int[],
   rank_address smallint,
-  rank_search smallint,
+  admin_level smallint,
   distance float,
   isguess boolean,
   postcode TEXT,
@@ -34,9 +34,6 @@ CREATE TABLE search_name_blank (
   centroid GEOMETRY(Geometry, 4326)
   );
 
-
-CREATE TABLE location_area_country () INHERITS (location_area_large) {ts:address-data};
-CREATE INDEX idx_location_area_country_geometry ON location_area_country USING GIST (geometry) {ts:address-index};
 
 -- start
 CREATE TABLE location_area_large_-partition- () INHERITS (location_area_large) {ts:address-data};
