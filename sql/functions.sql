@@ -1339,7 +1339,11 @@ BEGIN
   END IF;
 
   -- What level are we searching from
-  search_maxrank := NEW.rank_search;
+  IF NEW.rank_address > 0 THEN
+    search_maxrank := NEW.rank_address;
+  ELSE
+    search_maxrank := NEW.rank_search;
+  END IF;
 
   -- Thought this wasn't needed but when we add new languages to the country_name table
   -- we need to update the existing names
