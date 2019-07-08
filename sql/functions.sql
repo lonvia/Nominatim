@@ -653,11 +653,11 @@ BEGIN
     RAISE EXCEPTION 'Adding location with rank > 25 (% rank %)', place_id, rank_address;
   END IF;
 
-  x := deleteLocationArea(partition, place_id, rank_address);
-
   IF rank_address = 0 THEN
     RETURN TRUE;
   END IF;
+
+  x := deleteLocationArea(partition, place_id, rank_address);
 
   -- add postcode only if it contains a single entry, i.e. ignore postcode lists
   postcode := NULL;
