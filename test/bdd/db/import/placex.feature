@@ -69,7 +69,7 @@ Feature: Import into placex
          | N3   | place | postcode | Y45      | country:gb |
         When importing
         Then placex contains
-         | object | postcode | country_code | rank_search | rank_address |
+         | object | addr+postcode | country_code | rank_search | rank_address |
          | N1     | E45 2CD  | gb           | 25          | 0 |
          | N2     | E45 2    | gb           | 23          | 0 |
          | N3     | Y45      | gb           | 21          | 0 |

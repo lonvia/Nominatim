@@ -1254,6 +1254,12 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- Postcode nodes are just here for creating the centroids, they should not
+  -- be searchable otherwise.
+  IF NEW.osm_type = 'N' and NEW.class = 'place' and NEW.type = 'postcode' THEN
+    RETURN NEW;
+  END IF;
+
   --DEBUG: RAISE WARNING 'Copy over address tags';
   -- housenumber is a computed field, so start with an empty value
   NEW.housenumber := NULL;
