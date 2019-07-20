@@ -723,9 +723,12 @@ class SetupFunctions
         }
         foreach ($aDropTables as $sDrop) {
             if ($this->bVerbose) echo "Dropping table $sDrop\n";
-            $this->oDB->exec("DROP TABLE $sDrop CASCADE");
-            // ignore warnings/errors as they might be caused by a table having
-            // been deleted already by CASCADE
+            try {
+                $this->oDB->exec("DROP TABLE $sDrop CASCADE");
+            } catch (\Nominatim\DatabaseError $e) {
+                // ignore warnings/errors as they might be caused by a table having
+                // been deleted already by CASCADE
+            }
         }
 
         if (!is_null(CONST_Osm2pgsql_Flatnode_File) && CONST_Osm2pgsql_Flatnode_File) {
