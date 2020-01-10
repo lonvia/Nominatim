@@ -1,5 +1,38 @@
 -- Trigger functions for the placex table.
 
+CREATE OR REPLACE FUNCTION lookup_ranks(place_class TEXT, place_type TEXT,
+                                        admin_level SMALLINT,
+                                        country VARCHAR(2),
+                                        OUT out_rank_search SMALLINT,
+                                        OUT out_rank_address SMALLINT)
+  AS $$
+DECLARE
+  classtype TEXT;
+BEGIN
+  IF place_class = 'boundary' and place_type = 'administrative' THEN
+    classtype = place_type || admin_level::TEXT;
+  ELSE
+    classtype = place_type;
+  END IF;
+
+  SELECT rank_search, rank_address FROM address_levels
+   WHERE (country_code = country or country_code is NULL)
+         AND class = place_class AND (type = classtype or type is NULL)
+   ORDER BY country_code, class, type LIMIT 1
+    INTO out_rank_search, out_rank_address;
+
+  IF out_rank_search is NULL THEN
+    out_rank_search := 30;
+  END IF;
+
+  IF out_rank_address is NULL THEN
+    out_rank_address := 30;
+  END IF;
+
+END;
+$$
+LANGUAGE plpgsql STABLE;
+
 CREATE OR REPLACE FUNCTION placex_insert()
   RETURNS TRIGGER
   AS $$
@@ -70,24 +103,9 @@ BEGIN
         NEW.rank_address = 0;
     ELSE
       -- do table lookup stuff
-      IF NEW.class = 'boundary' and NEW.type = 'administrative' THEN
-        classtype = NEW.type || NEW.admin_level::TEXT;
-      ELSE
-        classtype = NEW.type;
-      END IF;
-      SELECT l.rank_search, l.rank_address FROM address_levels l
-       WHERE (l.country_code = NEW.country_code or l.country_code is NULL)
-             AND l.class = NEW.class AND (l.type = classtype or l.type is NULL)
-       ORDER BY l.country_code, l.class, l.type LIMIT 1
+      SELECT *
+        FROM lookup_ranks(NEW.class, NEW.type, NEW.admin_level, NEW.country_code)
         INTO NEW.rank_search, NEW.rank_address;
-
-      IF NEW.rank_search is NULL THEN
-        NEW.rank_search := 30;
-      END IF;
-
-      IF NEW.rank_address is NULL THEN
-        NEW.rank_address := 30;
-      END IF;
     END IF;
 
     -- some postcorrections
@@ -728,6 +746,10 @@ BEGIN
     IF linked_importance is not null AND
         (NEW.importance is null or NEW.importance < linked_importance) THEN
         NEW.importance = linked_importance;
+    END IF;
+
+    -- adjust rank_address according to place type if there was one determined
+    IF NEW.class != 'place' and NEW.extratags ? 'place' THEN
     END IF;
   END IF;
 
