@@ -750,6 +750,9 @@ BEGIN
 
     -- adjust rank_address according to place type if there was one determined
     IF NEW.class != 'place' and NEW.extratags ? 'place' THEN
+      SELECT * FROM lookup_ranks('place'::text, NEW.extratags->'place',
+                                 NEW.admin_level, NEW.country_code)
+        INTO search_maxrank, NEW.rank_address;
     END IF;
   END IF;
 
