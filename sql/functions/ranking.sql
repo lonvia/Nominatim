@@ -128,14 +128,14 @@ LANGUAGE plpgsql IMMUTABLE;
 -- \param[out] search_rank   Computed search rank.
 -- \param[out] address_rank  Computed address rank.
 --
-CREATE OR REPLACE FUNCTION compute_place_rank(country VARCHAR(2),
-                                              extended_type VARCHAR(1),
-                                              place_class TEXT, place_type TEXT,
-                                              admin_level SMALLINT,
-                                              is_major BOOLEAN,
-                                              postcode TEXT,
-                                              OUT search_rank SMALLINT,
-                                              OUT address_rank SMALLINT)
+CREATE OR REPLACE FUNCTION get_place_ranks(country VARCHAR(2),
+                                           extended_type VARCHAR(1),
+                                           place_class TEXT, place_type TEXT,
+                                           admin_level SMALLINT,
+                                           extratags HSTORE,
+                                           postcode TEXT,
+                                           OUT search_rank SMALLINT,
+                                           OUT address_rank SMALLINT)
 AS $$
 DECLARE
   classtype TEXT;
@@ -183,7 +183,7 @@ BEGIN
         search_rank := search_rank - 1;
     END IF;
 
-    IF is_major THEN
+    IF (extratags->'capital') = 'yes' THEN
       search_rank := search_rank - 1;
     END IF;
   END IF;

@@ -427,11 +427,10 @@ BEGIN
     END IF;
 
     SELECT * INTO NEW.rank_search, NEW.rank_address
-      FROM compute_place_rank(NEW.country_code,
-                              CASE WHEN is_area THEN 'A' ELSE NEW.osm_type END,
-                              NEW.class, NEW.type, NEW.admin_level,
-                              (NEW.extratags->'capital') = 'yes',
-                              NEW.address->'postcode');
+      FROM get_place_ranks(NEW.country_code,
+                           CASE WHEN is_area THEN 'A' ELSE NEW.osm_type END,
+                           NEW.class, NEW.type, NEW.admin_level,
+                           NEW.extratags, NEW.address->'postcode');
 
     -- a country code make no sense below rank 4 (country)
     IF NEW.rank_search < 4 THEN
@@ -581,13 +580,12 @@ BEGIN
 
   -- recompute the ranks, they might change when linking changes
   SELECT * INTO NEW.rank_search, NEW.rank_address
-    FROM compute_place_rank(NEW.country_code,
-                            CASE WHEN ST_GeometryType(NEW.geometry)
+    FROM get_place_ranks(NEW.country_code,
+                         CASE WHEN ST_GeometryType(NEW.geometry)
                                         IN ('ST_Polygon','ST_MultiPolygon')
-                            THEN 'A' ELSE NEW.osm_type END,
-                            NEW.class, NEW.type, NEW.admin_level,
-                            (NEW.extratags->'capital') = 'yes',
-                            NEW.address->'postcode');
+                         THEN 'A' ELSE NEW.osm_type END,
+                         NEW.class, NEW.type, NEW.admin_level,
+                         NEW.extratags, NEW.address->'postcode');
 
 
   --DEBUG: RAISE WARNING 'Copy over address tags';
