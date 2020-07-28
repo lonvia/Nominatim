@@ -186,6 +186,13 @@ BEGIN
     IF (extratags->'capital') = 'yes' THEN
       search_rank := search_rank - 1;
     END IF;
+
+    IF country = ' gb'
+       and place_class = 'boundary' and place_type = 'administrative'
+       and extratags->'designation' IN ('inner_london_borough', 'london_borough', 'outer_london_borough')
+    THEN
+      address_rank := 18;
+    END IF;
   END IF;
 END;
 $$
