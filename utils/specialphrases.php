@@ -19,13 +19,13 @@ include(CONST_Phrase_Config);
 if ($aCMDResult['wiki-import']) {
     $oNormalizer = Transliterator::createFromRules(CONST_Term_Normalization_Rules);
     $aPairs = array();
+    $aTerms = array();
 
     $sLanguageIn = CONST_Languages ? CONST_Languages :
         ('af,ar,br,ca,cs,de,en,es,et,eu,fa,fi,fr,gl,hr,hu,'.
          'ia,is,it,ja,mk,nl,no,pl,ps,pt,ru,sk,sl,sv,uk,vi');
 
-    // Create a temporary index over class/type, so that index creation is faster.
-    echo 'CREATE INDEX idx_placex_classtype ON placex (class, type);';
+    // Step 1: Collect all the terms
 
     foreach (explode(',', $sLanguageIn) as $sLanguage) {
         $sURL = 'https://wiki.openstreetmap.org/wiki/Special:Export/Nominatim/Special_Phrases/'.strtoupper($sLanguage);
@@ -69,40 +69,41 @@ if ($aCMDResult['wiki-import']) {
                 // fwrite(STDERR, "Non-Whitelisted: ".$sClass."/".$sType."\n");
                 continue;
             }
-            $aPairs[$sClass.'|'.$sType] = array($sClass, $sType);
 
-            switch (trim($aMatch[4])) {
-                case 'near':
-                    printf(
-                        "SELECT getorcreate_amenityoperator(make_standard_name('%s'), '%s', '%s', '%s', 'near');\n",
-                        pg_escape_string($sLabel),
-                        $sTrans,
-                        $sClass,
-                        $sType
-                    );
-                    break;
-                case 'in':
-                    printf(
-                        "SELECT getorcreate_amenityoperator(make_standard_name('%s'), '%s', '%s', '%s', 'in');\n",
-                        pg_escape_string($sLabel),
-                        $sTrans,
-                        $sClass,
-                        $sType
-                    );
-                    break;
-                default:
-                    printf(
-                        "SELECT getorcreate_amenity(make_standard_name('%s'), '%s', '%s', '%s');\n",
-                        pg_escape_string($sLabel),
-                        $sTrans,
-                        $sClass,
-                        $sType
-                    );
-                    break;
+            $sOperator = trim($aMatch[4]);
+
+            if ($sOperator == 'near' || $sOperator == 'in') {
+                $sAmenityTerm = sprintf(
+                    "SELECT getorcreate_amenityoperator(make_standard_name('%s'), '%s', '%s', '%s', '%s');\n",
+                    pg_escape_string($sLabel),
+                    $sTrans,
+                    $sClass,
+                    $sType,
+                    $sOperator
+                );
+            } else {
+                $sAmenityTerm = sprintf(
+                    "SELECT getorcreate_amenity(make_standard_name('%s'), '%s', '%s', '%s');\n",
+                    pg_escape_string($sLabel),
+                    $sTrans,
+                    $sClass,
+                    $sType
+                );
             }
+
+            $aTerms[$sAmenityTerm] = 1;
+            $aPairs[$sClass.'|'.$sType] = array($sClass, $sType);
         }
     }
 
+    // Step 2: Output the SQL for adding the terms
+
+    // Create a temporary index over class/type, so that index creation is faster.
+    echo 'CREATE INDEX idx_placex_classtype ON placex (class, type);';
+
+    foreach ($aTerms as $aTerm => $i) {
+        echo $aTerm;
+    }
 
     foreach ($aPairs as $aPair) {
         printf(
