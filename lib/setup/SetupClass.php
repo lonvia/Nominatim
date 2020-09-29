@@ -676,7 +676,6 @@ class SetupFunctions
                         'new_query_log',
                         'spatial_ref_sys',
                         'country_name',
-                        'place_classtype_*',
                         'country_osm_grid'
                        );
 

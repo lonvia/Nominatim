@@ -522,7 +522,7 @@ class SearchDescription
 
         $aDBResults = array();
 
-        if ($$oDB->indexExists($this->poiIndex())) {
+        if ($oDB->indexExists($this->poiIndex())) {
             $sSQL = 'SELECT place_id FROM placex ';
             if ($this->oContext->hasNearPoint()) {
                 $sSQL .= ' WHERE '.$this->oContext->withinSQL('centroid');

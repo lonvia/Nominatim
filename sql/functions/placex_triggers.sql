@@ -484,17 +484,6 @@ BEGIN
     END IF;
   END IF;
 
-
-   -- add to tables for special search
-   -- Note: won't work on initial import because the classtype tables
-   -- do not yet exist. It won't hurt either.
-  classtable := 'place_classtype_' || NEW.class || '_' || NEW.type;
-  SELECT count(*)>0 FROM pg_tables WHERE tablename = classtable and schemaname = current_schema() INTO result;
-  IF result THEN
-    EXECUTE 'INSERT INTO ' || classtable::regclass || ' (place_id, centroid) VALUES ($1,$2)' 
-    USING NEW.place_id, ST_Centroid(NEW.geometry);
-  END IF;
-
   RETURN NEW;
 
 END;
