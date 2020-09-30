@@ -511,54 +511,37 @@ class SearchDescription
 
     private function queryNearbyPoi(&$oDB, $iLimit)
     {
-        if (!$this->sClass) {
+        if (!$this->sClass or $this->sClass == 'place' or $this->sClass == 'building') {
             return array();
         }
 
         $aDBResults = array();
-        $sPoiTable = $this->poiTable();
 
-        if ($oDB->tableExists($sPoiTable)) {
-            $sSQL = 'SELECT place_id FROM '.$sPoiTable.' ct';
-            if ($this->oContext->sqlCountryList) {
-                $sSQL .= ' JOIN placex USING (place_id)';
-            }
-            if ($this->oContext->hasNearPoint()) {
-                $sSQL .= ' WHERE '.$this->oContext->withinSQL('ct.centroid');
-            } elseif ($this->oContext->bViewboxBounded) {
-                $sSQL .= ' WHERE ST_Contains('.$this->oContext->sqlViewboxSmall.', ct.centroid)';
-            }
-            if ($this->oContext->sqlCountryList) {
-                $sSQL .= ' AND country_code in '.$this->oContext->sqlCountryList;
-            }
-            $sSQL .= $this->oContext->excludeSQL(' AND place_id');
-            if ($this->oContext->sqlViewboxCentre) {
-                $sSQL .= ' ORDER BY ST_Distance(';
-                $sSQL .= $this->oContext->sqlViewboxCentre.', ct.centroid) ASC';
-            } elseif ($this->oContext->hasNearPoint()) {
-                $sSQL .= ' ORDER BY '.$this->oContext->distanceSQL('ct.centroid').' ASC';
-            }
-            $sSQL .= " LIMIT $iLimit";
-            Debug::printSQL($sSQL);
-            $aDBResults = $oDB->getCol($sSQL);
-        }
-
+        $sSQL = 'SELECT place_id FROM placex';
+        $sSQL .= 'WHERE class = :class and type = :type and rank_address = 30';
         if ($this->oContext->hasNearPoint()) {
-            $sSQL = 'SELECT place_id FROM placex WHERE ';
-            $sSQL .= 'class = :class and type = :type';
-            $sSQL .= ' AND '.$this->oContext->withinSQL('geometry');
-            $sSQL .= ' AND linked_place_id is null';
-            if ($this->oContext->sqlCountryList) {
-                $sSQL .= ' AND country_code in '.$this->oContext->sqlCountryList;
-            }
-            $sSQL .= ' ORDER BY '.$this->oContext->distanceSQL('centroid').' ASC';
-            $sSQL .= " LIMIT $iLimit";
-            Debug::printSQL($sSQL);
-            $aDBResults = $oDB->getCol(
-                $sSQL,
-                array(':class' => $this->sClass, ':type' => $this->sType)
-            );
+            $sSQL .= ' AND '.$this->oContext->withinSQL('centroid');
+        } elseif ($this->oContext->bViewboxBounded) {
+            $sSQL .= ' AND ST_Contains('.$this->oContext->sqlViewboxSmall.', centroid)';
+        } else {
+            return array();
         }
+        if ($this->oContext->sqlCountryList) {
+            $sSQL .= ' AND country_code in '.$this->oContext->sqlCountryList;
+        }
+        $sSQL .= $this->oContext->excludeSQL(' AND place_id');
+        if ($this->oContext->sqlViewboxCentre) {
+            $sSQL .= ' ORDER BY ST_Distance(';
+            $sSQL .= $this->oContext->sqlViewboxCentre.', centroid) ASC';
+        } elseif ($this->oContext->hasNearPoint()) {
+            $sSQL .= ' ORDER BY '.$this->oContext->distanceSQL('centroid').' ASC';
+        }
+        $sSQL .= " LIMIT $iLimit";
+        Debug::printSQL($sSQL);
+        $aDBResults = $oDB->getCol(
+            $sSQL,
+            array(':class' => $this->sClass, ':type' => $this->sType)
+        );
 
         $aResults = array();
         foreach ($aDBResults as $iPlaceId) {
@@ -853,125 +836,41 @@ class SearchDescription
 
         // NEAR and IN are handled the same
         if ($this->iOperator == Operator::TYPE || $this->iOperator == Operator::NEAR) {
-            $sClassTable = $this->poiTable();
-            $bCacheTable = $oDB->tableExists($sClassTable);
-
-            $sSQL = "SELECT min(rank_search) FROM placex WHERE place_id in ($sPlaceIDs)";
-            Debug::printSQL($sSQL);
-            $iMaxRank = (int) $oDB->getOne($sSQL);
-
-            // For state / country level searches the normal radius search doesn't work very well
-            $sPlaceGeom = false;
-            if ($iMaxRank < 9 && $bCacheTable) {
-                // Try and get a polygon to search in instead
-                $sSQL = 'SELECT geometry FROM placex';
-                $sSQL .= " WHERE place_id in ($sPlaceIDs)";
-                $sSQL .= "   AND rank_search < $iMaxRank + 5";
-                $sSQL .= "   AND ST_GeometryType(geometry) in ('ST_Polygon','ST_MultiPolygon')";
-                $sSQL .= ' ORDER BY rank_search ASC ';
-                $sSQL .= ' LIMIT 1';
-                Debug::printSQL($sSQL);
-                $sPlaceGeom = $oDB->getOne($sSQL);
+            if ($this->sClass == 'place' || $this->sClass == 'building') {
+                return $aResults;
             }
 
-            if ($sPlaceGeom) {
-                $sPlaceIDs = false;
+            $fRange = 0.05;
+            if ($this->oContext->hasNearPoint()) {
+                $fRange = $this->oContext->nearRadius();
+            }
+
+            $sOrderBySQL = '';
+            if ($this->oContext->hasNearPoint()) {
+                $sOrderBySQL = $this->oContext->distanceSQL('l.geometry');
             } else {
-                $iMaxRank += 5;
-                $sSQL = 'SELECT place_id FROM placex';
-                $sSQL .= " WHERE place_id in ($sPlaceIDs) and rank_search < $iMaxRank";
-                Debug::printSQL($sSQL);
-                $aPlaceIDs = $oDB->getCol($sSQL);
-                $sPlaceIDs = join(',', $aPlaceIDs);
+                $sOrderBySQL = 'ST_Distance(l.centroid, f.geometry)';
             }
 
-            if ($sPlaceIDs || $sPlaceGeom) {
-                $fRange = 0.01;
-                if ($bCacheTable) {
-                    // More efficient - can make the range bigger
-                    $fRange = 0.05;
+            $sSQL = 'SELECT DISTINCT l.place_id';
+            $sSQL .= ' FROM placex as l, placex as f';
+            $sSQL .= " WHERE f.place_id in ($sPlaceIDs) AND f.rank_search > 9";
+            $sSQL .= "  AND ST_DWithin(l.centroid, f.centroid, $fRange)";
+            $sSQL .= "  AND l.class='".$this->sClass."'";
+            $sSQL .= "  AND l.type='".$this->sType."'";
+            $sSQL .= '  AND l.rank_search = 30';
+            $sSQL .= $this->oContext->excludeSQL(' AND l.place_id');
+            $sSQL .= 'ORDER BY COALESCE(f.importance, 0.75-(f.rank_search::float/40)), '.$sOrderBySQL.' ASC';
+            $sSQL .= " limit $iLimit";
 
-                    $sOrderBySQL = '';
-                    if ($this->oContext->hasNearPoint()) {
-                        $sOrderBySQL = $this->oContext->distanceSQL('l.centroid');
-                    } elseif ($sPlaceIDs) {
-                        $sOrderBySQL = 'ST_Distance(l.centroid, f.geometry)';
-                    } elseif ($sPlaceGeom) {
-                        $sOrderBySQL = "ST_Distance(st_centroid('".$sPlaceGeom."'), l.centroid)";
-                    }
+            Debug::printSQL($sSQL);
 
-                    $sSQL = 'SELECT distinct i.place_id';
-                    if ($sOrderBySQL) {
-                        $sSQL .= ', i.order_term';
-                    }
-                    $sSQL .= ' from (SELECT l.place_id';
-                    if ($sOrderBySQL) {
-                        $sSQL .= ','.$sOrderBySQL.' as order_term';
-                    }
-                    $sSQL .= ' from '.$sClassTable.' as l';
-
-                    if ($sPlaceIDs) {
-                        $sSQL .= ',placex as f WHERE ';
-                        $sSQL .= "f.place_id in ($sPlaceIDs) ";
-                        $sSQL .= " AND ST_DWithin(l.centroid, f.centroid, $fRange)";
-                    } elseif ($sPlaceGeom) {
-                        $sSQL .= " WHERE ST_Contains('$sPlaceGeom', l.centroid)";
-                    }
-
-                    $sSQL .= $this->oContext->excludeSQL(' AND l.place_id');
-                    $sSQL .= 'limit 300) i ';
-                    if ($sOrderBySQL) {
-                        $sSQL .= 'order by order_term asc';
-                    }
-                    $sSQL .= " limit $iLimit";
-
-                    Debug::printSQL($sSQL);
-
-                    foreach ($oDB->getCol($sSQL) as $iPlaceId) {
-                        $aResults[$iPlaceId] = new Result($iPlaceId);
-                    }
-                } else {
-                    if ($this->oContext->hasNearPoint()) {
-                        $fRange = $this->oContext->nearRadius();
-                    }
-
-                    $sOrderBySQL = '';
-                    if ($this->oContext->hasNearPoint()) {
-                        $sOrderBySQL = $this->oContext->distanceSQL('l.geometry');
-                    } else {
-                        $sOrderBySQL = 'ST_Distance(l.geometry, f.geometry)';
-                    }
-
-                    $sSQL = 'SELECT distinct l.place_id';
-                    if ($sOrderBySQL) {
-                        $sSQL .= ','.$sOrderBySQL.' as orderterm';
-                    }
-                    $sSQL .= ' FROM placex as l, placex as f';
-                    $sSQL .= " WHERE f.place_id in ($sPlaceIDs)";
-                    $sSQL .= "  AND ST_DWithin(l.geometry, f.centroid, $fRange)";
-                    $sSQL .= "  AND l.class='".$this->sClass."'";
-                    $sSQL .= "  AND l.type='".$this->sType."'";
-                    $sSQL .= $this->oContext->excludeSQL(' AND l.place_id');
-                    if ($sOrderBySQL) {
-                        $sSQL .= 'ORDER BY orderterm ASC';
-                    }
-                    $sSQL .= " limit $iLimit";
-
-                    Debug::printSQL($sSQL);
-
-                    foreach ($oDB->getCol($sSQL) as $iPlaceId) {
-                        $aResults[$iPlaceId] = new Result($iPlaceId);
-                    }
-                }
+            foreach ($oDB->getCol($sSQL) as $iPlaceId) {
+                $aResults[$iPlaceId] = new Result($iPlaceId);
             }
         }
 
         return $aResults;
-    }
-
-    private function poiTable()
-    {
-        return 'place_classtype_'.$this->sClass.'_'.$this->sType;
     }
 
     private function countryCodeSQL($sVar)
