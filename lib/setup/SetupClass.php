@@ -19,6 +19,7 @@ class SetupFunctions
     protected $bNoPartitions;
     protected $bDrop;
     protected $oDB = null;
+    protected $fPostgresVersion;
 
     public function __construct(array $aCMDResult)
     {
@@ -112,10 +113,10 @@ class SetupFunctions
     {
         info('Setup DB');
 
-        $fPostgresVersion = $this->db()->getPostgresVersion();
-        echo 'Postgres version found: '.$fPostgresVersion."\n";
+        $this->fPostgresVersion = $this->db()->getPostgresVersion();
+        echo 'Postgres version found: '.$this->fPostgresVersion."\n";
 
-        if ($fPostgresVersion < 9.03) {
+        if ($this->fPostgresVersion < 9.03) {
             fail('Minimum supported version of Postgresql is 9.3.');
         }
 
@@ -915,6 +916,11 @@ if (file_exists(getenv('NOMINATIM_SETTINGS'))) require_once(getenv('NOMINATIM_SE
             } else {
                 $sSql = str_replace($sPattern, '', $sSql);
             }
+        }
+
+        // INCLUDE in indexes is only supported since Postgresql 12.
+        if ($this->fPostgresVersion < 12.0) {
+            $sSql = preg_replace('/INCLUDE \\([^)]*\\)/', '', $sSql);
         }
 
         return $sSql;
