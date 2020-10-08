@@ -852,15 +852,15 @@ class SearchDescription
                 $sOrderBySQL = 'ST_Distance(l.centroid, f.geometry)';
             }
 
-            $sSQL = 'SELECT DISTINCT l.place_id';
+            $sSQL = 'SELECT l.place_id';
             $sSQL .= ' FROM placex as l, placex as f';
             $sSQL .= " WHERE f.place_id in ($sPlaceIDs) AND f.rank_search > 9";
             $sSQL .= "  AND ST_DWithin(l.centroid, f.centroid, $fRange)";
             $sSQL .= "  AND l.class='".$this->sClass."'";
             $sSQL .= "  AND l.type='".$this->sType."'";
-            $sSQL .= '  AND l.rank_search = 30';
+            $sSQL .= '  AND l.rank_address = 30';
             $sSQL .= $this->oContext->excludeSQL(' AND l.place_id');
-            $sSQL .= 'ORDER BY COALESCE(f.importance, 0.75-(f.rank_search::float/40)), '.$sOrderBySQL.' ASC';
+            $sSQL .= ' ORDER BY COALESCE(f.importance, 0.75-(f.rank_search::float/40)), '.$sOrderBySQL.' ASC';
             $sSQL .= " limit $iLimit";
 
             Debug::printSQL($sSQL);
