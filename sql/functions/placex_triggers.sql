@@ -384,7 +384,6 @@ DECLARE
   is_area BOOLEAN;
   country_code VARCHAR(2);
   diameter FLOAT;
-  classtable TEXT;
 BEGIN
   --DEBUG: RAISE WARNING '% % % %',NEW.osm_type,NEW.osm_id,NEW.class,NEW.type;
 
@@ -482,17 +481,6 @@ BEGIN
         END IF;
       END IF;
     END IF;
-  END IF;
-
-
-   -- add to tables for special search
-   -- Note: won't work on initial import because the classtype tables
-   -- do not yet exist. It won't hurt either.
-  classtable := 'place_classtype_' || NEW.class || '_' || NEW.type;
-  SELECT count(*)>0 FROM pg_tables WHERE tablename = classtable and schemaname = current_schema() INTO result;
-  IF result THEN
-    EXECUTE 'INSERT INTO ' || classtable::regclass || ' (place_id, centroid) VALUES ($1,$2)' 
-    USING NEW.place_id, ST_Centroid(NEW.geometry);
   END IF;
 
   RETURN NEW;
@@ -947,7 +935,6 @@ CREATE OR REPLACE FUNCTION placex_delete()
   AS $$
 DECLARE
   b BOOLEAN;
-  classtable TEXT;
 BEGIN
   -- RAISE WARNING 'placex_delete % %',OLD.osm_type,OLD.osm_id;
 
@@ -1001,15 +988,6 @@ BEGIN
   DELETE FROM place_addressline where place_id = OLD.place_id;
 
   --DEBUG: RAISE WARNING 'placex_delete:11 % %',OLD.osm_type,OLD.osm_id;
-
-  -- remove from tables for special search
-  classtable := 'place_classtype_' || OLD.class || '_' || OLD.type;
-  SELECT count(*)>0 FROM pg_tables WHERE tablename = classtable and schemaname = current_schema() INTO b;
-  IF b THEN
-    EXECUTE 'DELETE FROM ' || classtable::regclass || ' WHERE place_id = $1' USING OLD.place_id;
-  END IF;
-
-  --DEBUG: RAISE WARNING 'placex_delete:12 % %',OLD.osm_type,OLD.osm_id;
 
   RETURN OLD;
 
