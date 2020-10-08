@@ -6,7 +6,6 @@
 $aTagsBlacklist
  = array(
     'boundary' => array('administrative'),
-    'place' => array('house', 'houses'),
    );
 
 // If a class is in the white list then all types will
@@ -17,4 +16,5 @@ $aTagsWhitelist
  = array(
     'highway' => array('bus_stop', 'rest_area', 'raceway'),
     'building' => array(),
+    'place' => array(),
    );
