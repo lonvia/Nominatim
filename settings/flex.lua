@@ -5,40 +5,20 @@
 ----------------------------- STYLE STUFF -----------------------------
 
 -- Remove all tags we are definitely not interested in.
-local SKIP_TAGS = {'created_by', 'attribution',
-                   'comment', 'fixme', 'FIXME', 'import', 'type', "building:ruian:type"}
-local SKIP_TAGS_PREFIX = {'source', 'note', 'NHD:', 'nhd:'
-                          'gnis:', 'geobase:', "KSJ2:", "yh:", "osak:",
-                          "naptan:", "CLC:", "import_", "it:fvg:",
-                          "lacounty:", "ref:ruian:", "ref:linz:"}
-local SKIP_TAGS_SUFFIX = {'source'}
+local SKIP_TAGS = {'created_by', 'attribution', 'comment', 'fixme', 'FIXME',
+                   'import', 'type', ' building:ruian:type', ' source',
+                   'source*', 'note*', 'NHD:*', 'nhd:*', 'gnis:*', 'geobase:*',
+                   'KSJ2:*', 'yh:*', 'osak:*', 'naptan:*', 'CLC:*', 'import_*',
+                   'it:fvg:*', 'lacounty:*', 'ref:ruian:*', 'ref:linz:*',
+                   '*source'}
 
-local function cleanup_tags(tags)
-    for tag, _ in pairs(tags) do
-        for _, k in ipairs(SKIP_TAGS_PREFIX) do
-            if starts_with(tag, k) then
-                tags[tag] = nil
-                break
-            end
-        end
-    end
-
-    for tag, _ in pairs(tags) do
-        for _, k in ipairs(SKIP_TAGS_SUFFIX) do
-            if ends_with(tag, k) then
-                tags[tag] = nil
-                break
-            end
-        end
-    end
-end
-
+local cleanup_tags = osm2pgsql.make_clean_tags_func{SKIP_TAGS}
 local clean_tiger_tags = osm2pgsql.make_clean_tags_func{'tiger:*'}
 
-local COUNTRY_TAGS = { "country_code", "ISO3166-1", "is_in:country_code",
-                       "is_in:country", "addr:country", "addr:country_code"}
-local POSTCODE_TAGS = { "postal_code", "postcode", "addr:postcode",
-                        "tiger:zip_left", "tiger:zip_right"}
+local COUNTRY_TAGS = {'country_code', 'ISO3166-1', 'is_in:country_code',
+                      'is_in:country', 'addr:country', 'addr:country_code'}
+local POSTCODE_TAGS = {'postal_code', 'postcode', 'addr:postcode',
+                       'tiger:zip_left', 'tiger:zip_right'}
 
 local function extract_address_tags(place)
     place.address_tags = {}
@@ -63,10 +43,10 @@ local function extract_address_tags(place)
     end
 
     for k, v in place.object.tags do
-        if starts_with(k, 'addr:') or  then
+        if osm2pgsql.has_prefix(k, 'addr:') or  then
             place.address_tags[k.sub(6)] = v
             place.object.tags[k] = nil
-        elseif starts_with(k, 'is_in:') or  then
+        elseif osm2pgsql.has_prefix(k, 'is_in:') or  then
             place.address_tags[k.sub(7)] = v
             place.object.tags[k] = nil
         end
@@ -76,8 +56,8 @@ end
 local NAME_TAGS = {'name', 'int_name', 'nat_name', 'reg_name', 'loc_name',
                    'old_name', 'alt_name', 'official_name', 'place_name',
                    'short_name', 'brand', 'addr:housename'}
-local REF_TAGS = {"ref", "int_ref", "nat_ref", "reg_ref", "loc_ref", "old_ref",
-                  "iata", "icao", "pcode"}
+local REF_TAGS = {'ref', 'int_ref', 'nat_ref', 'reg_ref', 'loc_ref', 'old_ref',
+                  'iata', 'icao', 'pcode'}
 
 local function extract_name_tags(place)
     place.name_tags = {}
@@ -185,14 +165,6 @@ HOUSENUMBER_KEYS = { "housenumber", "conscriptionnumber", "streetnumber" }
 
 ----------------------------- FIXED STUFF -----------------------------
 
-local function starts_with(str, start)
-   return str:sub(1, #start) == start
-end
-
-local function ends_with(str, ending)
-   return ending == "" or str:sub(-#ending) == ending
-end
-
 function is_linear_relation(type_tag)
     return type_tag == 'waterway'
 end
@@ -271,7 +243,7 @@ function osm2pgsql.process_relation(object)
 end
 
 function process(place)
-    cleanup_tags(place.object)
+    cleanup_tags(place.object.tags)
 
     if next(place.object.tags) == nil then
         return
@@ -282,7 +254,7 @@ function process(place)
     extract_name_tags(place)
     extract_address_tags(place)
 
-    clean_tiger_tags(place.object)
+    clean_tiger_tags(place.object.tags)
 
     for k, v in pairs(place.object.tags) do
         if CLASS_TYPE_PROCS[k] ~= nil then
