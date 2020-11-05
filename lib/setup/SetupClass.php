@@ -180,6 +180,12 @@ class SetupFunctions
         }
 
         $oCmd = new \Nominatim\Shell(CONST_Osm2pgsql_Binary);
+
+        if (substr(CONST_Import_Style, -4) === '.lua') {
+            $oCmd->addParams('--output', 'flex');
+        } else {
+            $oCmd->addParams('--output', 'gazetteer');
+        }
         $oCmd->addParams('--style', CONST_Import_Style);
 
         if (!is_null(CONST_Osm2pgsql_Flatnode_File) && CONST_Osm2pgsql_Flatnode_File) {
@@ -198,7 +204,6 @@ class SetupFunctions
             $oCmd->addParams('--tablespace-main-index', CONST_Tablespace_Place_Index);
         }
         $oCmd->addParams('--latlong', '--slim', '--create');
-        $oCmd->addParams('--output', 'gazetteer');
         $oCmd->addParams('--hstore');
         $oCmd->addParams('--number-processes', 1);
         $oCmd->addParams('--cache', $this->iCacheMemory);
