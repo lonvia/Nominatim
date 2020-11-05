@@ -59,25 +59,28 @@ local NAME_TAGS = {'name', 'int_name', 'nat_name', 'reg_name', 'loc_name',
 local REF_TAGS = {'ref', 'int_ref', 'nat_ref', 'reg_ref', 'loc_ref', 'old_ref',
                   'iata', 'icao', 'pcode'}
 
-local function extract_name_tags(place)
+function extract_name_tags(place)
     place.name_tags = {}
     place.has_names = false
 
     for _, k in ipairs(NAME_TAGS) do
         place.name_tags[k] = place.object:grab_tag(k)
-        place.has_names = true
+        if place.name_tags[k] ~= nil then
+            place.has_names = true
+        end
     end
 
     for _, k in ipairs(REF_TAGS) do
         place.name_tags[k] = place.object:grab_tag(k)
     end
 
-    for k, v in object.tags do
+    for k, v in pairs(place.object.tags) do
         for _, prefix in ipairs(NAME_TAGS) do
-            if k:find(k + ':%a%a%a?([-_].*)$') == 1 then
-                add_name(place, k, v)
+            if k:find(prefix .. ':%a%a%a?$') == 1 or
+               k:find(prefix .. ':%a%a%a?[-_].*$') == 1 then
+                place.name_tags[k] = v
                 place.object.tags[k] = nil
-                place.has_names = false
+                place.has_names = true
                 break
             end
         end
@@ -93,7 +96,7 @@ local function make_set(t)
     return ret
 end
 
-local function add_unless_value_is(values)
+function add_unless_value_is(values)
     local test_set = make_set(values)
 
     return function(k, v, place)
@@ -103,10 +106,20 @@ local function add_unless_value_is(values)
     end
 end
 
+function add_named_unless_value_is(values)
+    local test_set = make_set(values)
 
-local function add_with_domain_name(k, v, place)
+    return function(k, v, place)
+        if place.has_names and not test_set[v] then
+            add_row(k, v, place)
+        end
+    end
+end
+
+
+function add_with_domain_name(k, v, place)
     local prefix = k .. ':name'
-    local domain_names = {name = place.object.tags:grab_tags(prefix)}
+    local domain_names = {name = place.object:grab_tag(prefix)}
 
     prefix = prefix .. ':'
     for tk, tv in pairs(place.object.tags) do
@@ -131,7 +144,7 @@ local function add_with_domain_name(k, v, place)
     end
 end
 
-local function add_if(pred)
+function add_if(pred)
     return function(k, v, place)
         if pred(v, place) then
             add_row(k, v, place)
@@ -152,8 +165,8 @@ CLASS_TYPE_PROCS = {
   emergency = add_unless_value_is{'fire_hydrant', 'yes', 'no'},
   historic = add_unless_value_is{'yes', 'no'},
   military = add_unless_value_is{'yes', 'no'},
-  natural = add_unless_value_is{'coastline', 'yes', 'no'},
-  railway = add_unless_value_is{'no', 'level_crossing', 'rail', 'switch', 'signal', 'buffer_stop'},
+  natural = add_named_unless_value_is{'coastline', 'yes', 'no'},
+  railway = add_named_unless_value_is{'no', 'level_crossing', 'rail', 'switch', 'signal', 'buffer_stop'},
   man_made = add_unless_value_is{'no', 'survey_point', 'cutline'},
   aerialway = add_unless_value_is{'no', 'pylon'},
   amenity = add_unless_value_is{'no'},
@@ -167,18 +180,27 @@ CLASS_TYPE_PROCS = {
   tourism = add_unless_value_is{'no', 'yes'},
   bridge = add_with_domain_name,
   tunnel = add_with_domain_name,
-  waterway = add_unless_value_is{'riverbank'},
-  place = add_row,
+  waterway = add_named_unless_value_is{'no', 'riverbank'},
+  place = add_unless_value_is{'no'},
   highway = add_if(function(v, place)
                 return KEY_HIGHWAY_SKIP[v] and (place.has_names or not KEY_HIGHWAY_NAMED[v])
             end),
   boundary = add_if(function(v, place)
                 return v ~= 'place' and (place.has_names or v == 'postal_code')
              end),
+  landuse = add_if(function(v, place)
+                return v == 'cemetry' and place.has_names
+             end)
 }
 
 CLASS_TYPE_NAMED_FALLBACK = { 'landuse', 'junction', 'building' }
 HOUSENUMBER_KEYS = { "housenumber", "conscriptionnumber", "streetnumber" }
+
+RELATION_TYPES = {
+    multipolygon = 'area',
+    boundary = 'area',
+    waterway = 'line'
+}
 
 ----------------------------- FIXED STUFF -----------------------------
 
@@ -226,17 +248,15 @@ function osm2pgsql.process_way(object)
 end
 
 function osm2pgsql.process_relation(object)
-    if object.tags.type == 'multipolygon' or object.tags.type == 'boundary' then
-        process{osm_type = 'R', object = object, geometry_type = 'area'}
-    elseif object.tags.type == 'waterway' then
-        process{osm_type = 'R', object = object, geometry_type = 'line'}
+    local geom_type = RELATION_TYPES[object.tags.type]
+
+    if geom_type ~= nil then
+        process{osm_type = 'R', object = object, geometry_type = geom_type}
     end
 end
 
 function process(place)
-    cleanup_tags(place.object.tags)
-
-    if next(place.object.tags) == nil then
+    if cleanup_tags(place.object.tags) then
         return
     end
 
