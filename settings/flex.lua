@@ -12,7 +12,7 @@ local SKIP_TAGS = {'created_by', 'attribution', 'comment', 'fixme', 'FIXME',
                    'it:fvg:*', 'lacounty:*', 'ref:ruian:*', 'ref:linz:*',
                    '*source'}
 
-local cleanup_tags = osm2pgsql.make_clean_tags_func{SKIP_TAGS}
+local cleanup_tags = osm2pgsql.make_clean_tags_func(SKIP_TAGS)
 local clean_tiger_tags = osm2pgsql.make_clean_tags_func{'tiger:*'}
 
 local COUNTRY_TAGS = {'country_code', 'ISO3166-1', 'is_in:country_code',
@@ -20,34 +20,34 @@ local COUNTRY_TAGS = {'country_code', 'ISO3166-1', 'is_in:country_code',
 local POSTCODE_TAGS = {'postal_code', 'postcode', 'addr:postcode',
                        'tiger:zip_left', 'tiger:zip_right'}
 
-local function extract_address_tags(place)
+function extract_address_tags(place)
     place.address_tags = {}
 
     for _, k in ipairs(COUNTRY_TAGS) do
-        local v = place.object.grab_tag(k)
+        local v = place.object:grab_tag(k)
         if v ~= nil then
           place.address_tags.country = v
         end
     end
 
     for _, k in ipairs(POSTCODE_TAGS) do
-        local v = place.object.grab_tag(k)
+        local v = place.object:grab_tag(k)
         if v ~= nil then
             place.address_tags.postcode = v
         end
     end
 
-    local v = place.object.grab_tag('tiger:county')
+    local v = place.object:grab_tag('tiger:county')
     if v ~= nil then
-        address.county = v:gsub(',.*', ' county');
+        place.address_tags.county = v:gsub(',.*', ' county');
     end
 
-    for k, v in place.object.tags do
-        if osm2pgsql.has_prefix(k, 'addr:') or  then
-            place.address_tags[k.sub(6)] = v
+    for k, v in pairs(place.object.tags) do
+        if osm2pgsql.has_prefix(k, 'addr:') then
+            place.address_tags[k:sub(6)] = v
             place.object.tags[k] = nil
-        elseif osm2pgsql.has_prefix(k, 'is_in:') or  then
-            place.address_tags[k.sub(7)] = v
+        elseif osm2pgsql.has_prefix(k, 'is_in:')  then
+            place.address_tags[k:sub(7)] = v
             place.object.tags[k] = nil
         end
     end
@@ -64,12 +64,12 @@ local function extract_name_tags(place)
     place.has_names = false
 
     for _, k in ipairs(NAME_TAGS) do
-        place.name_tags[k] = place.object.grab_tag(k)
+        place.name_tags[k] = place.object:grab_tag(k)
         place.has_names = true
     end
 
     for _, k in ipairs(REF_TAGS) do
-        place.name_tags[k] = place.object.grab_tag(k)
+        place.name_tags[k] = place.object:grab_tag(k)
     end
 
     for k, v in object.tags do
@@ -104,11 +104,30 @@ local function add_unless_value_is(values)
 end
 
 
-local function add_with_domain_name()
-    return function(k, v, place)
-        local prefix = 'k' + ':name'
-        local domain_names = {'name' = place.object.tags.grab_tags(prefix)}
+local function add_with_domain_name(k, v, place)
+    local prefix = k .. ':name'
+    local domain_names = {name = place.object.tags:grab_tags(prefix)}
 
+    prefix = prefix .. ':'
+    for tk, tv in pairs(place.object.tags) do
+        if osm2pgsql.has_prefix(tk, prefix) then
+            domain_names[tk.sub(#k + 2)] = tv
+            place.object.tags[tk] = nil
+        end
+    end
+
+    if next(domain_names) == nil then
+        return
+    end
+
+    local original_names = place.name_tags
+    place.name_tags = domain_names
+    add_row(k, v, place)
+
+    place.name_tags = original_names
+
+    for tk, tv in pairs(domain_names) do
+        place.object.tags[k .. ':' .. tk] = tv
     end
 end
 
@@ -124,7 +143,7 @@ end
 KEY_HIGHWAY_SKIP = make_set{'no', 'turning_cicle', 'mini_roundabout', 'noexit',
                     'crossing', 'give_way', 'stop'}
 KEY_HIGHWAY_NAMED = make_set{'street_lamp', 'traffic_signals', 'service', 'cycleway',
-                     'path', 'footway', 'steps', 'bridleway', 'track', 'byway'
+                     'path', 'footway', 'steps', 'bridleway', 'track', 'byway',
                      'motorway_link', 'trunk_link', 'primary_link',
                      'secondary_link', 'tertiary_link'}
 
@@ -146,8 +165,8 @@ CLASS_TYPE_PROCS = {
   mountain_pass = add_unless_value_is{'no'},
   shop = add_unless_value_is{'no'},
   tourism = add_unless_value_is{'no', 'yes'},
-  bridge = add_with_domain_name(),
-  tunnel = add_with_domain_name(),
+  bridge = add_with_domain_name,
+  tunnel = add_with_domain_name,
   waterway = add_unless_value_is{'riverbank'},
   place = add_row,
   highway = add_if(function(v, place)
@@ -161,25 +180,7 @@ CLASS_TYPE_PROCS = {
 CLASS_TYPE_NAMED_FALLBACK = { 'landuse', 'junction', 'building' }
 HOUSENUMBER_KEYS = { "housenumber", "conscriptionnumber", "streetnumber" }
 
-
-
 ----------------------------- FIXED STUFF -----------------------------
-
-function is_linear_relation(type_tag)
-    return type_tag == 'waterway'
-end
-
-function add_unless(list, k, v, exclude)
-    for _, value in pairs(exclude) do
-        if v == value then
-            return
-        end
-    end
-
-    list[k] = v
-end
-
-
 
 -- The single place table.
 place_table = osm2pgsql.define_table{
@@ -196,23 +197,13 @@ place_table = osm2pgsql.define_table{
     }
 }
 
-local function add_row(k, v, place)
-    if place.all_name_tags == nil then
-        place.all_name_tags = {}
-        for k, v in pairs(place.name_tags) do
-            place.all_name_tags[k] = v
-        end
-        for k, v in pairs(place.ref_tags) do
-            place.all_name_tags[k] = v
-        end
-    end
-
+function add_row(k, v, place)
     place_table:add_row{
         attrs = {
             class = k,
-            'type' = v,
+            type = v,
             admin_level = place.admin_level,
-            name = place.all_name_tags,
+            name = place.name_tags,
             address = place.address_tags,
             extratags = place.object.tags,
             geometry = { create = place.geometry_type }
@@ -237,7 +228,7 @@ end
 function osm2pgsql.process_relation(object)
     if object.tags.type == 'multipolygon' or object.tags.type == 'boundary' then
         process{osm_type = 'R', object = object, geometry_type = 'area'}
-    elseif is_linear_relation(object.tags.type) then
+    elseif object.tags.type == 'waterway' then
         process{osm_type = 'R', object = object, geometry_type = 'line'}
     end
 end
@@ -250,7 +241,7 @@ function process(place)
     end
 
     place.admin_level =
-        osm2pgsql.clamp(tonumber(place.object.grab_tag('admin_level')), 1, 15)
+        osm2pgsql.clamp(tonumber(place.object:grab_tag('admin_level')), 1, 15)
     extract_name_tags(place)
     extract_address_tags(place)
 
@@ -271,7 +262,7 @@ function process(place)
     -- If the thing has a name, try various fallback tags.
     if place.has_names then
         for _, k in CLASS_TYPE_NAMED_FALLBACKS do
-            local v = place.object.grab_tag(k)
+            local v = place.object:grab_tag(k)
             if v ~= nil then
                 add_row(k, v, place)
                 return
