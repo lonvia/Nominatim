@@ -5,7 +5,7 @@ runs:
 
     steps:
         - name: Install prerequisits
-          run: sudo apt-get install -y -qq libboost-system-dev libboost-filesystem-dev libexpat1-dev zlib1g-dev libbz2-dev libpq-dev libproj-dev python3-psycopg2 python3-pyosmium
+          run: sudo apt-get install -y -qq libboost-system-dev libboost-filesystem-dev libexpat1-dev zlib1g-dev libbz2-dev libpq-dev libproj-dev python3-psycopg2 python3-pyosmium  liblua5.3-dev lua5.3 libluajit-5.1-dev
           shell: bash
 
         - name: Configure
