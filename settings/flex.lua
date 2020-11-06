@@ -193,7 +193,7 @@ CLASS_TYPE_PROCS = {
              end)
 }
 
-CLASS_TYPE_NAMED_FALLBACK = { 'landuse', 'junction', 'building' }
+CLASS_TYPE_NAMED_FALLBACKS = { 'landuse', 'junction', 'building' }
 HOUSENUMBER_KEYS = { "housenumber", "conscriptionnumber", "streetnumber" }
 
 RELATION_TYPES = {
@@ -209,27 +209,26 @@ place_table = osm2pgsql.define_table{
     name = "place",
     ids = { type = 'any', id_column = 'osm_id', type_column = 'osm_type' },
     columns = {
-        { column = 'class', type = 'text' },
-        { column = 'type', type = 'text' },
+        { column = 'class', type = 'text', not_null = true },
+        { column = 'type', type = 'text', not_null = true },
         { column = 'admin_level', type = 'smallint' },
         { column = 'name', type = 'hstore' },
         { column = 'address', type = 'hstore' },
         { column = 'extratags', type = 'hstore' },
-        { column = 'geometry', type = 'geometry' },
+        { column = 'geometry', type = 'geometry', projection = 'WGS84' },
     }
 }
 
 function add_row(k, v, place)
     place_table:add_row{
-        attrs = {
-            class = k,
-            type = v,
-            admin_level = place.admin_level,
-            name = place.name_tags,
-            address = place.address_tags,
-            extratags = place.object.tags,
-            geometry = { create = place.geometry_type }
-        }
+        class = k,
+        type = v,
+        admin_level = place.admin_level,
+        name = place.name_tags,
+        address = place.address_tags,
+        extratags = place.object.tags,
+        geometry = { create = place.geometry_type,
+                     split_at = 0, multi = true}
     }
 
     place.has_entry = true
@@ -260,8 +259,12 @@ function process(place)
         return
     end
 
-    place.admin_level =
-        osm2pgsql.clamp(tonumber(place.object:grab_tag('admin_level')), 1, 15)
+    local alevel = tonumber(place.object:grab_tag('admin_level'))
+    if alevel == nil then
+        place.admin_level = 15
+    else
+        place.admin_level = osm2pgsql.clamp(alevel, 1, 15)
+    end
     extract_name_tags(place)
     extract_address_tags(place)
 
@@ -275,13 +278,17 @@ function process(place)
         end
     end
 
+    if place.address_tags['interpolation']  ~= nil then
+        add_row('place', 'houses', place)
+    end
+
     if place.has_entry then
         return
     end
 
     -- If the thing has a name, try various fallback tags.
     if place.has_names then
-        for _, k in CLASS_TYPE_NAMED_FALLBACKS do
+        for _, k in ipairs(CLASS_TYPE_NAMED_FALLBACKS) do
             local v = place.object:grab_tag(k)
             if v ~= nil then
                 add_row(k, v, place)
