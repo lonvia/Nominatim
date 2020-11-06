@@ -183,7 +183,7 @@ CLASS_TYPE_PROCS = {
   waterway = add_named_unless_value_is{'no', 'riverbank'},
   place = add_unless_value_is{'no'},
   highway = add_if(function(v, place)
-                return KEY_HIGHWAY_SKIP[v] and (place.has_names or not KEY_HIGHWAY_NAMED[v])
+                return not KEY_HIGHWAY_SKIP[v] and (place.has_names or not KEY_HIGHWAY_NAMED[v])
             end),
   boundary = add_if(function(v, place)
                 return v ~= 'place' and (place.has_names or v == 'postal_code')

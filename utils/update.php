@@ -72,10 +72,15 @@ $oOsm2pgsqlCmd = (new \Nominatim\Shell(CONST_Osm2pgsql_Binary))
                  ->addParams('--slim')
                  ->addParams('--number-processes', 1)
                  ->addParams('--cache', $iCacheMemory)
-                 ->addParams('--output', 'gazetteer')
                  ->addParams('--style', CONST_Import_Style)
                  ->addParams('--database', $aDSNInfo['database'])
                  ->addParams('--port', $aDSNInfo['port']);
+
+if (substr(CONST_Import_Style, -4) === '.lua') {
+    $oOsm2pgsqlCmd->addParams('--output', 'flex');
+} else {
+    $oOsm2pgsqlCmd->addParams('--output', 'gazetteer');
+}
 
 if (isset($aDSNInfo['hostspec']) && $aDSNInfo['hostspec']) {
     $oOsm2pgsqlCmd->addParams('--host', $aDSNInfo['hostspec']);
