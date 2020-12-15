@@ -6,6 +6,14 @@ to newer versions of Nominatim.
 SQL statements should be executed from the PostgreSQL commandline. Execute
 `psql nominatim` to enter command line mode.
 
+## 3.6.0 -> master
+
+### Deprecation of configuration options
+
+`CONST_Tiger_Data_Path` has been removed. If you want to load US Tiger data from
+a different directory than the default `data/tiger`, use the new
+`--tiger-data-path` parameter for `setup.php`.
+
 ## 3.5.0 -> 3.6.0
 
 ### Change of layout of search_name_* tables

@@ -424,14 +424,14 @@ class SetupFunctions
         }
     }
 
-    public function importTigerData()
+    public function importTigerData($sTigerPath)
     {
         info('Import Tiger data');
 
-        $aFilenames = glob(CONST_Tiger_Data_Path.'/*.sql');
-        info('Found '.count($aFilenames).' SQL files in path '.CONST_Tiger_Data_Path);
+        $aFilenames = glob($sTigerPath.'/*.sql');
+        info('Found '.count($aFilenames).' SQL files in path '.$sTigerPath);
         if (empty($aFilenames)) {
-            warn('Tiger data import selected but no files found in path '.CONST_Tiger_Data_Path);
+            warn('Tiger data import selected but no files found in path '.$sTigerPath);
             return;
         }
         $sTemplate = file_get_contents(CONST_BasePath.'/sql/tiger_import_start.sql');

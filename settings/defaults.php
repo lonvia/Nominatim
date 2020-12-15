@@ -43,7 +43,6 @@ if (file_exists(CONST_InstallPath.'/settings/local.php')) require_once(CONST_Ins
 @define('CONST_ExtraDataPath', CONST_BasePath.'/data');
 @define('CONST_Osm2pgsql_Binary', CONST_InstallPath.'/osm2pgsql/osm2pgsql');
 @define('CONST_Pyosmium_Binary', '@PYOSMIUM_PATH@');
-@define('CONST_Tiger_Data_Path', CONST_ExtraDataPath.'/tiger');
 @define('CONST_Wikipedia_Data_Path', CONST_ExtraDataPath);
 @define('CONST_Phrase_Config', CONST_BasePath.'/settings/phrase_settings.php');
 @define('CONST_Address_Level_Config', CONST_BasePath.'/settings/address-levels.json');

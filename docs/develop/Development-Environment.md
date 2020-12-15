@@ -89,8 +89,8 @@ First create a separate directory for the test DB and fetch the test planet
 data and the Tiger data for South Dakota:
 
 ```
-mkdir testdb
-cd testdb
+mkdir build-testdb
+cd build-testdb
 wget https://www.nominatim.org/data/test/nominatim-api-testdata.pbf
 wget -O - https://nominatim.org/data/tiger2018-nominatim-preprocessed.tar.gz | tar xz --wildcards --no-anchored '46*'
 ```
@@ -116,7 +116,7 @@ Now you can import the test database:
 dropdb --if-exists test_api_nominatim
 ./utils/setup.php --all --osm-file nominatim-api-testdb.pbf 2>&1 | tee import.log
 ./utils/specialphrases.php --wiki-import | psql -d test_api_nominatim 2>&1 | tee -a import.log
-./utils/setup.php --import-tiger-data 2>&1 | tee -a import.log
+./utils/setup.php --import-tiger-data --tiger-data-path tiger 2>&1 | tee -a import.log
 ```
 
 ### Running the tests

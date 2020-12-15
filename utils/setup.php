@@ -37,6 +37,7 @@ $aCMDOptions
    array('load-data', '', 0, 1, 0, 0, 'bool', 'Copy data to live tables from import table'),
    array('disable-token-precalc', '', 0, 1, 0, 0, 'bool', 'Disable name precalculation (EXPERT)'),
    array('import-tiger-data', '', 0, 1, 0, 0, 'bool', 'Import tiger data (not included in \'all\')'),
+   array('tiger-data-path', '', 0, 1, 1, 1, 'realpath', 'Location of the tiger data (default: '.CONST_ExtraDataPath.'/tiger)'),
    array('calculate-postcodes', '', 0, 1, 0, 0, 'bool', 'Calculate postcode centroids'),
    array('index', '', 0, 1, 0, 0, 'bool', 'Index the data'),
    array('index-noanalyse', '', 0, 1, 0, 0, 'bool', 'Do not perform analyse operations during index (EXPERT)'),
@@ -114,7 +115,7 @@ if ($aCMDResult['load-data'] || $aCMDResult['all']) {
 
 if ($aCMDResult['import-tiger-data']) {
     $bDidSomething = true;
-    $oSetup->importTigerData();
+    $oSetup->importTigerData($aCMDResult['tiger-data-path'] ?? CONST_ExtraDataPath.'/tiger');
 }
 
 if ($aCMDResult['calculate-postcodes'] || $aCMDResult['all']) {
