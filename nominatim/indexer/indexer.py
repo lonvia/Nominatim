@@ -13,7 +13,21 @@ from ..db.async_connection import DBConnection
 
 LOG = logging.getLogger()
 
-class RankRunner:
+class AbstractPlacexRunner:
+    """ Base class for runners that work with the placex table.
+    """
+    FIELDS = 'place_id'
+
+    def preprocess_places(self, places):
+        return [str(r[0]) for r in places]
+
+    @staticmethod
+    def sql_index_place(places):
+        return "UPDATE placex SET indexed_status = 0 WHERE place_id IN ({})"\
+               .format(','.join(places))
+
+
+class RankRunner(AbstractPlacexRunner):
     """ Returns SQL commands for indexing one rank within the placex table.
     """
 
@@ -29,14 +43,35 @@ class RankRunner:
                """.format(self.rank)
 
     def sql_get_objects(self):
-        return """SELECT place_id FROM placex
+        return """SELECT {} FROM placex
                   WHERE indexed_status > 0 and rank_address = {}
-                  ORDER BY geometry_sector""".format(self.rank)
+                  ORDER BY geometry_sector""".format(self.FIELDS, self.rank)
 
-    @staticmethod
-    def sql_index_place(ids):
-        return "UPDATE placex SET indexed_status = 0 WHERE place_id IN ({})"\
-               .format(','.join((str(i) for i in ids)))
+
+class BoundaryRunner(AbstractPlacexRunner):
+    """ Returns SQL commands for indexing the administrative boundaries
+        of a certain rank.
+    """
+
+    def __init__(self, rank):
+        self.rank = rank
+
+    def name(self):
+        return "boundaries rank {}".format(self.rank)
+
+    def sql_count_objects(self):
+        return """SELECT count(*) FROM placex
+                  WHERE indexed_status > 0
+                    AND rank_search = {}
+                    AND class = 'boundary' and type = 'administrative'
+               """.format(self.rank)
+
+    def sql_get_objects(self):
+        return """SELECT {} FROM placex
+                  WHERE indexed_status > 0 and rank_search = {}
+                        and class = 'boundary' and type = 'administrative'
+                  ORDER BY partition, admin_level
+               """.format(self.FIELDS, self.rank)
 
 
 class InterpolationRunner:
@@ -59,42 +94,14 @@ class InterpolationRunner:
                   WHERE indexed_status > 0
                   ORDER BY geometry_sector"""
 
+    def preprocess_places(self, places):
+        return [r[0] for r in places]
+
     @staticmethod
     def sql_index_place(ids):
         return """UPDATE location_property_osmline
                   SET indexed_status = 0 WHERE place_id IN ({})
                """.format(','.join((str(i) for i in ids)))
-
-class BoundaryRunner:
-    """ Returns SQL commands for indexing the administrative boundaries
-        of a certain rank.
-    """
-
-    def __init__(self, rank):
-        self.rank = rank
-
-    def name(self):
-        return "boundaries rank {}".format(self.rank)
-
-    def sql_count_objects(self):
-        return """SELECT count(*) FROM placex
-                  WHERE indexed_status > 0
-                    AND rank_search = {}
-                    AND class = 'boundary' and type = 'administrative'
-               """.format(self.rank)
-
-    def sql_get_objects(self):
-        return """SELECT place_id FROM placex
-                  WHERE indexed_status > 0 and rank_search = {}
-                        and class = 'boundary' and type = 'administrative'
-                  ORDER BY partition, admin_level
-               """.format(self.rank)
-
-    @staticmethod
-    def sql_index_place(ids):
-        return "UPDATE placex SET indexed_status = 0 WHERE place_id IN ({})"\
-               .format(','.join((str(i) for i in ids)))
-
 
 class PostcodeRunner:
     """ Provides the SQL commands for indexing the location_postcode table.
@@ -113,6 +120,9 @@ class PostcodeRunner:
         return """SELECT place_id FROM location_postcode
                   WHERE indexed_status > 0
                   ORDER BY country_code, postcode"""
+
+    def preprocess_places(self, places):
+        return [r[0] for r in places]
 
     @staticmethod
     def sql_index_place(ids):
@@ -271,9 +281,11 @@ class Indexer:
 
             next_thread = self.find_free_thread()
             while True:
-                places = [p[0] for p in cur.fetchmany(batch)]
+                places = cur.fetchmany(batch)
                 if not places:
                     break
+
+                places = obj.preprocess_places(places)
 
                 LOG.debug("Processing places: %s", str(places))
                 t0 = time.time()
