@@ -4,6 +4,7 @@ Main work horse for indexing (computing addresses) the database.
 # pylint: disable=C0111
 import logging
 import select
+import time
 
 import psycopg2
 
@@ -262,6 +263,7 @@ class Indexer:
         cur.close()
 
         progress = ProgressLogger(obj.name(), total_tuples)
+        timing_find_thread = 0
 
         if total_tuples > 0:
             cur = self.conn.cursor(name='places')
@@ -274,7 +276,9 @@ class Indexer:
                     break
 
                 LOG.debug("Processing places: %s", str(places))
+                t0 = time.time()
                 thread = next(next_thread)
+                timing_find_thread += time.time() - t0
 
                 thread.perform(obj.sql_index_place(places))
                 progress.add(len(places))
@@ -284,7 +288,9 @@ class Indexer:
             for thread in self.threads:
                 thread.wait()
 
-        progress.done()
+        total_time = progress.done()
+        LOG.warning("Time waiting for Postgresql: {:.2f}s ({:.2f}%)".format(
+            timing_find_thread, timing_find_thread*100/total_time))
 
     def find_free_thread(self):
         """ Generator that returns the next connection that is free for

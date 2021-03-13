@@ -62,3 +62,5 @@ class ProgressLogger:
         LOG.warning("Done %d/%d in %d @ %.3f per second - FINISHED %s\n",
                     self.done_places, self.total_places, int(diff_seconds),
                     self.done_places/diff_seconds, self.name)
+
+        return diff_seconds
