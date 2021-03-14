@@ -7,24 +7,35 @@ import select
 import time
 
 import psycopg2
+import psycopg2.extras
 
 from .progress import ProgressLogger
 from ..db.async_connection import DBConnection
+from ..tokenizer import tokenizer
 
 LOG = logging.getLogger()
 
 class AbstractPlacexRunner:
     """ Base class for runners that work with the placex table.
     """
-    FIELDS = 'place_id'
+    FIELDS = 'place_id, name'
 
-    def preprocess_places(self, places):
-        return [str(r[0]) for r in places]
+    def preprocess_places(self, cursor, places):
+        terms = tokenizer.get_search_terms(cursor, {p[0] : p[1] for p in places if p[1] is not None})
+        for place in places:
+            if place[1] is not None:
+                place[1]['_'] = "{%s}" % (','.join([str(x) for x in terms.get(place[0], [])]))
+        return cursor.mogrify(','.join(["(%s, %s::hstore)"]  * len(places)),
+                           [val for sublist in places for val in sublist]).decode('utf-8')
 
     @staticmethod
     def sql_index_place(places):
-        return "UPDATE placex SET indexed_status = 0 WHERE place_id IN ({})"\
-               .format(','.join(places))
+        return """UPDATE placex SET
+                     indexed_status = 0,
+                     name = v.name
+                  FROM (VALUES {}) as v(id, name)
+                  WHERE place_id = v.id"""\
+               .format(places)
 
 
 class RankRunner(AbstractPlacexRunner):
@@ -94,7 +105,7 @@ class InterpolationRunner:
                   WHERE indexed_status > 0
                   ORDER BY geometry_sector"""
 
-    def preprocess_places(self, places):
+    def preprocess_places(self, cursor, places):
         return [r[0] for r in places]
 
     @staticmethod
@@ -121,7 +132,7 @@ class PostcodeRunner:
                   WHERE indexed_status > 0
                   ORDER BY country_code, postcode"""
 
-    def preprocess_places(self, places):
+    def preprocess_places(self, cursor, places):
         return [r[0] for r in places]
 
     @staticmethod
@@ -264,38 +275,48 @@ class Indexer:
         """
         LOG.warning("Starting %s (using batch size %s)", obj.name(), batch)
 
-        cur = self.conn.cursor()
-        cur.execute(obj.sql_count_objects())
+        with self.conn.cursor() as cur:
+            cur.execute(obj.sql_count_objects())
 
-        total_tuples = cur.fetchone()[0]
-        LOG.debug("Total number of rows: %i", total_tuples)
+            total_tuples = cur.fetchone()[0]
+            LOG.debug("Total number of rows: %i", total_tuples)
 
-        cur.close()
+        self.conn.commit()
 
         progress = ProgressLogger(obj.name(), total_tuples)
         timing_find_thread = 0
 
         if total_tuples > 0:
-            cur = self.conn.cursor(name='places')
-            cur.execute(obj.sql_get_objects())
+            # Connection for queries during preprocessing. Use for SELECT only.
+            ro_conn = psycopg2.connect(self.dsn)
+            ro_conn.autocommit = True
+            ro_cur = ro_conn.cursor()
+            psycopg2.extras.register_hstore(ro_cur, globally=True)
 
-            next_thread = self.find_free_thread()
-            while True:
-                places = cur.fetchmany(batch)
-                if not places:
-                    break
+            try:
+                with self.conn.cursor(name='places') as cur:
+                    cur.execute(obj.sql_get_objects())
 
-                places = obj.preprocess_places(places)
+                    next_thread = self.find_free_thread()
+                    while True:
+                        places = cur.fetchmany(batch)
+                        if not places:
+                            break
+                        progress.add(len(places))
 
-                LOG.debug("Processing places: %s", str(places))
-                t0 = time.time()
-                thread = next(next_thread)
-                timing_find_thread += time.time() - t0
+                        places = obj.preprocess_places(ro_cur, places)
 
-                thread.perform(obj.sql_index_place(places))
-                progress.add(len(places))
+                        LOG.debug("Processing places: %s", str(places))
+                        t0 = time.time()
+                        thread = next(next_thread)
+                        timing_find_thread += time.time() - t0
 
-            cur.close()
+                        thread.perform(obj.sql_index_place(places))
+            finally:
+                ro_cur.close()
+                ro_conn.close()
+
+            self.conn.commit()
 
             for thread in self.threads:
                 thread.wait()

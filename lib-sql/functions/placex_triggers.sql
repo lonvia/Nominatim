@@ -809,7 +809,8 @@ BEGIN
 
       IF NEW.name is not NULL THEN
           NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-          name_vector := make_keywords(NEW.name);
+          name_vector := (NEW.name->'_')::int[];
+          NEW.name := NEW.name - '_'::TEXT;
 
           IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
             result := add_location(NEW.place_id, NEW.country_code, NEW.partition,
@@ -916,7 +917,8 @@ BEGIN
 
   -- Initialise the name vector using our name
   NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-  name_vector := make_keywords(NEW.name);
+  name_vector := (NEW.name->'_')::int[];
+  NEW.name := NEW.name - '_'::TEXT;
 
   -- make sure all names are in the word table
   IF NEW.admin_level = 2
