@@ -537,6 +537,8 @@ DECLARE
   linked_importance FLOAT;
   linked_wikipedia TEXT;
 
+  token_info INTEGER[];
+
   result BOOLEAN;
 BEGIN
   -- deferred delete
@@ -580,6 +582,12 @@ BEGIN
   -- This can go away in a couple of versions.
   IF NEW.class = 'place'  and NEW.type = 'postcode' and NEW.osm_type != 'R' THEN
     RETURN NEW;
+  END IF;
+
+  -- Extra the tokenizer information from the name field.
+  IF NEW.name is not null and NEW.name ? '_' THEN
+    token_info = (NEW.name->'_')::INTEGER[];
+    NEW.name := NEW.name - '_'::text;
   END IF;
 
   -- Speed up searches - just use the centroid of the feature
@@ -809,8 +817,7 @@ BEGIN
 
       IF NEW.name is not NULL THEN
           NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-          name_vector := (NEW.name->'_')::int[];
-          NEW.name := NEW.name - '_'::TEXT;
+          name_vector := token_info;
 
           IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
             result := add_location(NEW.place_id, NEW.country_code, NEW.partition,
@@ -917,8 +924,7 @@ BEGIN
 
   -- Initialise the name vector using our name
   NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-  name_vector := (NEW.name->'_')::int[];
-  NEW.name := NEW.name - '_'::TEXT;
+  name_vector := token_info;
 
   -- make sure all names are in the word table
   IF NEW.admin_level = 2
