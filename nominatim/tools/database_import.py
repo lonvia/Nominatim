@@ -240,12 +240,9 @@ def truncate_data_tables(conn, max_word_frequency=None):
 
 _COPY_COLUMNS = 'osm_type, osm_id, class, type, name, admin_level, address, extratags, geometry'
 
-def load_data(dsn, data_dir, threads):
-    """ Copy data into the word and placex table.
+def load_data(dsn, threads):
+    """ Copy data into the placex table.
     """
-    # Pre-calculate the most important terms in the word list.
-    db_utils.execute_file(dsn, data_dir / 'words.sql')
-
     sel = selectors.DefaultSelector()
     # Then copy data from place to placex in <threads - 1> chunks.
     place_threads = max(1, threads - 1)

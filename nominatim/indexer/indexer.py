@@ -5,13 +5,13 @@ Main work horse for indexing (computing addresses) the database.
 import logging
 import select
 import time
+import json
 
 import psycopg2
 import psycopg2.extras
 
 from .progress import ProgressLogger
 from ..db.async_connection import DBConnection
-from ..tokenizer import tokenizer
 
 LOG = logging.getLogger()
 
@@ -20,29 +20,28 @@ class AbstractPlacexRunner:
     """
     FIELDS = 'place_id, name'
 
-    def preprocess_places(self, cursor, places):
-        terms = tokenizer.get_search_terms(cursor, {p[0] : p[1] for p in places if p[1] is not None})
-        for place in places:
-            if place[1] is not None:
-                place[1]['_'] = "{%s}" % (','.join([str(x) for x in terms.get(place[0], [])]))
-        return cursor.mogrify(','.join(["(%s, %s::hstore)"]  * len(places)),
-                           [val for sublist in places for val in sublist]).decode('utf-8')
+    def __init__(self, tokenizer):
+        self.tokenizer = tokenizer.get_name_analyzer()
 
-    @staticmethod
-    def sql_index_place(places):
-        return """UPDATE placex SET
-                     indexed_status = 0,
-                     name = v.name
+    def sql_index_place(self, places):
+        values = []
+        for place in places:
+            if place.get('name'):
+                place['name']['_'] = self.tokenizer.tokenize_name(place)
+            values.extend(place)
+
+        return """UPDATE placex SET indexed_status = 0, name = v.name
                   FROM (VALUES {}) as v(id, name)
                   WHERE place_id = v.id"""\
-               .format(places)
+               .format(','.join(["(%s, %s::hstore)"]  * len(places))), values
 
 
 class RankRunner(AbstractPlacexRunner):
     """ Returns SQL commands for indexing one rank within the placex table.
     """
 
-    def __init__(self, rank):
+    def __init__(self, rank, tokenizer):
+        super().__init__(tokenizer)
         self.rank = rank
 
     def name(self):
@@ -64,7 +63,8 @@ class BoundaryRunner(AbstractPlacexRunner):
         of a certain rank.
     """
 
-    def __init__(self, rank):
+    def __init__(self, rank, tokenizer):
+        super().__init__(tokenizer)
         self.rank = rank
 
     def name(self):
@@ -105,14 +105,11 @@ class InterpolationRunner:
                   WHERE indexed_status > 0
                   ORDER BY geometry_sector"""
 
-    def preprocess_places(self, cursor, places):
-        return [r[0] for r in places]
-
     @staticmethod
     def sql_index_place(ids):
         return """UPDATE location_property_osmline
-                  SET indexed_status = 0 WHERE place_id IN ({})
-               """.format(','.join((str(i) for i in ids)))
+                  SET indexed_status = 0 WHERE place_id IN %s
+               """, (tuple((i[0] for i in ids)), )
 
 class PostcodeRunner:
     """ Provides the SQL commands for indexing the location_postcode table.
@@ -132,14 +129,11 @@ class PostcodeRunner:
                   WHERE indexed_status > 0
                   ORDER BY country_code, postcode"""
 
-    def preprocess_places(self, cursor, places):
-        return [r[0] for r in places]
-
     @staticmethod
     def sql_index_place(ids):
         return """UPDATE location_postcode SET indexed_status = 0
-                  WHERE place_id IN ({})
-               """.format(','.join((str(i) for i in ids)))
+                  WHERE place_id IN %s
+               """, (tuple((i[0] for i in ids)), )
 
 
 def _analyse_db_if(conn, condition):
@@ -152,8 +146,9 @@ class Indexer:
     """ Main indexing routine.
     """
 
-    def __init__(self, dsn, num_threads):
+    def __init__(self, dsn, tokenizer, num_threads):
         self.dsn = dsn
+        self.tokenizer = tokenizer
         self.num_threads = num_threads
         self.conn = None
         self.threads = []
@@ -161,6 +156,8 @@ class Indexer:
 
     def _setup_connections(self):
         self.conn = psycopg2.connect(self.dsn)
+        self.conn.cursor_factory = psycopg2.extras.DictCursor
+        psycopg2.extras.register_hstore(self.conn)
         self.threads = [DBConnection(self.dsn) for _ in range(self.num_threads)]
 
 
@@ -212,7 +209,7 @@ class Indexer:
 
         try:
             for rank in range(max(minrank, 4), min(maxrank, 26)):
-                self.index(BoundaryRunner(rank))
+                self.index(BoundaryRunner(rank, self.tokenizer))
         finally:
             self._close_connections()
 
@@ -231,14 +228,14 @@ class Indexer:
 
         try:
             for rank in range(max(1, minrank), maxrank):
-                self.index(RankRunner(rank))
+                self.index(RankRunner(rank, self.tokenizer))
 
             if maxrank == 30:
-                self.index(RankRunner(0))
+                self.index(RankRunner(0, self.tokenizer))
                 self.index(InterpolationRunner(), 20)
-                self.index(RankRunner(30), 20)
+                self.index(RankRunner(30, self.tokenizer), 20)
             else:
-                self.index(RankRunner(maxrank))
+                self.index(RankRunner(maxrank, self.tokenizer))
         finally:
             self._close_connections()
 
@@ -284,37 +281,27 @@ class Indexer:
         self.conn.commit()
 
         progress = ProgressLogger(obj.name(), total_tuples)
+        analyzer = self.tokenizer.get_name_analyzer()
         timing_find_thread = 0
 
         if total_tuples > 0:
-            # Connection for queries during preprocessing. Use for SELECT only.
-            ro_conn = psycopg2.connect(self.dsn)
-            ro_conn.autocommit = True
-            ro_cur = ro_conn.cursor()
-            psycopg2.extras.register_hstore(ro_cur, globally=True)
 
-            try:
-                with self.conn.cursor(name='places') as cur:
-                    cur.execute(obj.sql_get_objects())
+            with self.conn.cursor(name='places') as cur:
+                cur.execute(obj.sql_get_objects())
 
-                    next_thread = self.find_free_thread()
-                    while True:
-                        places = cur.fetchmany(batch)
-                        if not places:
-                            break
-                        progress.add(len(places))
+                next_thread = self.find_free_thread()
+                while True:
+                    places = cur.fetchmany(batch)
+                    if not places:
+                        break
 
-                        places = obj.preprocess_places(ro_cur, places)
+                    LOG.debug("Processing places: %s", str(places))
+                    t0 = time.time()
+                    thread = next(next_thread)
+                    timing_find_thread += time.time() - t0
 
-                        LOG.debug("Processing places: %s", str(places))
-                        t0 = time.time()
-                        thread = next(next_thread)
-                        timing_find_thread += time.time() - t0
-
-                        thread.perform(obj.sql_index_place(places))
-            finally:
-                ro_cur.close()
-                ro_conn.close()
+                    thread.perform(*obj.sql_index_place(places))
+                    progress.add(len(places))
 
             self.conn.commit()
 

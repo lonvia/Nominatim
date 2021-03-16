@@ -56,6 +56,7 @@ class SetupAll:
         from ..tools import database_import
         from ..tools import refresh
         from ..indexer.indexer import Indexer
+        from ..tokenizer import factory as tokenizer_factory
 
         if args.osm_file and not Path(args.osm_file).is_file():
             LOG.fatal("OSM file '%s' does not exist.", args.osm_file)
@@ -112,8 +113,11 @@ class SetupAll:
         if args.continue_at is None or args.continue_at == 'load-data':
             LOG.warning('Load data into placex table')
             database_import.load_data(args.config.get_libpq_dsn(),
-                                      args.data_dir,
                                       args.threads or psutil.cpu_count() or 1)
+
+            LOG.warning("Setting up tokenizer")
+            tokenizer = tokenizer_factory.create_tokenizer(args.config)
+            tokenizer.init_new_db()
 
             LOG.warning('Calculate postcodes')
             run_legacy_script('setup.php', '--calculate-postcodes',
@@ -121,7 +125,7 @@ class SetupAll:
 
         if args.continue_at is None or args.continue_at in ('load-data', 'indexing'):
             LOG.warning('Indexing places')
-            indexer = Indexer(args.config.get_libpq_dsn(),
+            indexer = Indexer(args.config.get_libpq_dsn(), tokenizer,
                               args.threads or psutil.cpu_count() or 1)
             indexer.index_full(analyse=not args.index_noanalyse)
 
