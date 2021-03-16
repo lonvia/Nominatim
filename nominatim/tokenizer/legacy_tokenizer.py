@@ -3,16 +3,20 @@ Tokenizer implementing nromalisation as used before Nominatim 4.
 """
 import psycopg2.extras
 
-from ..db.connection import connect
+from nominatim.db.connection import connect
+from nominatim.db.utils import execute_file
+
+def create(dsn, data_dir):
+    return LegacyTokenizer(dsn, data_dir)
 
 class LegacyTokenizer:
     """ The legacy tokenizer uses a special Postgresql module to normalize
         names and SQL functions to split them into tokens.
     """
 
-    def __init__(self, dsn, project_dir):
+    def __init__(self, dsn, data_dir):
         self.dsn = dsn
-        self.project_dir = project_dir
+        self.data_dir = data_dir
 
 
     def init_new_db(self):
@@ -37,6 +41,10 @@ class LegacyTokenizer:
         pass
 
 
+    def update_sql_functions(self):
+        """ Reimport the SQL functions for this tokenizer.
+        """
+
 
     def get_name_analyzer(self):
         """ Create a new analyzer for tokenizing names from OpenStreetMap
@@ -60,9 +68,6 @@ class LegacyTokenizer:
                            FROM (select svals(name) as v, count(*)from place group by v) cnt
                             WHERE v is not null
                              GROUP BY id)""")
-
-            cur.execute("""select count(getorcreate_postcode_id(v)) from (select distinct address->'postcode' as v from place where address ? 'postcode') as w where v is not null""")
-            cur.execute("""select count(getorcreate_housenumber_id(make_standard_name(v))) from (select distinct address->'housenumber' as v from place where address ? 'housenumber') as w""")
 
             # copy the word frequencies
             cur.execute("""update word set search_name_count = count from word_frequencies wf where wf.id = word.word_id""")
@@ -94,7 +99,7 @@ class LegacyNameAnalyzer:
             self.conn.close()
             self.conn = None
 
-    def tokenize_name(self, place):
+    def tokenize(self, place):
         """ Tokenize the given names. `places` is a dictionary of
             properties of the object to get the name tokens for. The place
             must have a property `name` with a dictionary with
@@ -105,9 +110,13 @@ class LegacyNameAnalyzer:
             Returned is a JSON-serializable data structure with the
             information that the SQL part of the tokenizer requires.
         """
-        if not place.get('name'):
-            return []
+        token_info = {}
 
-        with self.conn.cursor() as cur:
-            cur.execute("SELECT make_keywords(%s)::text", (place['name'], ))
-            return cur.fetchone()[0]
+        names = place.get('name')
+
+        if names:
+            with self.conn.cursor() as cur:
+                cur.execute("SELECT make_keywords(%s)::text", (names, ))
+                token_info['names'] = cur.fetchone()[0]
+
+        return token_info

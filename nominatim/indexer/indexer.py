@@ -5,7 +5,6 @@ Main work horse for indexing (computing addresses) the database.
 import logging
 import select
 import time
-import json
 
 import psycopg2
 import psycopg2.extras
@@ -26,14 +25,13 @@ class AbstractPlacexRunner:
     def sql_index_place(self, places):
         values = []
         for place in places:
-            if place.get('name'):
-                place['name']['_'] = self.tokenizer.tokenize_name(place)
-            values.extend(place)
+            values.append(place[0])
+            values.append(psycopg2.extras.Json(self.tokenizer.tokenize(place)))
 
-        return """UPDATE placex SET indexed_status = 0, name = v.name
-                  FROM (VALUES {}) as v(id, name)
+        return """UPDATE placex SET indexed_status = 0, token_info = v.ti
+                  FROM (VALUES {}) as v(id, ti)
                   WHERE place_id = v.id"""\
-               .format(','.join(["(%s, %s::hstore)"]  * len(places))), values
+               .format(','.join(["(%s, %s::jsonb)"]  * len(places))), values
 
 
 class RankRunner(AbstractPlacexRunner):
