@@ -67,28 +67,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE STRICT;
 
-CREATE OR REPLACE FUNCTION getorcreate_housenumber_id(lookup_word TEXT)
-  RETURNS INTEGER
-  AS $$
-DECLARE
-  lookup_token TEXT;
-  return_word_id INTEGER;
-BEGIN
-  lookup_token := ' ' || trim(lookup_word);
-  SELECT min(word_id) FROM word
-    WHERE word_token = lookup_token and class='place' and type='house'
-    INTO return_word_id;
-  IF return_word_id IS NULL THEN
-    return_word_id := nextval('seq_word');
-    INSERT INTO word VALUES (return_word_id, lookup_token, null,
-                             'place', 'house', null, 0);
-  END IF;
-  RETURN return_word_id;
-END;
-$$
-LANGUAGE plpgsql;
-
-
 CREATE OR REPLACE FUNCTION getorcreate_postcode_id(postcode TEXT)
   RETURNS INTEGER
   AS $$
@@ -305,78 +283,6 @@ $$
 LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION make_keywords(src HSTORE)
-  RETURNS INTEGER[]
-  AS $$
-DECLARE
-  result INTEGER[];
-  s TEXT;
-  w INTEGER;
-  words TEXT[];
-  item RECORD;
-  j INTEGER;
-BEGIN
-  result := '{}'::INTEGER[];
-
-  FOR item IN SELECT (each(src)).* LOOP
-
-    s := make_standard_name(item.value);
-    w := getorcreate_name_id(s, item.value);
-
-    IF not(ARRAY[w] <@ result) THEN
-      result := result || w;
-    END IF;
-
-    w := getorcreate_word_id(s);
-
-    IF w IS NOT NULL AND NOT (ARRAY[w] <@ result) THEN
-      result := result || w;
-    END IF;
-
-    words := string_to_array(s, ' ');
-    IF array_upper(words, 1) IS NOT NULL THEN
-      FOR j IN 1..array_upper(words, 1) LOOP
-        IF (words[j] != '') THEN
-          w = getorcreate_word_id(words[j]);
-          IF w IS NOT NULL AND NOT (ARRAY[w] <@ result) THEN
-            result := result || w;
-          END IF;
-        END IF;
-      END LOOP;
-    END IF;
-
-    words := regexp_split_to_array(item.value, E'[,;()]');
-    IF array_upper(words, 1) != 1 THEN
-      FOR j IN 1..array_upper(words, 1) LOOP
-        s := make_standard_name(words[j]);
-        IF s != '' THEN
-          w := getorcreate_word_id(s);
-          IF w IS NOT NULL AND NOT (ARRAY[w] <@ result) THEN
-            result := result || w;
-          END IF;
-        END IF;
-      END LOOP;
-    END IF;
-
-    s := regexp_replace(item.value, '市$', '');
-    IF s != item.value THEN
-      s := make_standard_name(s);
-      IF s != '' THEN
-        w := getorcreate_name_id(s, item.value);
-        IF NOT (ARRAY[w] <@ result) THEN
-          result := result || w;
-        END IF;
-      END IF;
-    END IF;
-
-  END LOOP;
-
-  RETURN result;
-END;
-$$
-LANGUAGE plpgsql;
-
-
 CREATE OR REPLACE FUNCTION make_keywords(src TEXT)
   RETURNS INTEGER[]
   AS $$
@@ -450,8 +356,7 @@ CREATE OR REPLACE FUNCTION create_poi_search_terms(obj_place_id BIGINT,
                                                    parent_place_id BIGINT,
                                                    address HSTORE,
                                                    country TEXT,
-                                                   housenumber TEXT,
-                                                   initial_name_vector INTEGER[],
+                                                   token_info JSONB,
                                                    geometry GEOMETRY,
                                                    OUT name_vector INTEGER[],
                                                    OUT nameaddress_vector INTEGER[])
@@ -460,6 +365,7 @@ DECLARE
   parent_name_vector INTEGER[];
   parent_address_vector INTEGER[];
   addr_place_ids INTEGER[];
+  hnr_vector INTEGER[];
 
   addr_item RECORD;
   parent_address_place_ids BIGINT[];
@@ -509,16 +415,16 @@ BEGIN
     END LOOP;
   END IF;
 
-  name_vector := initial_name_vector;
+  name_vector := token_get_name_search_tokens(token_info);
 
   -- Check if the parent covers all address terms.
   -- If not, create a search name entry with the house number as the name.
   -- This is unusual for the search_name table but prevents that the place
   -- is returned when we only search for the street/place.
 
-  IF housenumber is not null and not nameaddress_vector <@ parent_address_vector THEN
-    name_vector := array_merge(name_vector,
-                               ARRAY[getorcreate_housenumber_id(make_standard_name(housenumber))]);
+  hnr_vector := token_get_housenumber_search_tokens(token_info);
+  IF hnr_vector is not null and not nameaddress_vector <@ parent_address_vector THEN
+    name_vector := array_merge(name_vector, hnr_vector);
   END IF;
 
   IF not address ? 'street' and address ? 'place' THEN
@@ -528,7 +434,7 @@ BEGIN
       nameaddress_vector := array_merge(nameaddress_vector, addr_place_ids);
       -- If there is a housenumber, also add the place name as a name,
       -- so we can search it by the usual housenumber+place algorithms.
-      IF housenumber is not null THEN
+      IF hnr_vector is not null THEN
         name_vector := array_merge(name_vector,
                                    ARRAY[getorcreate_name_id(make_standard_name(address->'place'))]);
       END IF;

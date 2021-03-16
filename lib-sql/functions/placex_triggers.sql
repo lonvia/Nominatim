@@ -537,8 +537,6 @@ DECLARE
   linked_importance FLOAT;
   linked_wikipedia TEXT;
 
-  token_info INTEGER[];
-
   result BOOLEAN;
 BEGIN
   -- deferred delete
@@ -572,6 +570,7 @@ BEGIN
 
   IF NEW.linked_place_id is not null THEN
     {% if debug %}RAISE WARNING 'place already linked to %', NEW.linked_place_id;{% endif %}
+    NEW.token_info := null;
     RETURN NEW;
   END IF;
 
@@ -581,13 +580,8 @@ BEGIN
   -- imported as place=postcode. That's why relations are allowed to pass here.
   -- This can go away in a couple of versions.
   IF NEW.class = 'place'  and NEW.type = 'postcode' and NEW.osm_type != 'R' THEN
+    NEW.token_info := null;
     RETURN NEW;
-  END IF;
-
-  -- Extra the tokenizer information from the name field.
-  IF NEW.name is not null and NEW.name ? '_' THEN
-    token_info = (NEW.name->'_')::INTEGER[];
-    NEW.name := NEW.name - '_'::text;
   END IF;
 
   -- Speed up searches - just use the centroid of the feature
@@ -692,10 +686,6 @@ BEGIN
 
       addr_street := NEW.address->'street';
       addr_place := NEW.address->'place';
-
-      IF NEW.address ? 'postcode' and NEW.address->'postcode' not similar to '%(:|,|;)%' THEN
-        i := getorcreate_postcode_id(NEW.address->'postcode');
-      END IF;
   END IF;
 
   NEW.postcode := null;
@@ -817,7 +807,7 @@ BEGIN
 
       IF NEW.name is not NULL THEN
           NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-          name_vector := token_info;
+          name_vector := token_get_name_search_tokens(NEW.token_info);
 
           IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
             result := add_location(NEW.place_id, NEW.country_code, NEW.partition,
@@ -837,8 +827,8 @@ BEGIN
           FROM create_poi_search_terms(NEW.place_id,
                                        NEW.partition, NEW.parent_place_id,
                                        inherited_address || NEW.address,
-                                       NEW.country_code, NEW.housenumber,
-                                       name_vector, NEW.centroid);
+                                       NEW.country_code, NEW.token_info,
+                                       NEW.centroid);
 
         IF array_length(name_vector, 1) is not NULL THEN
           INSERT INTO search_name (place_id, search_rank, address_rank,
@@ -852,6 +842,7 @@ BEGIN
       END IF;
       {% endif %}
 
+      NEW.token_info := token_strip_info(NEW.token_info);
       RETURN NEW;
     END IF;
 
@@ -924,7 +915,7 @@ BEGIN
 
   -- Initialise the name vector using our name
   NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-  name_vector := token_info;
+  name_vector := token_get_name_search_tokens(NEW.token_info);
 
   -- make sure all names are in the word table
   IF NEW.admin_level = 2
@@ -1015,6 +1006,7 @@ BEGIN
 
   {% if debug %}RAISE WARNING 'place update % % finsihed.', NEW.osm_type, NEW.osm_id;{% endif %}
 
+  NEW.token_info := token_strip_info(NEW.token_info);
   RETURN NEW;
 END;
 $$

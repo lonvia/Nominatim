@@ -1,6 +1,8 @@
 """
 Tokenizer implementing nromalisation as used before Nominatim 4.
 """
+import re
+
 import psycopg2.extras
 
 from nominatim.db.connection import connect
@@ -30,6 +32,7 @@ class LegacyTokenizer:
             use the content of the placex table to initialise its data
             structures.
         """
+        self.update_sql_functions()
         with connect(self.dsn) as conn:
             self._compute_word_frequencies(conn)
 
@@ -44,6 +47,7 @@ class LegacyTokenizer:
     def update_sql_functions(self):
         """ Reimport the SQL functions for this tokenizer.
         """
+        execute_file(self.dsn, self.data_dir / 'tokenizer.sql')
 
 
     def get_name_analyzer(self):
@@ -113,10 +117,29 @@ class LegacyNameAnalyzer:
         token_info = {}
 
         names = place.get('name')
+        address = place.get('address')
 
-        if names:
-            with self.conn.cursor() as cur:
+        with self.conn.cursor() as cur:
+            if names:
+                # create the token IDs for all names
                 cur.execute("SELECT make_keywords(%s)::text", (names, ))
                 token_info['names'] = cur.fetchone()[0]
+
+            if address:
+                # add housenumber tokens to word table
+                hnrs = [v for k, v in address
+                        if k in ('housenumber', 'streetnumber', 'conscriptionnumber')]
+                if hnrs:
+                    cur.execute("""SELECT array_agg(getorcreate_housenumber_id(make_standard_name(hnr.name)))::text
+                                   FROM (VALUES {}) as hnr(name)
+                                """.format(','.join(['(%s)']  * len(hnrs))),
+                                hnrs)
+                    token_info['hnr'] = cur.fetchone()[0]
+
+                # add postcode token to word table
+                if 'postcode' in address:
+                    postcode = address['postcode']
+                    if re.search(r'[:,;]', postcode) is None:
+                        cur.execute('getorcreate_postcode_id(%s)', postcode)
 
         return token_info
