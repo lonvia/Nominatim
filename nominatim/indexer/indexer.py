@@ -17,10 +17,17 @@ LOG = logging.getLogger()
 class AbstractPlacexRunner:
     """ Base class for runners that work with the placex table.
     """
-    FIELDS = 'place_id, name, address'
+    FIELDS = "place_id, name"
 
-    def __init__(self, tokenizer):
+    def __init__(self, rank, tokenizer):
         self.tokenizer = tokenizer.get_name_analyzer()
+        self.rank = rank
+
+        if rank == 30:
+            self.FIELDS += """, get_place_address(address, osm_type,
+                                  coalesce(centroid, ST_Centroid(geometry))) as address"""
+        else:
+            self.FIELDS += ", address"
 
     def close(self):
         if self.tokenizer:
@@ -30,22 +37,20 @@ class AbstractPlacexRunner:
     def sql_index_place(self, places):
         values = []
         for place in places:
-            values.append(place[0])
+            values.append(place['place_id'])
+            values.append(place['address'])
             values.append(psycopg2.extras.Json(self.tokenizer.tokenize(place)))
 
-        return """UPDATE placex SET indexed_status = 0, token_info = v.ti
-                  FROM (VALUES {}) as v(id, ti)
+        return """UPDATE placex
+                  SET indexed_status = 0, address = v.addr, token_info = v.ti
+                  FROM (VALUES {}) as v(id, addr, ti)
                   WHERE place_id = v.id"""\
-               .format(','.join(["(%s, %s::jsonb)"]  * len(places))), values
+               .format(','.join(["(%s, %s::hstore, %s::jsonb)"]  * len(places))), values
 
 
 class RankRunner(AbstractPlacexRunner):
     """ Returns SQL commands for indexing one rank within the placex table.
     """
-
-    def __init__(self, rank, tokenizer):
-        super().__init__(tokenizer)
-        self.rank = rank
 
     def name(self):
         return "rank {}".format(self.rank)
@@ -65,10 +70,6 @@ class BoundaryRunner(AbstractPlacexRunner):
     """ Returns SQL commands for indexing the administrative boundaries
         of a certain rank.
     """
-
-    def __init__(self, rank, tokenizer):
-        super().__init__(tokenizer)
-        self.rank = rank
 
     def name(self):
         return "boundaries rank {}".format(self.rank)
@@ -168,7 +169,7 @@ class Indexer:
     def _setup_connections(self):
         self.conn = psycopg2.connect(self.dsn)
         self.conn.cursor_factory = psycopg2.extras.DictCursor
-        psycopg2.extras.register_hstore(self.conn)
+        psycopg2.extras.register_hstore(self.conn, globally=True) #argh global?
         self.threads = [DBConnection(self.dsn) for _ in range(self.num_threads)]
 
 

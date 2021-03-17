@@ -531,8 +531,6 @@ DECLARE
   nameaddress_vector INTEGER[];
   addr_nameaddress_vector INTEGER[];
 
-  inherited_address HSTORE;
-
   linked_node_id BIGINT;
   linked_importance FLOAT;
   linked_wikipedia TEXT;
@@ -748,27 +746,6 @@ BEGIN
     {% if debug %}RAISE WARNING 'finding street for % %', NEW.osm_type, NEW.osm_id;{% endif %}
     NEW.parent_place_id := null;
 
-    -- if we have a POI and there is no address information,
-    -- see if we can get it from a surrounding building
-    inherited_address := ''::HSTORE;
-    IF NEW.osm_type = 'N' AND addr_street IS NULL AND addr_place IS NULL
-       AND NEW.housenumber IS NULL THEN
-      FOR location IN
-        -- The additional && condition works around the misguided query
-        -- planner of postgis 3.0.
-        SELECT address from placex where ST_Covers(geometry, NEW.centroid)
-            and geometry && NEW.centroid
-            and (address ? 'housenumber' or address ? 'street' or address ? 'place')
-            and rank_search > 28 AND ST_GeometryType(geometry) in ('ST_Polygon','ST_MultiPolygon')
-            limit 1
-      LOOP
-        NEW.housenumber := location.address->'housenumber';
-        addr_street := location.address->'street';
-        addr_place := location.address->'place';
-        inherited_address := location.address;
-      END LOOP;
-    END IF;
-
     -- We have to find our parent road.
     NEW.parent_place_id := find_parent_for_poi(NEW.osm_type, NEW.osm_id,
                                                NEW.partition,
@@ -821,12 +798,12 @@ BEGIN
 
       {% if not db.reverse_only %}
       IF array_length(name_vector, 1) is not NULL
-         OR inherited_address is not NULL OR NEW.address is not NULL
+         OR NEW.address is not NULL
       THEN
         SELECT * INTO name_vector, nameaddress_vector
           FROM create_poi_search_terms(NEW.place_id,
                                        NEW.partition, NEW.parent_place_id,
-                                       inherited_address || NEW.address,
+                                       NEW.address,
                                        NEW.country_code, NEW.token_info,
                                        NEW.centroid);
 
@@ -843,6 +820,9 @@ BEGIN
       {% endif %}
 
       NEW.token_info := token_strip_info(NEW.token_info);
+      IF NEW.address ? '_inherited' THEN
+        NEW.address := null;
+      END IF;
       RETURN NEW;
     END IF;
 
