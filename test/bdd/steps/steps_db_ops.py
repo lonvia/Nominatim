@@ -1,5 +1,6 @@
 import logging
 from itertools import chain
+from pathlib import Path
 
 import psycopg2.extras
 
@@ -7,6 +8,7 @@ from place_inserter import PlaceColumn
 from table_compare import NominatimID, DBRow
 
 from nominatim.indexer import indexer
+from nominatim.tokenizer import factory as tokenizer_factory
 
 def check_database_integrity(context):
     """ Check some generic constraints on the tables.
@@ -86,11 +88,12 @@ def add_data_to_planet_ways(context):
 def import_and_index_data_from_place_table(context):
     """ Import data previously set up in the place table.
     """
-    context.nominatim.copy_from_place(context.db)
+    nctx = context.nominatim
+    nctx.copy_from_place(context.db)
 
     # XXX use tool function as soon as it is ported
     with context.db.cursor() as cur:
-        with (context.nominatim.src_dir / 'lib-sql' / 'postcode_tables.sql').open('r') as fd:
+        with (nctx.src_dir / 'lib-sql' / 'postcode_tables.sql').open('r') as fd:
             cur.execute(fd.read())
         cur.execute("""
             INSERT INTO location_postcode
@@ -104,8 +107,11 @@ def import_and_index_data_from_place_table(context):
              GROUP BY country_code, pc""")
 
     # Call directly as the refresh function does not include postcodes.
+    tokenizer = tokenizer_factory.create_tokenizer(nctx.get_test_config(),
+                                                   nctx.src_dir / 'lib-sql',
+                                                   nctx.src_dir / 'lib-php')
     indexer.LOG.setLevel(logging.ERROR)
-    indexer.Indexer(context.nominatim.get_libpq_dsn(), 1).index_full(analyse=False)
+    indexer.Indexer(nctx.get_libpq_dsn(), tokenizer, 1).index_full(analyse=False)
 
     check_database_integrity(context)
 

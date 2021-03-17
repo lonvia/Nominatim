@@ -106,8 +106,11 @@ class NominatimEnvironment:
             self.website_dir.cleanup()
 
         self.website_dir = tempfile.TemporaryDirectory()
-        cfg = Configuration(None, self.src_dir / 'settings', environ=self.test_env)
-        refresh.setup_website(Path(self.website_dir.name) / 'website', self.src_dir / 'lib-php', cfg)
+        refresh.setup_website(Path(self.website_dir.name) / 'website', self.src_dir / 'lib-php',
+                              self.get_test_config())
+
+    def get_test_config(self):
+        return Configuration(Path(self.website_dir.name), self.src_dir / 'settings', environ=self.test_env)
 
     def get_libpq_dsn(self):
         dsn = self.test_env['NOMINATIM_DATABASE_DSN']
@@ -121,7 +124,7 @@ class NominatimEnvironment:
 
         if dsn.startswith('pgsql:'):
             # Old PHP DSN format. Convert before returning.
-            return ' '.join([quote_param(p) for p in dsn[6:].split(';')])
+            dsn = ' '.join([quote_param(p) for p in dsn[6:].split(';')])
 
         return dsn
 

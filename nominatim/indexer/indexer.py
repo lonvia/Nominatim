@@ -17,10 +17,15 @@ LOG = logging.getLogger()
 class AbstractPlacexRunner:
     """ Base class for runners that work with the placex table.
     """
-    FIELDS = 'place_id, name'
+    FIELDS = 'place_id, name, address'
 
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer.get_name_analyzer()
+
+    def close(self):
+        if self.tokenizer:
+            self.tokenizer.close()
+            self.tokenizer = None
 
     def sql_index_place(self, places):
         values = []
@@ -89,6 +94,10 @@ class InterpolationRunner:
     """
 
     @staticmethod
+    def close():
+        pass
+
+    @staticmethod
     def name():
         return "interpolation lines (location_property_osmline)"
 
@@ -112,6 +121,10 @@ class InterpolationRunner:
 class PostcodeRunner:
     """ Provides the SQL commands for indexing the location_postcode table.
     """
+
+    @staticmethod
+    def close():
+        pass
 
     @staticmethod
     def name():
@@ -270,45 +283,47 @@ class Indexer:
         """
         LOG.warning("Starting %s (using batch size %s)", obj.name(), batch)
 
-        with self.conn.cursor() as cur:
-            cur.execute(obj.sql_count_objects())
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(obj.sql_count_objects())
 
-            total_tuples = cur.fetchone()[0]
-            LOG.debug("Total number of rows: %i", total_tuples)
-
-        self.conn.commit()
-
-        progress = ProgressLogger(obj.name(), total_tuples)
-        analyzer = self.tokenizer.get_name_analyzer()
-        timing_find_thread = 0
-
-        if total_tuples > 0:
-
-            with self.conn.cursor(name='places') as cur:
-                cur.execute(obj.sql_get_objects())
-
-                next_thread = self.find_free_thread()
-                while True:
-                    places = cur.fetchmany(batch)
-                    if not places:
-                        break
-
-                    LOG.debug("Processing places: %s", str(places))
-                    t0 = time.time()
-                    thread = next(next_thread)
-                    timing_find_thread += time.time() - t0
-
-                    thread.perform(*obj.sql_index_place(places))
-                    progress.add(len(places))
+                total_tuples = cur.fetchone()[0]
+                LOG.debug("Total number of rows: %i", total_tuples)
 
             self.conn.commit()
 
-            for thread in self.threads:
-                thread.wait()
+            progress = ProgressLogger(obj.name(), total_tuples)
+            timing_find_thread = 0
 
-        total_time = progress.done()
-        LOG.warning("Time waiting for Postgresql: {:.2f}s ({:.2f}%)".format(
-            timing_find_thread, timing_find_thread*100/total_time))
+            if total_tuples > 0:
+
+                with self.conn.cursor(name='places') as cur:
+                    cur.execute(obj.sql_get_objects())
+
+                    next_thread = self.find_free_thread()
+                    while True:
+                        places = cur.fetchmany(batch)
+                        if not places:
+                            break
+
+                        LOG.debug("Processing places: %s", str(places))
+                        t0 = time.time()
+                        thread = next(next_thread)
+                        timing_find_thread += time.time() - t0
+
+                        thread.perform(*obj.sql_index_place(places))
+                        progress.add(len(places))
+
+                self.conn.commit()
+
+                for thread in self.threads:
+                    thread.wait()
+
+            total_time = progress.done()
+            LOG.warning("Time waiting for Postgresql: {:.2f}s ({:.2f}%)".format(
+                timing_find_thread, timing_find_thread*100/total_time))
+        finally:
+            obj.close()
 
     def find_free_thread(self):
         """ Generator that returns the next connection that is free for

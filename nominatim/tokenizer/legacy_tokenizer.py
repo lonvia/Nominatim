@@ -127,7 +127,7 @@ class LegacyNameAnalyzer:
 
             if address:
                 # add housenumber tokens to word table
-                hnrs = [v for k, v in address
+                hnrs = [v for k, v in address.items()
                         if k in ('housenumber', 'streetnumber', 'conscriptionnumber')]
                 if hnrs:
                     cur.execute("""SELECT array_agg(getorcreate_housenumber_id(make_standard_name(hnr.name)))::text
@@ -140,6 +140,6 @@ class LegacyNameAnalyzer:
                 if 'postcode' in address:
                     postcode = address['postcode']
                     if re.search(r'[:,;]', postcode) is None:
-                        cur.execute('getorcreate_postcode_id(%s)', postcode)
+                        cur.execute('SELECT getorcreate_postcode_id(%s)', (postcode, ))
 
         return token_info
