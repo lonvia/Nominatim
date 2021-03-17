@@ -66,7 +66,7 @@ Feature: Search queries
          | way      | ^697,.* |
 
     Scenario: Search with class-type feature
-        When sending jsonv2 search query "Hotel in California"
+        When sending jsonv2 search query "Food in Vaduz"
         Then results contain
           | place_rank |
           | 30 |
@@ -163,7 +163,7 @@ Feature: Search queries
         Then exactly 0 results are returned
 
     Scenario: Ignore country searches when query is restricted to countries
-        When sending json search query "de"
+        When sending json search query "cz"
             | countrycodes |
             | li  |
         Then exactly 0 results are returned
