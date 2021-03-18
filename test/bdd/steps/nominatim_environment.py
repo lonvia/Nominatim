@@ -162,7 +162,10 @@ class NominatimEnvironment:
                                              '--osm2pgsql-cache', '1',
                                              '--ignore-errors')
         except:
-            self.db_drop_database(self.template_db)
+            try:
+                self.db_drop_database(self.template_db)
+            except psycopg2.OperationalError as e:
+                pass # ignored
             raise
 
 
@@ -190,7 +193,10 @@ class NominatimEnvironment:
             phrase_file = str((testdata / 'specialphrases_testdb.sql').resolve())
             run_script(['psql', '-d', self.api_test_db, '-f', phrase_file])
         except:
-            self.db_drop_database(self.api_test_db)
+            try:
+                self.db_drop_database(self.api_test_db)
+            except psycopg2.OperationalError:
+                pass #ignored
             raise
 
 

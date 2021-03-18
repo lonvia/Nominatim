@@ -94,9 +94,13 @@ class InterpolationRunner:
         location_property_osmline.
     """
 
-    @staticmethod
-    def close():
-        pass
+    def __init__(self, tokenizer):
+        self.analyzer = tokenizer.get_name_analyzer()
+
+    def close(self):
+        if self.analyzer:
+            self.analyzer.close()
+            self.analyzer = None
 
     @staticmethod
     def name():
@@ -109,12 +113,26 @@ class InterpolationRunner:
 
     @staticmethod
     def sql_get_objects():
-        return """SELECT place_id FROM location_property_osmline
+        return """SELECT place_id, get_interpolation_address(address, osm_id) as address
+                  FROM location_property_osmline
                   WHERE indexed_status > 0
                   ORDER BY geometry_sector"""
 
-    @staticmethod
-    def sql_index_place(ids):
+
+    def sql_index_place(self, places):
+        values = []
+        for place in places:
+            print(place)
+            values.append(place['place_id'])
+            values.append(place['address'])
+            values.append(psycopg2.extras.Json(self.analyzer.tokenize(place)))
+
+        return """UPDATE location_property_osmline
+                  SET indexed_status = 0, address = v.addr, token_info = v.ti
+                  FROM (VALUES {}) as v(id, addr, ti)
+                  WHERE place_id = v.id"""\
+               .format(','.join(["(%s, %s::hstore, %s::jsonb)"]  * len(places))), values
+
         return """UPDATE location_property_osmline
                   SET indexed_status = 0 WHERE place_id IN %s
                """, (tuple((i[0] for i in ids)), )
@@ -244,7 +262,7 @@ class Indexer:
 
             if maxrank == 30:
                 self.index(RankRunner(0, self.tokenizer))
-                self.index(InterpolationRunner(), 20)
+                self.index(InterpolationRunner(self.tokenizer), 20)
                 self.index(RankRunner(30, self.tokenizer), 20)
             else:
                 self.index(RankRunner(maxrank, self.tokenizer))

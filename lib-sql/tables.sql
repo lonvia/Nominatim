@@ -125,6 +125,7 @@ CREATE TABLE location_property_osmline (
     linegeo GEOMETRY,
     interpolationtype TEXT,
     address HSTORE,
+    token_info JSONB,
     postcode TEXT,
     country_code VARCHAR(2)
   ){{db.tablespace.search_data}};

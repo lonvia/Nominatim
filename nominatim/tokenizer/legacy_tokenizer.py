@@ -142,4 +142,11 @@ class LegacyNameAnalyzer:
                     if re.search(r'[:,;]', postcode) is None:
                         cur.execute('SELECT getorcreate_postcode_id(%s)', (postcode, ))
 
+                # terms for matching up streets and places
+                for atype in ('street', 'place'):
+                    if atype in address:
+                        cur.execute('SELECT word_ids_from_name(%s)::text',
+                                    (address[atype], ))
+                        token_info[atype + '_match'] = cur.fetchone()[0]
+
         return token_info

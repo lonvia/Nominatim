@@ -1,5 +1,38 @@
 -- Trigger functions for the placex table.
 
+CREATE OR REPLACE FUNCTION find_associated_street(poi_osm_type CHAR(1),
+                                                  poi_osm_id BIGINT)
+  RETURNS BIGINT
+  AS $$
+DECLARE
+  location RECORD;
+  parent RECORD;
+BEGIN
+  FOR location IN
+    SELECT members FROM planet_osm_rels
+    WHERE parts @> ARRAY[poi_osm_id]
+          and members @> ARRAY[lower(poi_osm_type) || poi_osm_id]
+          and tags @> ARRAY['associatedStreet']
+  LOOP
+    FOR i IN 1..array_upper(location.members, 1) BY 2 LOOP
+      IF location.members[i+1] = 'street' THEN
+        FOR parent IN
+          SELECT place_id from placex
+           WHERE osm_type = 'W' and osm_id = substring(location.members[i],2)::bigint
+                 and name is not null
+                 and rank_search between 26 and 27
+        LOOP
+          RETURN parent.place_id;
+        END LOOP;
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  RETURN NULL;
+END;
+$$
+LANGUAGE plpgsql STABLE;
+
 -- Find the parent road of a POI.
 --
 -- \returns Place ID of parent object or NULL if none
@@ -10,59 +43,38 @@ CREATE OR REPLACE FUNCTION find_parent_for_poi(poi_osm_type CHAR(1),
                                                poi_osm_id BIGINT,
                                                poi_partition SMALLINT,
                                                bbox GEOMETRY,
-                                               addr_street TEXT,
-                                               addr_place TEXT,
-                                               fallback BOOL = true)
+                                               addr_street INTEGER[],
+                                               addr_place INTEGER[],
+                                               is_place_addr BOOL)
   RETURNS BIGINT
   AS $$
 DECLARE
   parent_place_id BIGINT DEFAULT NULL;
   location RECORD;
-  parent RECORD;
 BEGIN
     {% if debug %}RAISE WARNING 'finding street for % %', poi_osm_type, poi_osm_id;{% endif %}
 
     -- Is this object part of an associatedStreet relation?
-    FOR location IN
-      SELECT members FROM planet_osm_rels
-      WHERE parts @> ARRAY[poi_osm_id]
-        and members @> ARRAY[lower(poi_osm_type) || poi_osm_id]
-        and tags @> ARRAY['associatedStreet']
-    LOOP
-      FOR i IN 1..array_upper(location.members, 1) BY 2 LOOP
-        IF location.members[i+1] = 'street' THEN
-          FOR parent IN
-            SELECT place_id from placex
-             WHERE osm_type = 'W' and osm_id = substring(location.members[i],2)::bigint
-               and name is not null
-               and rank_search between 26 and 27
-          LOOP
-            RETURN parent.place_id;
-          END LOOP;
-        END IF;
-      END LOOP;
-    END LOOP;
+    parent_place_id := find_associated_street(poi_osm_type, poi_osm_id);
 
-    parent_place_id := find_parent_for_address(addr_street, addr_place,
-                                               poi_partition, bbox);
-    IF parent_place_id is not null THEN
-      RETURN parent_place_id;
+    IF parent_place_id is NULL THEN
+      parent_place_id := find_parent_for_address(addr_street, addr_place,
+                                                 poi_partition, bbox);
     END IF;
 
-    IF poi_osm_type = 'N' THEN
+    IF parent_place_id is NULL and poi_osm_type = 'N' THEN
       -- Is this node part of an interpolation?
-      FOR parent IN
+      FOR location IN
         SELECT q.parent_place_id
           FROM location_property_osmline q, planet_osm_ways x
          WHERE q.linegeo && bbox and x.id = q.osm_id
                and poi_osm_id = any(x.nodes)
          LIMIT 1
       LOOP
-        {% if debug %}RAISE WARNING 'Get parent from interpolation: %', parent.parent_place_id;{% endif %}
-        RETURN parent.parent_place_id;
+        {% if debug %}RAISE WARNING 'Get parent from interpolation: %', location.parent_place_id;{% endif %}
+        RETURN location.parent_place_id;
       END LOOP;
 
-      -- Is this node part of any other way?
       FOR location IN
         SELECT p.place_id, p.osm_id, p.rank_search, p.address,
                coalesce(p.centroid, ST_Centroid(p.geometry)) as centroid
@@ -79,20 +91,12 @@ BEGIN
           return location.place_id;
         END IF;
 
-        SELECT find_parent_for_poi('W', location.osm_id, poi_partition,
-                                   location.centroid,
-                                   location.address->'street',
-                                   location.address->'place',
-                                   false)
-          INTO parent_place_id;
-        IF parent_place_id is not null THEN
-          RETURN parent_place_id;
-        END IF;
+        parent_place_id := find_associated_street('W', location.osm_id);
       END LOOP;
     END IF;
 
-    IF fallback THEN
-      IF addr_street is null and addr_place is not null THEN
+    IF parent_place_id is NULL THEN
+      IF is_place_addr THEN
         -- The address is attached to a place we don't know.
         -- Instead simply use the containing area with the largest rank.
         FOR location IN
@@ -522,8 +526,8 @@ DECLARE
   parent_address_level SMALLINT;
   place_address_level SMALLINT;
 
-  addr_street TEXT;
-  addr_place TEXT;
+  addr_street INTEGER[];
+  addr_place INTEGER[];
 
   max_rank SMALLINT;
 
@@ -665,27 +669,6 @@ BEGIN
     parent_address_level := 3;
   END IF;
 
-  {% if debug %}RAISE WARNING 'Copy over address tags';{% endif %}
-  -- housenumber is a computed field, so start with an empty value
-  NEW.housenumber := NULL;
-  IF NEW.address is not NULL THEN
-      IF NEW.address ? 'conscriptionnumber' THEN
-        IF NEW.address ? 'streetnumber' THEN
-            NEW.housenumber := (NEW.address->'conscriptionnumber') || '/' || (NEW.address->'streetnumber');
-        ELSE
-            NEW.housenumber := NEW.address->'conscriptionnumber';
-        END IF;
-      ELSEIF NEW.address ? 'streetnumber' THEN
-        NEW.housenumber := NEW.address->'streetnumber';
-      ELSEIF NEW.address ? 'housenumber' THEN
-        NEW.housenumber := NEW.address->'housenumber';
-      END IF;
-      NEW.housenumber := create_housenumber_id(NEW.housenumber);
-
-      addr_street := NEW.address->'street';
-      addr_place := NEW.address->'place';
-  END IF;
-
   NEW.postcode := null;
 
   -- recalculate country and partition
@@ -742,6 +725,24 @@ BEGIN
   -- ---------------------------------------------------------------------------
   -- For low level elements we inherit from our parent road
   IF NEW.rank_search > 27 THEN
+    {% if debug %}RAISE WARNING 'Copy over address tags';{% endif %}
+    -- housenumber is a computed field, so start with an empty value
+    IF NEW.address is not NULL THEN
+        IF NEW.address ? 'conscriptionnumber' THEN
+          IF NEW.address ? 'streetnumber' THEN
+              NEW.housenumber := (NEW.address->'conscriptionnumber') || '/' || (NEW.address->'streetnumber');
+          ELSE
+              NEW.housenumber := NEW.address->'conscriptionnumber';
+          END IF;
+        ELSEIF NEW.address ? 'streetnumber' THEN
+          NEW.housenumber := NEW.address->'streetnumber';
+        ELSEIF NEW.address ? 'housenumber' THEN
+          NEW.housenumber := NEW.address->'housenumber';
+        END IF;
+
+        addr_street := token_addr_street_match_tokens(NEW.token_info);
+        addr_place := token_addr_place_match_tokens(NEW.token_info);
+    END IF;
 
     {% if debug %}RAISE WARNING 'finding street for % %', NEW.osm_type, NEW.osm_id;{% endif %}
     NEW.parent_place_id := null;
@@ -750,7 +751,8 @@ BEGIN
     NEW.parent_place_id := find_parent_for_poi(NEW.osm_type, NEW.osm_id,
                                                NEW.partition,
                                                ST_Envelope(NEW.geometry),
-                                               addr_street, addr_place);
+                                               addr_street, addr_place,
+                                               not NEW.address ? 'street' and NEW.address ? 'place');
 
     -- If we found the road take a shortcut here.
     -- Otherwise fall back to the full address getting method below.
@@ -760,12 +762,12 @@ BEGIN
       SELECT p.country_code, p.postcode, p.name FROM placex p
        WHERE p.place_id = NEW.parent_place_id INTO location;
 
-      IF addr_street is null and addr_place is not null THEN
+      IF not NEW.address ? 'street' and NEW.address ? 'place' THEN
         -- Check if the addr:place tag is part of the parent name
         SELECT count(*) INTO i
-          FROM svals(location.name) AS pname WHERE pname = addr_place;
+          FROM svals(location.name) AS pname WHERE pname = NEW.address->'place';
         IF i = 0 THEN
-          NEW.address = NEW.address || hstore('_unlisted_place', addr_place);
+          NEW.address = NEW.address || hstore('_unlisted_place', NEW.address->'place');
         END IF;
       END IF;
 
