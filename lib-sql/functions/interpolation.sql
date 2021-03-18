@@ -111,7 +111,7 @@ BEGIN
       END IF;
 
       NEW.indexed_status := 1; --STATUS_NEW
-      NEW.country_code := lower(get_country_code(NEW.linegeo));
+      NEW.country_code := lower(get_country_code(ST_Centroid(NEW.linegeo)));
 
       NEW.partition := get_partition(NEW.country_code);
       NEW.geometry_sector := geometry_sector(NEW.partition, NEW.linegeo);

@@ -131,15 +131,12 @@ $$
 LANGUAGE plpgsql STABLE;
 
 
-CREATE OR REPLACE FUNCTION get_country_code(place geometry)
+CREATE OR REPLACE FUNCTION get_country_code(place_centre geometry)
   RETURNS TEXT
   AS $$
 DECLARE
-  place_centre GEOMETRY;
   nearcountry RECORD;
 BEGIN
-  place_centre := ST_PointOnSurface(place);
-
 -- RAISE WARNING 'get_country_code, start: %', ST_AsText(place_centre);
 
   -- Try for a OSM polygon
@@ -208,40 +205,6 @@ BEGIN
     RETURN nearcountry.partition;
   END LOOP;
   RETURN 0;
-END;
-$$
-LANGUAGE plpgsql STABLE;
-
--- if we have a POI and there is no address information,
--- see if we can get it from a surrounding building
-CREATE OR REPLACE FUNCTION get_place_address(in_address HSTORE,
-                                             in_osm_type CHAR, in_centroid GEOMETRY)
-  RETURNS HSTORE
-  AS $$
-DECLARE
-  out_address HSTORE;
-BEGIN
-  IF in_osm_type != 'N' OR in_address is not null
-  THEN
-    RETURN in_address;
-  END IF;
-
-  -- The additional && condition works around the misguided query
-  -- planner of postgis 3.0.
-  SELECT address INTO out_address
-    FROM placex
-   WHERE ST_Covers(geometry, in_centroid)
-         and geometry && in_centroid
-         and (address ? 'housenumber' or address ? 'street' or address ? 'place')
-         and rank_search > 28 AND ST_GeometryType(geometry) in ('ST_Polygon','ST_MultiPolygon')
-   LIMIT 1;
-
-   IF out_address is not NULL THEN
-     -- marker that this is not the original address
-     out_address := out_address || hstore('_inherited', '');
-   END IF;
-
-   RETURN out_address;
 END;
 $$
 LANGUAGE plpgsql STABLE;

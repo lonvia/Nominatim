@@ -17,17 +17,11 @@ LOG = logging.getLogger()
 class AbstractPlacexRunner:
     """ Base class for runners that work with the placex table.
     """
-    FIELDS = "place_id, name"
+    FIELDS = "(placex_prepare_update(placex)).*"
 
     def __init__(self, rank, tokenizer):
         self.tokenizer = tokenizer.get_name_analyzer()
         self.rank = rank
-
-        if rank == 30:
-            self.FIELDS += """, get_place_address(address, osm_type,
-                                  coalesce(centroid, ST_Centroid(geometry))) as address"""
-        else:
-            self.FIELDS += ", address"
 
     def close(self):
         if self.tokenizer:
@@ -37,15 +31,18 @@ class AbstractPlacexRunner:
     def sql_index_place(self, places):
         values = []
         for place in places:
-            values.append(place['place_id'])
-            values.append(place['address'])
+            values.extend((place[x] for x in ('place_id', 'address',
+                                              'centroid', 'country_code',
+                                              'partition')))
             values.append(psycopg2.extras.Json(self.tokenizer.tokenize(place)))
 
         return """UPDATE placex
-                  SET indexed_status = 0, address = v.addr, token_info = v.ti
-                  FROM (VALUES {}) as v(id, addr, ti)
+                  SET indexed_status = 0, address = v.addr,
+                              centroid = v.cent, country_code = v.cc,
+                              partition = v.part, token_info = v.ti
+                  FROM (VALUES {}) as v(id, addr, cent, cc, part, ti)
                   WHERE place_id = v.id"""\
-               .format(','.join(["(%s, %s::hstore, %s::jsonb)"]  * len(places))), values
+               .format(','.join(["(%s, %s::hstore, %s, %s, %s, %s::jsonb)"]  * len(places))), values
 
 
 class RankRunner(AbstractPlacexRunner):
@@ -122,7 +119,6 @@ class InterpolationRunner:
     def sql_index_place(self, places):
         values = []
         for place in places:
-            print(place)
             values.append(place['place_id'])
             values.append(place['address'])
             values.append(psycopg2.extras.Json(self.analyzer.tokenize(place)))

@@ -401,7 +401,8 @@ BEGIN
   NEW.place_id := nextval('seq_place');
   NEW.indexed_status := 1; --STATUS_NEW
 
-  NEW.country_code := lower(get_country_code(NEW.geometry));
+  NEW.centroid := ST_PointOnSurface(NEW.geometry);
+  NEW.country_code := get_country_code(NEW.centroid);
 
   NEW.partition := get_partition(NEW.country_code);
   NEW.geometry_sector := geometry_sector(NEW.partition, NEW.geometry);
@@ -514,6 +515,75 @@ END;
 $$
 LANGUAGE plpgsql;
 
+DROP TYPE IF EXISTS placex_update_info CASCADE;
+CREATE TYPE placex_update_info AS (
+  place_id BIGINT,
+  name HSTORE,
+  address HSTORE,
+  centroid GEOMETRY(Geometry, 4326),
+  country_code VARCHAR(2),
+  partition SMALLINT
+);
+
+CREATE OR REPLACE FUNCTION placex_prepare_update(p placex)
+  RETURNS placex_update_info
+  AS $$
+DECLARE
+  out_centroid GEOMETRY(Geometry, 4326);
+  out_address HSTORE;
+  out_cc VARCHAR(2);
+  out_partition SMALLINT;
+  tmp_cc VARCHAR(2);
+  tmp_partition SMALLINT;
+BEGIN
+  IF p.indexed_status = 1 THEN
+    out_centroid := p.centroid;
+    out_cc := p.country_code;
+    out_partition := p.partition;
+  ELSE
+    out_centroid := ST_PointOnSurface(p.geometry);
+    out_cc := get_country_code(out_centroid);
+    out_partition := get_partition(out_cc);
+  END IF;
+
+  IF p.rank_search = 4 AND p.address is not NULL AND p.address ? 'country' THEN
+    -- for countries, believe the mapped country code,
+    -- so that we remain in the right partition if the boundaries
+    -- suddenly expand.
+    tmp_cc := lower(p.address->'country');
+    tmp_partition := get_partition(tmp_cc);
+    IF tmp_partition > 0 THEN
+      out_cc := tmp_cc;
+      out_partition := tmp_partition;
+    END IF;
+  ELSEIF p.rank_search < 4 THEN
+    out_cc := null;
+    out_partition := 0;
+  END IF;
+  {% if debug %}RAISE WARNING 'Country updated: "%"', out_cc;{% endif %}
+
+  -- For POI nodes, check if the address should be derived from a surrounding
+  -- building.
+  IF p.rank_search < 30 OR p.osm_type != 'N' OR p.address is not null THEN
+    out_address := p.address;
+  ELSE
+    -- The additional && condition works around the misguided query
+    -- planner of postgis 3.0.
+    SELECT address || hstore('_inherited', '') INTO out_address
+      FROM placex
+     WHERE ST_Covers(geometry, out_centroid)
+           and geometry && out_centroid
+           and (address ? 'housenumber' or address ? 'street' or address ? 'place')
+           and rank_search > 28 AND ST_GeometryType(geometry) in ('ST_Polygon','ST_MultiPolygon')
+     LIMIT 1;
+  END IF;
+
+  RETURN ROW(p.place_id, p.name, out_address, out_centroid,
+             out_cc, out_partition)::placex_update_info;
+END;
+$$
+LANGUAGE plpgsql STABLE;
+
 CREATE OR REPLACE FUNCTION placex_update()
   RETURNS TRIGGER
   AS $$
@@ -585,11 +655,6 @@ BEGIN
     NEW.token_info := null;
     RETURN NEW;
   END IF;
-
-  -- Speed up searches - just use the centroid of the feature
-  -- cheaper but less acurate
-  NEW.centroid := ST_PointOnSurface(NEW.geometry);
-  {% if debug %}RAISE WARNING 'Computing preliminary centroid at %',ST_AsText(NEW.centroid);{% endif %}
 
   -- recompute the ranks, they might change when linking changes
   SELECT * INTO NEW.rank_search, NEW.rank_address
@@ -670,27 +735,6 @@ BEGIN
   END IF;
 
   NEW.postcode := null;
-
-  -- recalculate country and partition
-  IF NEW.rank_search = 4 AND NEW.address is not NULL AND NEW.address ? 'country' THEN
-    -- for countries, believe the mapped country code,
-    -- so that we remain in the right partition if the boundaries
-    -- suddenly expand.
-    NEW.country_code := lower(NEW.address->'country');
-    NEW.partition := get_partition(lower(NEW.country_code));
-    IF NEW.partition = 0 THEN
-      NEW.country_code := lower(get_country_code(NEW.centroid));
-      NEW.partition := get_partition(NEW.country_code);
-    END IF;
-  ELSE
-    IF NEW.rank_search >= 4 THEN
-      NEW.country_code := lower(get_country_code(NEW.centroid));
-    ELSE
-      NEW.country_code := NULL;
-    END IF;
-    NEW.partition := get_partition(NEW.country_code);
-  END IF;
-  {% if debug %}RAISE WARNING 'Country updated: "%"', NEW.country_code;{% endif %}
 
   -- waterway ways are linked when they are part of a relation and have the same class/type
   IF NEW.osm_type = 'R' and NEW.class = 'waterway' THEN
@@ -786,9 +830,9 @@ BEGIN
 
       IF NEW.name is not NULL THEN
           NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-          name_vector := token_get_name_search_tokens(NEW.token_info);
 
           IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
+            name_vector := token_get_name_search_tokens(NEW.token_info);
             result := add_location(NEW.place_id, NEW.country_code, NEW.partition,
                                    name_vector, NEW.rank_search, NEW.rank_address,
                                    upper(trim(NEW.address->'postcode')), NEW.geometry,
@@ -799,9 +843,7 @@ BEGIN
       END IF;
 
       {% if not db.reverse_only %}
-      IF array_length(name_vector, 1) is not NULL
-         OR NEW.address is not NULL
-      THEN
+      IF NEW.name is not NULL OR NEW.address is not NULL THEN
         SELECT * INTO name_vector, nameaddress_vector
           FROM create_poi_search_terms(NEW.place_id,
                                        NEW.partition, NEW.parent_place_id,
