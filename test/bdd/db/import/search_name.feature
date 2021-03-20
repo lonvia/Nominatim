@@ -135,7 +135,11 @@ Feature: Creation of search terms
         When importing
         Then search_name contains
          | object | name_vector      | nameaddress_vector      |
-         | N1     | #Walltown, #Blue house | Walltown, Strange, Town |
+         | N1     | #Walltown, #Blue house | #Walltown, Strange, Town |
+        When searching for "Blue house, Walltown 23, Strange Town"
+        Then results contain
+         | osm_type | osm_id | name |
+         | N        | 1      | Blue house, 23, Walltown, Strange Town |
         When searching for "23 Walltown, Strange Town"
         Then results contain
          | osm_type | osm_id | name |
@@ -169,7 +173,7 @@ Feature: Creation of search terms
         When importing
         Then search_name contains
          | object | name_vector      | nameaddress_vector      |
-         | N1     | #Moon sun, #Blue house | Moon, Sun, Strange, Town |
+         | N1     | #Moon sun, #Blue house | #Moon sun, Strange, Town |
         When searching for "23 Moon Sun, Strange Town"
         Then results contain
          | osm_type | osm_id | name |
@@ -282,7 +286,7 @@ Feature: Creation of search terms
         When importing
         Then search_name contains
          | object | name_vector | nameaddress_vector |
-         | N1     | #Green Moss | Walltown |
+         | N1     | #Green Moss | #Walltown |
         When searching for "Green Moss, Rose Street, Walltown"
         Then exactly 0 result is returned
         When searching for "Green Moss, Walltown"

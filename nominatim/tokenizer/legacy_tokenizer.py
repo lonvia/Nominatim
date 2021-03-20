@@ -145,8 +145,26 @@ class LegacyNameAnalyzer:
                 # terms for matching up streets and places
                 for atype in ('street', 'place'):
                     if atype in address:
-                        cur.execute('SELECT word_ids_from_name(%s)::text',
-                                    (address[atype], ))
-                        token_info[atype + '_match'] = cur.fetchone()[0]
+                        cur.execute("""SELECT word_ids_from_name(%s)::text,
+                                              ARRAY[getorcreate_name_id(make_standard_name(%s), '')]::text""",
+                                    (address[atype], address[atype]))
+                        token_info[atype + '_match'], token_info[atype + '_search'] = cur.fetchone()
+
+                values = []
+                num = 0
+                for k, v in address.items():
+                    if v and k not in ('country', 'street', 'place', 'postcode',
+                                       'housenumber', 'streetnumber', 'conscriptionnumber'):
+                        values.extend((k, v))
+                        num += 1
+
+                if values:
+                    cur.execute("""SELECT v.k, addr_ids_from_name(v.v)::text,
+                                          word_ids_from_name(v.v)::text
+                                   FROM (VALUES {}) as v(k, v)
+                                """.format(','.join(['(%s, %s)'] * num)),
+                                values)
+                    token_info['addr'] = {r[0] : r[1:3] for r in cur}
+
 
         return token_info

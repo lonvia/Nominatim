@@ -244,6 +244,100 @@ $$
 LANGUAGE plpgsql STABLE;
 
 
+CREATE OR REPLACE FUNCTION create_poi_search_terms(obj_place_id BIGINT,
+                                                   in_partition SMALLINT,
+                                                   parent_place_id BIGINT,
+                                                   is_place_addr BOOL,
+                                                   country TEXT,
+                                                   token_info JSONB,
+                                                   geometry GEOMETRY,
+                                                   OUT name_vector INTEGER[],
+                                                   OUT nameaddress_vector INTEGER[])
+  AS $$
+DECLARE
+  parent_name_vector INTEGER[];
+  parent_address_vector INTEGER[];
+  addr_place_ids INTEGER[];
+  hnr_vector INTEGER[];
+
+  addr_item RECORD;
+  addr_place RECORD;
+  parent_address_place_ids BIGINT[];
+BEGIN
+  nameaddress_vector := '{}'::INTEGER[];
+
+  SELECT s.name_vector, s.nameaddress_vector
+    INTO parent_name_vector, parent_address_vector
+    FROM search_name s
+    WHERE s.place_id = parent_place_id;
+
+  FOR addr_item IN
+    SELECT (get_addr_tag_rank(key, country)).*, match_tokens, search_tokens
+      FROM token_get_address_tokens(token_info)
+      WHERE not search_tokens <@ parent_address_vector
+  LOOP
+    addr_place := get_address_place(in_partition, geometry,
+                                    addr_item.from_rank, addr_item.to_rank,
+                                    addr_item.extent, addr_item.match_tokens);
+
+    IF addr_place is null THEN
+      -- No place found in OSM that matches. Make it at least searchable.
+      nameaddress_vector := array_merge(nameaddress_vector, addr_item.search_tokens);
+    ELSE
+      IF parent_address_place_ids is null THEN
+        SELECT array_agg(parent_place_id) INTO parent_address_place_ids
+          FROM place_addressline
+          WHERE place_id = parent_place_id;
+      END IF;
+
+      -- If the parent already lists the place in place_address line, then we
+      -- are done. Otherwise, add its own place_address line.
+      IF not parent_address_place_ids @> ARRAY[addr_place.place_id] THEN
+        nameaddress_vector := array_merge(nameaddress_vector, addr_place.keywords);
+
+        INSERT INTO place_addressline (place_id, address_place_id, fromarea,
+                                       isaddress, distance, cached_rank_address)
+          VALUES (obj_place_id, addr_place.place_id, not addr_place.isguess,
+                    true, addr_place.distance, addr_place.rank_address);
+      END IF;
+    END IF;
+  END LOOP;
+
+  name_vector := token_get_name_search_tokens(token_info);
+
+  -- Check if the parent covers all address terms.
+  -- If not, create a search name entry with the house number as the name.
+  -- This is unusual for the search_name table but prevents that the place
+  -- is returned when we only search for the street/place.
+
+  hnr_vector := token_get_housenumber_search_tokens(token_info);
+  IF hnr_vector is not null and not nameaddress_vector <@ parent_address_vector THEN
+    name_vector := array_merge(name_vector, hnr_vector);
+  END IF;
+
+  IF is_place_addr THEN
+    addr_place_ids := token_addr_place_search_tokens(token_info);
+    IF not addr_place_ids <@ parent_name_vector THEN
+      -- make sure addr:place terms are always searchable
+      nameaddress_vector := array_merge(nameaddress_vector, addr_place_ids);
+      -- If there is a housenumber, also add the place name as a name,
+      -- so we can search it by the usual housenumber+place algorithms.
+      IF hnr_vector is not null THEN
+        name_vector := array_merge(name_vector, addr_place_ids);
+      END IF;
+    END IF;
+  END IF;
+
+  -- Cheating here by not recomputing all terms but simply using the ones
+  -- from the parent object.
+  nameaddress_vector := array_merge(nameaddress_vector, parent_name_vector);
+  nameaddress_vector := array_merge(nameaddress_vector, parent_address_vector);
+
+END;
+$$
+LANGUAGE plpgsql;
+
+
 -- Insert address of a place into the place_addressline table.
 --
 -- \param obj_place_id  Place_id of the place to compute the address for.
@@ -264,7 +358,7 @@ LANGUAGE plpgsql STABLE;
 CREATE OR REPLACE FUNCTION insert_addresslines(obj_place_id BIGINT,
                                                partition SMALLINT,
                                                maxrank SMALLINT,
-                                               address HSTORE,
+                                               token_info JSONB,
                                                geometry GEOMETRY,
                                                country TEXT,
                                                OUT parent_place_id BIGINT,
@@ -289,31 +383,40 @@ BEGIN
   address_havelevel := array_fill(false, ARRAY[maxrank]);
 
   FOR location IN
-    SELECT * FROM get_places_for_addr_tags(partition, geometry,
-                                                   address, country)
-    ORDER BY rank_address, distance, isguess desc
+    SELECT (get_address_place(partition, geometry, from_rank, to_rank,
+                              extent, match_tokens)).*, search_tokens
+      FROM (SELECT (get_addr_tag_rank(key, country)).*, match_tokens, search_tokens
+              FROM token_get_address_tokens(token_info)) x
+      ORDER BY rank_address, distance, isguess desc
   LOOP
-    {% if not db.reverse_only %}
+    IF location.place_id is null THEN
+      {% if not db.reverse_only %}
       nameaddress_vector := array_merge(nameaddress_vector,
-                                        location.keywords::int[]);
-    {% endif %}
+                                        location.search_tokens::int[]);
+      {% endif %}
+    ELSE
+      {% if not db.reverse_only %}
+        nameaddress_vector := array_merge(nameaddress_vector,
+                                          location.keywords::int[]);
+      {% endif %}
 
-    IF location.place_id is not null THEN
-      location_isaddress := not address_havelevel[location.rank_address];
-      IF not address_havelevel[location.rank_address] THEN
-        address_havelevel[location.rank_address] := true;
-        IF parent_place_rank < location.rank_address THEN
-          parent_place_id := location.place_id;
-          parent_place_rank := location.rank_address;
+      IF location.place_id is not null THEN
+        location_isaddress := not address_havelevel[location.rank_address];
+        IF not address_havelevel[location.rank_address] THEN
+          address_havelevel[location.rank_address] := true;
+          IF parent_place_rank < location.rank_address THEN
+            parent_place_id := location.place_id;
+            parent_place_rank := location.rank_address;
+          END IF;
         END IF;
+
+        INSERT INTO place_addressline (place_id, address_place_id, fromarea,
+                                       isaddress, distance, cached_rank_address)
+          VALUES (obj_place_id, location.place_id, not location.isguess,
+                  true, location.distance, location.rank_address);
+
+        addr_place_ids := array_append(addr_place_ids, location.place_id);
       END IF;
-
-      INSERT INTO place_addressline (place_id, address_place_id, fromarea,
-                                     isaddress, distance, cached_rank_address)
-        VALUES (obj_place_id, location.place_id, not location.isguess,
-                true, location.distance, location.rank_address);
-
-      addr_place_ids := array_append(addr_place_ids, location.place_id);
     END IF;
   END LOOP;
 
@@ -847,7 +950,7 @@ BEGIN
         SELECT * INTO name_vector, nameaddress_vector
           FROM create_poi_search_terms(NEW.place_id,
                                        NEW.partition, NEW.parent_place_id,
-                                       NEW.address,
+                                       coalesce(not NEW.address ? 'street' and NEW.address ? 'place', FALSE),
                                        NEW.country_code, NEW.token_info,
                                        NEW.centroid);
 
@@ -986,7 +1089,7 @@ BEGIN
   END IF;
 
   SELECT * FROM insert_addresslines(NEW.place_id, NEW.partition, max_rank,
-                                    NEW.address, geom, NEW.country_code)
+                                    NEW.token_info, geom, NEW.country_code)
     INTO NEW.parent_place_id, NEW.postcode, nameaddress_vector;
 
   {% if debug %}RAISE WARNING 'RETURN insert_addresslines: %, %, %', NEW.parent_place_id, NEW.postcode, nameaddress_vector;{% endif %}

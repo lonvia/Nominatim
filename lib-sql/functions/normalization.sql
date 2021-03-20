@@ -189,16 +189,6 @@ $$
 LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION getorcreate_name_id(lookup_word TEXT)
-  RETURNS INTEGER
-  AS $$
-DECLARE
-BEGIN
-  RETURN getorcreate_name_id(lookup_word, '');
-END;
-$$
-LANGUAGE plpgsql;
-
 -- Normalize a string and lookup its word ids (partial words).
 CREATE OR REPLACE FUNCTION addr_ids_from_name(lookup_word TEXT)
   RETURNS INTEGER[]
@@ -346,106 +336,6 @@ BEGIN
   END IF;
 
   RETURN result;
-END;
-$$
-LANGUAGE plpgsql;
-
-
-CREATE OR REPLACE FUNCTION create_poi_search_terms(obj_place_id BIGINT,
-                                                   in_partition SMALLINT,
-                                                   parent_place_id BIGINT,
-                                                   address HSTORE,
-                                                   country TEXT,
-                                                   token_info JSONB,
-                                                   geometry GEOMETRY,
-                                                   OUT name_vector INTEGER[],
-                                                   OUT nameaddress_vector INTEGER[])
-  AS $$
-DECLARE
-  parent_name_vector INTEGER[];
-  parent_address_vector INTEGER[];
-  addr_place_ids INTEGER[];
-  hnr_vector INTEGER[];
-
-  addr_item RECORD;
-  parent_address_place_ids BIGINT[];
-  filtered_address HSTORE;
-BEGIN
-  nameaddress_vector := '{}'::INTEGER[];
-
-  SELECT s.name_vector, s.nameaddress_vector
-    INTO parent_name_vector, parent_address_vector
-    FROM search_name s
-    WHERE s.place_id = parent_place_id;
-
-  -- Find all address tags that don't appear in the parent search names.
-  SELECT hstore(array_agg(ARRAY[k, v])) INTO filtered_address
-    FROM (SELECT skeys(address) as k, svals(address) as v) a
-   WHERE not addr_ids_from_name(v) && parent_address_vector
-         AND k not in ('country', 'street', 'place', 'postcode',
-                       'housenumber', 'streetnumber', 'conscriptionnumber');
-
-  -- Compute all search terms from the addr: tags.
-  IF filtered_address IS NOT NULL THEN
-    FOR addr_item IN
-      SELECT * FROM
-        get_places_for_addr_tags(in_partition, geometry, filtered_address, country)
-    LOOP
-        IF addr_item.place_id is null THEN
-            nameaddress_vector := array_merge(nameaddress_vector,
-                                              addr_item.keywords);
-            CONTINUE;
-        END IF;
-
-        IF parent_address_place_ids is null THEN
-            SELECT array_agg(parent_place_id) INTO parent_address_place_ids
-              FROM place_addressline
-             WHERE place_id = parent_place_id;
-        END IF;
-
-        IF not parent_address_place_ids @> ARRAY[addr_item.place_id] THEN
-            nameaddress_vector := array_merge(nameaddress_vector,
-                                              addr_item.keywords);
-
-            INSERT INTO place_addressline (place_id, address_place_id, fromarea,
-                                           isaddress, distance, cached_rank_address)
-            VALUES (obj_place_id, addr_item.place_id, not addr_item.isguess,
-                    true, addr_item.distance, addr_item.rank_address);
-        END IF;
-    END LOOP;
-  END IF;
-
-  name_vector := token_get_name_search_tokens(token_info);
-
-  -- Check if the parent covers all address terms.
-  -- If not, create a search name entry with the house number as the name.
-  -- This is unusual for the search_name table but prevents that the place
-  -- is returned when we only search for the street/place.
-
-  hnr_vector := token_get_housenumber_search_tokens(token_info);
-  IF hnr_vector is not null and not nameaddress_vector <@ parent_address_vector THEN
-    name_vector := array_merge(name_vector, hnr_vector);
-  END IF;
-
-  IF not address ? 'street' and address ? 'place' THEN
-    addr_place_ids := addr_ids_from_name(address->'place');
-    IF not addr_place_ids <@ parent_name_vector THEN
-      -- make sure addr:place terms are always searchable
-      nameaddress_vector := array_merge(nameaddress_vector, addr_place_ids);
-      -- If there is a housenumber, also add the place name as a name,
-      -- so we can search it by the usual housenumber+place algorithms.
-      IF hnr_vector is not null THEN
-        name_vector := array_merge(name_vector,
-                                   ARRAY[getorcreate_name_id(make_standard_name(address->'place'))]);
-      END IF;
-    END IF;
-  END IF;
-
-  -- Cheating here by not recomputing all terms but simply using the ones
-  -- from the parent object.
-  nameaddress_vector := array_merge(nameaddress_vector, parent_name_vector);
-  nameaddress_vector := array_merge(nameaddress_vector, parent_address_vector);
-
 END;
 $$
 LANGUAGE plpgsql;
