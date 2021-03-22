@@ -322,11 +322,12 @@ class Indexer:
                             break
 
                         LOG.debug("Processing places: %s", str(places))
+                        sql_params = obj.sql_index_place(places)
                         t0 = time.time()
                         thread = next(next_thread)
                         timing_find_thread += time.time() - t0
 
-                        thread.perform(*obj.sql_index_place(places))
+                        thread.perform(*sql_params)
                         progress.add(len(places))
 
                 self.conn.commit()
