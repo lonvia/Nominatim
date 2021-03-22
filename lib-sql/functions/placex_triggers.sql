@@ -688,6 +688,8 @@ BEGIN
      LIMIT 1;
   END IF;
 
+  out_address := out_address - '_unlisted_place'::TEXT;
+
   RETURN ROW(p.place_id, p.name, out_address, out_centroid,
              out_cc, out_partition)::placex_update_info;
 END;
@@ -748,7 +750,6 @@ BEGIN
   -- update not necessary for osmline, cause linked_place_id does not exist
 
   NEW.extratags := NEW.extratags - 'linked_place'::TEXT;
-  NEW.address := NEW.address - '_unlisted_place'::TEXT;
 
   IF NEW.linked_place_id is not null THEN
     {% if debug %}RAISE WARNING 'place already linked to %', NEW.linked_place_id;{% endif %}
@@ -975,7 +976,11 @@ BEGIN
 
       NEW.token_info := token_strip_info(NEW.token_info);
       IF NEW.address ? '_inherited' THEN
-        NEW.address := null;
+        IF NEW.address ? '_unlisted_place' THEN
+          NEW.address := hstore('_unlisted_place', NEW.address->'_unlisted_place');
+        ELSE
+          NEW.address := null;
+        END IF;
       END IF;
       RETURN NEW;
     END IF;
