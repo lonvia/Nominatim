@@ -259,10 +259,12 @@ DECLARE
   parent_address_vector INTEGER[];
   addr_place_ids INTEGER[];
   hnr_vector INTEGER[];
+  extra_address_vector INTEGER[];
 
   addr_item RECORD;
   addr_place RECORD;
   parent_address_place_ids BIGINT[];
+  extra_addr_ids BIGINT[] := '{}'::BIGINT[];
 BEGIN
   nameaddress_vector := '{}'::INTEGER[];
 
@@ -293,7 +295,7 @@ BEGIN
       -- If the parent already lists the place in place_address line, then we
       -- are done. Otherwise, add its own place_address line.
       IF not parent_address_place_ids @> ARRAY[addr_place.place_id] THEN
-        nameaddress_vector := array_merge(nameaddress_vector, addr_place.keywords);
+        extra_addr_ids := extra_addr_ids || addr_place.place_id;
 
         INSERT INTO place_addressline (place_id, address_place_id, fromarea,
                                        isaddress, distance, cached_rank_address)
@@ -302,6 +304,13 @@ BEGIN
       END IF;
     END IF;
   END LOOP;
+
+  -- Pick up search terms for any extra address line we have added.
+  IF array_length(extra_addr_ids, 1) > 0 THEN
+    SELECT array_merge_agg(search_name.name_vector) INTO extra_address_vector
+      FROM search_name WHERE place_id = ANY(extra_addr_ids);
+    nameaddress_vector := array_merge(extra_address_vector, nameaddress_vector);
+  END IF;
 
   name_vector := token_get_name_search_tokens(token_info);
 
@@ -373,7 +382,8 @@ DECLARE
   current_node_area GEOMETRY := NULL;
 
   parent_place_rank INT := 0;
-  addr_place_ids BIGINT[];
+  addr_place_ids BIGINT[] := '{}'::BIGINT[];
+  new_address_vector INT[];
 
   location RECORD;
 BEGIN
@@ -395,34 +405,27 @@ BEGIN
                                         location.search_tokens::int[]);
       {% endif %}
     ELSE
-      {% if not db.reverse_only %}
-        nameaddress_vector := array_merge(nameaddress_vector,
-                                          location.keywords::int[]);
-      {% endif %}
-
-      IF location.place_id is not null THEN
-        location_isaddress := not address_havelevel[location.rank_address];
-        IF not address_havelevel[location.rank_address] THEN
-          address_havelevel[location.rank_address] := true;
-          IF parent_place_rank < location.rank_address THEN
-            parent_place_id := location.place_id;
-            parent_place_rank := location.rank_address;
-          END IF;
+      location_isaddress := not address_havelevel[location.rank_address];
+      IF not address_havelevel[location.rank_address] THEN
+        address_havelevel[location.rank_address] := true;
+        IF parent_place_rank < location.rank_address THEN
+          parent_place_id := location.place_id;
+          parent_place_rank := location.rank_address;
         END IF;
-
-        INSERT INTO place_addressline (place_id, address_place_id, fromarea,
-                                       isaddress, distance, cached_rank_address)
-          VALUES (obj_place_id, location.place_id, not location.isguess,
-                  true, location.distance, location.rank_address);
-
-        addr_place_ids := array_append(addr_place_ids, location.place_id);
       END IF;
+
+      INSERT INTO place_addressline (place_id, address_place_id, fromarea,
+                                     isaddress, distance, cached_rank_address)
+        VALUES (obj_place_id, location.place_id, not location.isguess,
+                true, location.distance, location.rank_address);
+
+      addr_place_ids := addr_place_ids || location.place_id;
     END IF;
   END LOOP;
 
   FOR location IN
     SELECT * FROM getNearFeatures(partition, geometry, maxrank)
-    WHERE addr_place_ids is null or not addr_place_ids @> ARRAY[place_id]
+    WHERE not addr_place_ids @> ARRAY[place_id]
     ORDER BY rank_address, isguess asc,
              distance *
                CASE WHEN rank_address = 16 AND rank_search = 15 THEN 0.2
@@ -472,17 +475,21 @@ BEGIN
       END IF;
     END IF;
 
-    -- Add it to the list of search terms
-    {% if not db.reverse_only %}
-      nameaddress_vector := array_merge(nameaddress_vector,
-                                        location.keywords::integer[]);
-    {% endif %}
+    addr_place_ids := addr_place_ids || location.place_id;
 
     INSERT INTO place_addressline (place_id, address_place_id, fromarea,
                                      isaddress, distance, cached_rank_address)
         VALUES (obj_place_id, location.place_id, not location.isguess,
                 location_isaddress, location.distance, location.rank_address);
   END LOOP;
+
+  {% if not db.reverse_only %}
+    -- Get the search name for all address parts.
+    SELECT array_merge_agg(name_vector) INTO new_address_vector
+      FROM search_name WHERE place_id = ANY(addr_place_ids);
+    nameaddress_vector := array_merge(new_address_vector, nameaddress_vector);
+  {% endif %}
+
 END;
 $$
 LANGUAGE plpgsql;

@@ -38,6 +38,12 @@ END;
 $$
 LANGUAGE plpgsql IMMUTABLE;
 
+DROP AGGREGATE IF EXISTS array_merge_agg(INT[]) CASCADE;
+CREATE AGGREGATE array_merge_agg(INT[]) (
+  SFUNC=array_merge,
+  STYPE=INT[]
+);
+
 -- Return the node members with a given label from a relation member list
 -- as a set.
 --
