@@ -21,25 +21,21 @@ class AbstractPlacexRunner:
 
 
     def sql_get_object_info(self, place_ids):
-        return """SELECT (placex_prepare_update(placex)).*
+        return """SELECT place_id, (placex_prepare_update(placex)).*
                   FROM placex WHERE place_id IN %s""", (tuple(place_ids), )
 
 
     def sql_index_places(self, places):
         values = []
         for place in places:
-            values.extend((place[x] for x in ('place_id', 'address',
-                                              'centroid', 'country_code',
-                                              'partition')))
+            values.extend((place[x] for x in ('place_id', 'address')))
             values.append(psycopg2.extras.Json(self.tokenizer.tokenize(place)))
 
         return """UPDATE placex
-                  SET indexed_status = 0, address = v.addr,
-                              centroid = v.cent, country_code = v.cc,
-                              partition = v.part, token_info = v.ti
-                  FROM (VALUES {}) as v(id, addr, cent, cc, part, ti)
+                  SET indexed_status = 0, address = v.addr, token_info = v.ti
+                  FROM (VALUES {}) as v(id, addr, ti)
                   WHERE place_id = v.id"""\
-               .format(','.join(["(%s, %s::hstore, %s, %s, %s, %s::jsonb)"]  * len(places))), values
+               .format(','.join(["(%s, %s::hstore, %s::jsonb)"]  * len(places))), values
 
 
 class RankRunner(AbstractPlacexRunner):

@@ -625,73 +625,27 @@ END;
 $$
 LANGUAGE plpgsql;
 
-DROP TYPE IF EXISTS placex_update_info CASCADE;
-CREATE TYPE placex_update_info AS (
-  place_id BIGINT,
-  name HSTORE,
-  address HSTORE,
-  centroid GEOMETRY(Geometry, 4326),
-  country_code VARCHAR(2),
-  partition SMALLINT
-);
-
-CREATE OR REPLACE FUNCTION placex_prepare_update(p placex)
-  RETURNS placex_update_info
+CREATE OR REPLACE FUNCTION placex_prepare_update(p placex, OUT name HSTORE, OUT address HSTORE)
   AS $$
-DECLARE
-  out_centroid GEOMETRY(Geometry, 4326);
-  out_address HSTORE;
-  out_cc VARCHAR(2);
-  out_partition SMALLINT;
-  tmp_cc VARCHAR(2);
-  tmp_partition SMALLINT;
 BEGIN
-  IF p.indexed_status = 1 THEN
-    out_centroid := p.centroid;
-    out_cc := p.country_code;
-    out_partition := p.partition;
-  ELSE
-    out_centroid := ST_PointOnSurface(p.geometry);
-    out_cc := get_country_code(out_centroid);
-    out_partition := get_partition(out_cc);
-  END IF;
-
-  IF p.rank_search = 4 AND p.address is not NULL AND p.address ? 'country' THEN
-    -- for countries, believe the mapped country code,
-    -- so that we remain in the right partition if the boundaries
-    -- suddenly expand.
-    tmp_cc := lower(p.address->'country');
-    tmp_partition := get_partition(tmp_cc);
-    IF tmp_partition > 0 THEN
-      out_cc := tmp_cc;
-      out_partition := tmp_partition;
-    END IF;
-  ELSEIF p.rank_search < 4 THEN
-    out_cc := null;
-    out_partition := 0;
-  END IF;
-  {% if debug %}RAISE WARNING 'Country updated: "%"', out_cc;{% endif %}
-
   -- For POI nodes, check if the address should be derived from a surrounding
   -- building.
   IF p.rank_search < 30 OR p.osm_type != 'N' OR p.address is not null THEN
-    out_address := p.address;
+    address := p.address;
   ELSE
     -- The additional && condition works around the misguided query
     -- planner of postgis 3.0.
-    SELECT address || hstore('_inherited', '') INTO out_address
+    SELECT placex.address || hstore('_inherited', '') INTO address
       FROM placex
-     WHERE ST_Covers(geometry, out_centroid)
-           and geometry && out_centroid
-           and (address ? 'housenumber' or address ? 'street' or address ? 'place')
+     WHERE ST_Covers(geometry, p.centroid)
+           and geometry && p.centroid
+           and (placex.address ? 'housenumber' or placex.address ? 'street' or placex.address ? 'place')
            and rank_search > 28 AND ST_GeometryType(geometry) in ('ST_Polygon','ST_MultiPolygon')
      LIMIT 1;
   END IF;
 
-  out_address := out_address - '_unlisted_place'::TEXT;
-
-  RETURN ROW(p.place_id, p.name, out_address, out_centroid,
-             out_cc, out_partition)::placex_update_info;
+  address := address - '_unlisted_place'::TEXT;
+  name := p.name;
 END;
 $$
 LANGUAGE plpgsql STABLE;
@@ -766,6 +720,29 @@ BEGIN
     NEW.token_info := null;
     RETURN NEW;
   END IF;
+
+  NEW.centroid := ST_PointOnSurface(NEW.geometry);
+  -- recalculate country and partition
+  IF NEW.rank_search = 4 AND NEW.address is not NULL AND NEW.address ? 'country' THEN
+    -- for countries, believe the mapped country code,
+    -- so that we remain in the right partition if the boundaries
+    -- suddenly expand.
+    NEW.country_code := lower(NEW.address->'country');
+    NEW.partition := get_partition(lower(NEW.country_code));
+    IF NEW.partition = 0 THEN
+      NEW.country_code := lower(get_country_code(NEW.centroid));
+      NEW.partition := get_partition(NEW.country_code);
+    END IF;
+  ELSE
+    IF NEW.rank_search >= 4 THEN
+      NEW.country_code := lower(get_country_code(NEW.centroid));
+    ELSE
+      NEW.country_code := NULL;
+    END IF;
+    NEW.partition := get_partition(NEW.country_code);
+  END IF;
+  {% if debug %}RAISE WARNING 'Country updated: "%"', NEW.country_code;{% endif %}
+
 
   -- recompute the ranks, they might change when linking changes
   SELECT * INTO NEW.rank_search, NEW.rank_address
