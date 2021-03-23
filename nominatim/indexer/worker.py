@@ -28,7 +28,7 @@ class IndexWorker:
 
     def start_slice(self, ids, batch_size):
         if self._place_count > 10000:
-            self.conn.connect()
+            self.conn.connect(cursor_factory=psycopg2.extras.DictCursor)
             self._place_count = 0
         self.in_progress = self._process_slice(ids, batch_size)
 

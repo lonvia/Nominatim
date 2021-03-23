@@ -3,7 +3,7 @@ Main work horse for indexing (computing addresses) the database.
 """
 # pylint: disable=C0111
 import logging
-import selectors
+import select
 import time
 
 import psycopg2.extras
@@ -19,23 +19,14 @@ LOG = logging.getLogger()
 class WorkerPool:
 
     def __init__(self, dsn, runner, pool_size):
-        self.selectors = selectors.DefaultSelector()
-        self.threads = []
-
-        for _ in range(pool_size):
-            thread = IndexWorker(dsn, runner)
-            self.selectors.register(thread, selectors.EVENT_WRITE, thread)
-            self.threads.append(thread)
-
+        self.threads = [IndexWorker(dsn, runner) for _ in range(pool_size)]
         self.free_workers = self._yield_free_worker()
 
 
     def close(self):
         for thread in self.threads:
-            self.selectors.unregister(thread)
             thread.close()
         self.threads = []
-        self.selectors.close()
 
 
     def has_workers(self):
@@ -43,7 +34,6 @@ class WorkerPool:
 
 
     def shutdown_worker(self, worker):
-        self.selectors.unregister(worker)
         worker.close()
         self.threads.remove(worker)
 
@@ -51,10 +41,15 @@ class WorkerPool:
     def next_free_worker(self):
         return next(self.free_workers)
 
+
     def _yield_free_worker(self):
+        ready = self.threads
         while True:
-            for key, _ in self.selectors.select():
-                yield key.data
+            for thread in ready:
+                yield thread
+
+            _, ready, _ = select.select([], self.threads, [])
+
 
     def __enter__(self):
         return self
