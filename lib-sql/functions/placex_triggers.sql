@@ -581,10 +581,8 @@ BEGIN
   END IF;
 
   -- Extra the tokenizer information from the name field.
-  IF NEW.name is not null and NEW.name ? '_' THEN
-    token_info = (NEW.name->'_')::INTEGER[];
-    NEW.name := NEW.name - '_'::text;
-  END IF;
+  token_info = (NEW.token_info#>>'{}')::INTEGER[];
+  NEW.token_info := NULL;
 
   -- Speed up searches - just use the centroid of the feature
   -- cheaper but less acurate
