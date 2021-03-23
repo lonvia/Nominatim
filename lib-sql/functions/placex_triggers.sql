@@ -668,27 +668,19 @@ BEGIN
   NEW.housenumber := NULL;
   IF NEW.address is not NULL THEN
       IF NEW.address ? 'conscriptionnumber' THEN
-        i := getorcreate_housenumber_id(make_standard_name(NEW.address->'conscriptionnumber'));
         IF NEW.address ? 'streetnumber' THEN
-            i := getorcreate_housenumber_id(make_standard_name(NEW.address->'streetnumber'));
             NEW.housenumber := (NEW.address->'conscriptionnumber') || '/' || (NEW.address->'streetnumber');
         ELSE
             NEW.housenumber := NEW.address->'conscriptionnumber';
         END IF;
       ELSEIF NEW.address ? 'streetnumber' THEN
         NEW.housenumber := NEW.address->'streetnumber';
-        i := getorcreate_housenumber_id(make_standard_name(NEW.address->'streetnumber'));
       ELSEIF NEW.address ? 'housenumber' THEN
         NEW.housenumber := NEW.address->'housenumber';
-        i := getorcreate_housenumber_id(make_standard_name(NEW.housenumber));
       END IF;
 
       addr_street := NEW.address->'street';
       addr_place := NEW.address->'place';
-
-      IF NEW.address ? 'postcode' and NEW.address->'postcode' not similar to '%(:|,|;)%' THEN
-        i := getorcreate_postcode_id(NEW.address->'postcode');
-      END IF;
   END IF;
 
   NEW.postcode := null;
@@ -830,8 +822,8 @@ BEGIN
           FROM create_poi_search_terms(NEW.place_id,
                                        NEW.partition, NEW.parent_place_id,
                                        inherited_address || NEW.address,
-                                       NEW.country_code, NEW.housenumber,
-                                       name_vector, NEW.centroid);
+                                       NEW.country_code, NEW.token_info,
+                                       NEW.centroid);
 
         IF array_length(name_vector, 1) is not NULL THEN
           INSERT INTO search_name (place_id, search_rank, address_rank,

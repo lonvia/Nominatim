@@ -1,6 +1,8 @@
 """
 Tokenizer implementing nromalisation as used before Nominatim 4.
 """
+import re
+
 import psycopg2.extras
 
 from nominatim.db.connection import connect
@@ -118,11 +120,29 @@ class LegacyNameAnalyzer:
         token_info = {}
 
         names = place.get('name')
+        address = place.get('address')
 
-        if names:
-            with self.conn.cursor() as cur:
-                cur.execute("SELECT make_keywords(%s)::text", (names, ))
-                token_info['names'] = cur.fetchone()[0]
+        with self.conn.cursor() as cur:
+            if names:
+                    cur.execute("SELECT make_keywords(%s)::text", (names, ))
+                    token_info['names'] = cur.fetchone()[0]
+
+            if address:
+                # housenumbers
+                hnrs = [v for k, v in address.items()
+                        if k in ('housenumber', 'streetnumber', 'conscriptionnumber')]
+                if hnrs:
+                    cur.execute("""SELECT array_agg(getorcreate_housenumber_id(make_standard_name(hnr.name)))::text
+                                   FROM (VALUES {}) as hnr(name)
+                                """.format(','.join(['(%s)']  * len(hnrs))),
+                                hnrs)
+                    token_info['hnr'] = cur.fetchone()[0]
+
+                # add postcode token to word table
+                if 'postcode' in address:
+                    postcode = address['postcode']
+                    if re.search(r'[:,;]', postcode) is None:
+                        cur.execute('SELECT getorcreate_postcode_id(%s)', (postcode, ))
 
         return token_info
 

@@ -431,8 +431,7 @@ CREATE OR REPLACE FUNCTION create_poi_search_terms(obj_place_id BIGINT,
                                                    parent_place_id BIGINT,
                                                    address HSTORE,
                                                    country TEXT,
-                                                   housenumber TEXT,
-                                                   initial_name_vector INTEGER[],
+                                                   token_info JSONB,
                                                    geometry GEOMETRY,
                                                    OUT name_vector INTEGER[],
                                                    OUT nameaddress_vector INTEGER[])
@@ -441,6 +440,7 @@ DECLARE
   parent_name_vector INTEGER[];
   parent_address_vector INTEGER[];
   addr_place_ids INTEGER[];
+  hnr_vector INTEGER[];
 
   addr_item RECORD;
   parent_address_place_ids BIGINT[];
@@ -490,16 +490,16 @@ BEGIN
     END LOOP;
   END IF;
 
-  name_vector := initial_name_vector;
+  name_vector := token_get_name_search_tokens(token_info);
 
   -- Check if the parent covers all address terms.
   -- If not, create a search name entry with the house number as the name.
   -- This is unusual for the search_name table but prevents that the place
   -- is returned when we only search for the street/place.
 
-  IF housenumber is not null and not nameaddress_vector <@ parent_address_vector THEN
-    name_vector := array_merge(name_vector,
-                               ARRAY[getorcreate_housenumber_id(make_standard_name(housenumber))]);
+  hnr_vector := token_get_housenumber_search_tokens(token_info);
+  IF hnr_vector is not null and not nameaddress_vector <@ parent_address_vector THEN
+    name_vector := array_merge(name_vector, hnr_vector);
   END IF;
 
   IF not address ? 'street' and address ? 'place' THEN
@@ -509,7 +509,7 @@ BEGIN
       nameaddress_vector := array_merge(nameaddress_vector, addr_place_ids);
       -- If there is a housenumber, also add the place name as a name,
       -- so we can search it by the usual housenumber+place algorithms.
-      IF housenumber is not null THEN
+      IF hnr_vector is not null THEN
         name_vector := array_merge(name_vector,
                                    ARRAY[getorcreate_name_id(make_standard_name(address->'place'))]);
       END IF;

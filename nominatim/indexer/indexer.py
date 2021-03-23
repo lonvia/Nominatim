@@ -17,7 +17,7 @@ LOG = logging.getLogger()
 class AbstractPlacexRunner:
     """ Base class for runners that work with the placex table.
     """
-    FIELDS = 'place_id, name'
+    FIELDS = 'place_id, name, address'
 
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer.get_name_analyzer()
