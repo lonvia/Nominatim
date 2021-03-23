@@ -14,16 +14,56 @@ Querying is currently still done in the PHP code. The appropriate PHP
 normalizer module is installed, when the tokenizer is created.
 """
 import logging
+from pathlib import Path
+import importlib.util
 
 from ..errors import UsageError
 from .legacy_tokenizer import LegacyTokenizer
 
 LOG = logging.getLogger()
 
-def create_tokenizer(config):
-    """ Create a new tokenizer as defined by the given configuration.
+def _import_tokenizer(target):
+    """ Load the tokenizer.py module from project directory.
     """
-    return LegacyTokenizer(config.get_libpq_dsn(), config.project_dir)
+    # We don't want to add the project directory to the search path, so
+    # load the module manually (as per importlib documentation).
+    spec = importlib.util.spec_from_file_location('project_tokenizer', str(target))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _copy_src_file(srcdir, targetdir, basename, suffix):
+    src = (srcdir / (basename + suffix)).resolve()
+    target = (targetdir / ('tokenizer' + suffix)).resolve()
+    target.write_text(src.read_text())
+
+
+def create_tokenizer(config, sqllib_dir, phplib_dir):
+    """ Create a new tokenizer as defined by the given configuration.
+
+        The tokenizer data and code is copied into the 'tokenizer' directory
+        of the project directory and the tokenizer loaded from its new location.
+    """
+    # Create the directory for the tokenizer data
+    basedir = config.project_dir / 'tokenizer'
+    if not basedir.exists():
+        basedir.mkdir()
+    elif not basedir.is_dir():
+        raise UsageError('Tokenizer directory %s cannot be created.', basedir)
+
+    # Hard-coded use of legacy tokenizer
+    name = 'legacy_tokenizer'
+    _copy_src_file(Path(__file__) / '..', basedir, name, '.py')
+    _copy_src_file(sqllib_dir / 'tokenizers', basedir, name, '.sql')
+    _copy_src_file(phplib_dir / 'tokenizers', basedir, name, '.php')
+
+    tokenizer_module = _import_tokenizer(basedir / 'tokenizer.py')
+
+    tokenizer = tokenizer_module.create(config.get_libpq_dsn(), basedir)
+    tokenizer.init_new_db()
+
+    return tokenizer
 
 
 def get_tokenizer_for_db(config):
@@ -35,6 +75,11 @@ def get_tokenizer_for_db(config):
     basedir = config.project_dir / 'tokenizer'
     if not basedir.is_dir():
         LOG.fatal("Cannot find tokenizer data in '%s'.", basedir)
-        #raise UsageError('Cannot initialize tokenizer.')
-    # XXX
-    return LegacyTokenizer(config.get_libpq_dsn(), config.project_dir)
+        raise UsageError('Cannot initialize tokenizer.')
+
+    tokenizer_module = _import_tokenizer(basedir / 'tokenizer.py')
+
+    tokenizer = tokenizer_module.create(config.get_libpq_dsn(), basedir)
+    tokenizer.init_from_project()
+
+    return tokenizer

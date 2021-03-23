@@ -116,8 +116,9 @@ class SetupAll:
                                       args.threads or psutil.cpu_count() or 1)
 
             LOG.warning("Setting up tokenizer")
-            tokenizer = tokenizer_factory.create_tokenizer(args.config)
-            tokenizer.init_new_db()
+            tokenizer = tokenizer_factory.create_tokenizer(args.config,
+                                                           args.sqllib_dir,
+                                                           args.phplib_dir)
 
             LOG.warning('Calculate postcodes')
             run_legacy_script('setup.php', '--calculate-postcodes',

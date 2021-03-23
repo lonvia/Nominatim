@@ -3,16 +3,20 @@ Tokenizer implementing nromalisation as used before Nominatim 4.
 """
 import psycopg2.extras
 
-from ..db.connection import connect
+from nominatim.db.connection import connect
+from nominatim.db.utils import execute_file
+
+def create(dsn, data_dir):
+    return LegacyTokenizer(dsn, data_dir)
 
 class LegacyTokenizer:
     """ The legacy tokenizer uses a special Postgresql module to normalize
         names and SQL functions to split them into tokens.
     """
 
-    def __init__(self, dsn, project_dir):
+    def __init__(self, dsn, data_dir):
         self.dsn = dsn
-        self.project_dir = project_dir
+        self.data_dir = data_dir
 
 
     def init_new_db(self):
@@ -26,6 +30,7 @@ class LegacyTokenizer:
             use the content of the placex table to initialise its data
             structures.
         """
+        self.update_sql_functions()
         with connect(self.dsn) as conn:
             self._compute_word_frequencies(conn)
 
@@ -36,6 +41,11 @@ class LegacyTokenizer:
         """
         pass
 
+
+    def update_sql_functions(self):
+        """ Reimport the SQL functions for this tokenizer.
+        """
+        execute_file(self.dsn, self.data_dir / 'tokenizer.sql')
 
 
     def get_name_analyzer(self):
@@ -115,3 +125,5 @@ class LegacyNameAnalyzer:
                 token_info['names'] = cur.fetchone()[0]
 
         return token_info
+
+
