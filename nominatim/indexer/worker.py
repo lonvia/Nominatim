@@ -13,6 +13,8 @@ class IndexWorker:
         self.runner = runner
         self.in_progress = None
 
+        self._place_count = 0
+
 
     def close(self):
         if self.conn:
@@ -25,6 +27,9 @@ class IndexWorker:
 
 
     def start_slice(self, ids, batch_size):
+        if self._place_count > 10000:
+            self.conn.connect()
+            self._place_count = 0
         self.in_progress = self._process_slice(ids, batch_size)
 
 
@@ -59,5 +64,6 @@ class IndexWorker:
             done = len(todo)
             idx = end_idx
 
+        self._place_count += len(ids)
         yield done
         yield -1
