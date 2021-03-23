@@ -174,6 +174,7 @@ CREATE TABLE placex (
   indexed_status SMALLINT,
   LIKE place INCLUDING CONSTRAINTS,
   wikipedia TEXT, -- calculated wikipedia article name (language:title)
+  token_info JSONB,
   country_code varchar(2),
   housenumber TEXT,
   postcode TEXT,
