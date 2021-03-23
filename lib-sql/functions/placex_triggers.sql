@@ -581,7 +581,7 @@ BEGIN
   END IF;
 
   -- Extra the tokenizer information from the name field.
-  token_info = (NEW.token_info#>>'{}')::INTEGER[];
+  token_info = (NEW.token_info->>'names')::INTEGER[];
   NEW.token_info := NULL;
 
   -- Speed up searches - just use the centroid of the feature

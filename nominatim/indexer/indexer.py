@@ -26,10 +26,7 @@ class AbstractPlacexRunner:
         values = []
         for place in places:
             values.append(place[0])
-            if place.get('name'):
-                values.append(psycopg2.extras.Json(self.tokenizer.tokenize_name(place)))
-            else:
-                values.append(psycopg2.extras.Json('{}'))
+            values.append(psycopg2.extras.Json(self.tokenizer.tokenize(place)))
 
         return """UPDATE placex SET indexed_status = 0, token_info = v.ti
                   FROM (VALUES {}) as v(id, ti)

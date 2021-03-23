@@ -94,7 +94,7 @@ class LegacyNameAnalyzer:
             self.conn.close()
             self.conn = None
 
-    def tokenize_name(self, place):
+    def tokenize(self, place):
         """ Tokenize the given names. `places` is a dictionary of
             properties of the object to get the name tokens for. The place
             must have a property `name` with a dictionary with
@@ -105,9 +105,13 @@ class LegacyNameAnalyzer:
             Returned is a JSON-serializable data structure with the
             information that the SQL part of the tokenizer requires.
         """
-        if not place.get('name'):
-            return []
+        token_info = {}
 
-        with self.conn.cursor() as cur:
-            cur.execute("SELECT make_keywords(%s)::text", (place['name'], ))
-            return cur.fetchone()[0]
+        names = place.get('name')
+
+        if names:
+            with self.conn.cursor() as cur:
+                cur.execute("SELECT make_keywords(%s)::text", (names, ))
+                token_info['names'] = cur.fetchone()[0]
+
+        return token_info
