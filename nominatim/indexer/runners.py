@@ -19,7 +19,13 @@ class AbstractPlacexRunner:
             self.tokenizer.close()
             self.tokenizer = None
 
-    def sql_index_place(self, places):
+
+    def sql_get_object_info(self, place_ids):
+        return """SELECT (placex_prepare_update(placex)).*
+                  FROM placex WHERE place_id IN %s""", (tuple(place_ids), )
+
+
+    def sql_index_places(self, places):
         values = []
         for place in places:
             values.extend((place[x] for x in ('place_id', 'address',
@@ -49,9 +55,9 @@ class RankRunner(AbstractPlacexRunner):
                """.format(self.rank)
 
     def sql_get_objects(self):
-        return """SELECT {} FROM placex
+        return """SELECT place_id FROM placex
                   WHERE indexed_status > 0 and rank_address = {}
-                  ORDER BY geometry_sector""".format(self.FIELDS, self.rank)
+                  ORDER BY geometry_sector""".format(self.rank)
 
 
 class BoundaryRunner(AbstractPlacexRunner):
@@ -70,11 +76,11 @@ class BoundaryRunner(AbstractPlacexRunner):
                """.format(self.rank)
 
     def sql_get_objects(self):
-        return """SELECT {} FROM placex
+        return """SELECT place_id FROM placex
                   WHERE indexed_status > 0 and rank_search = {}
                         and class = 'boundary' and type = 'administrative'
                   ORDER BY partition, admin_level
-               """.format(self.FIELDS, self.rank)
+               """.format(self.rank)
 
 
 class InterpolationRunner:
@@ -101,13 +107,17 @@ class InterpolationRunner:
 
     @staticmethod
     def sql_get_objects():
-        return """SELECT place_id, get_interpolation_address(address, osm_id) as address
-                  FROM location_property_osmline
+        return """SELECT place_id FROM location_property_osmline
                   WHERE indexed_status > 0
                   ORDER BY geometry_sector"""
 
 
-    def sql_index_place(self, places):
+    def sql_get_object_info(self, place_ids):
+        return """SELECT place_id, get_interpolation_address(address, osm_id) as address
+                  FROM location_property_osmline
+                  WHERE place_id IN %s""", (tuple(place_ids), )
+
+    def sql_index_places(self, places):
         values = []
         for place in places:
             values.append(place['place_id'])
@@ -119,10 +129,6 @@ class InterpolationRunner:
                   FROM (VALUES {}) as v(id, addr, ti)
                   WHERE place_id = v.id"""\
                .format(','.join(["(%s, %s::hstore, %s::jsonb)"]  * len(places))), values
-
-        return """UPDATE location_property_osmline
-                  SET indexed_status = 0 WHERE place_id IN %s
-               """, (tuple((i[0] for i in ids)), )
 
 
 class PostcodeRunner:
@@ -148,7 +154,7 @@ class PostcodeRunner:
                   ORDER BY country_code, postcode"""
 
     @staticmethod
-    def sql_index_place(ids):
+    def sql_index_places(ids):
         return """UPDATE location_postcode SET indexed_status = 0
                   WHERE place_id IN %s
-               """, (tuple((i[0] for i in ids)), )
+               """, (tuple(ids), )

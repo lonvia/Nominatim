@@ -48,14 +48,14 @@ class DBConnection:
     """ A single non-blocking database connection.
     """
 
-    def __init__(self, dsn):
+    def __init__(self, dsn, cursor_factory=None):
         self.current_query = None
         self.current_params = None
         self.dsn = dsn
 
         self.conn = None
         self.cursor = None
-        self.connect()
+        self.connect(cursor_factory)
 
     def close(self):
         """ Close all open connections. Does not wait for pending requests.
@@ -66,7 +66,7 @@ class DBConnection:
 
         self.conn = None
 
-    def connect(self):
+    def connect(self, cursor_factory=None):
         """ (Re)connect to the database. Creates an asynchronous connection
             with JIT and parallel processing disabled. If a connection was
             already open, it is closed and a new connection established.
@@ -77,6 +77,8 @@ class DBConnection:
         # Use a dict to hand in the parameters because async is a reserved
         # word in Python3.
         self.conn = psycopg2.connect(**{'dsn' : self.dsn, 'async' : True})
+        if cursor_factory is not None:
+            self.conn.cursor_factory = cursor_factory
         self.wait()
 
         self.cursor = self.conn.cursor()
@@ -110,6 +112,9 @@ class DBConnection:
         self.current_query = sql
         self.current_params = args
         self.cursor.execute(sql, args)
+
+    def fetchall(self):
+        return self.cursor.fetchall()
 
     def fileno(self):
         """ File descriptor to wait for. (Makes this class select()able.)
