@@ -533,8 +533,6 @@ DECLARE
   linked_importance FLOAT;
   linked_wikipedia TEXT;
 
-  token_info INTEGER[];
-
   result BOOLEAN;
 BEGIN
   -- deferred delete
@@ -568,6 +566,7 @@ BEGIN
 
   IF NEW.linked_place_id is not null THEN
     {% if debug %}RAISE WARNING 'place already linked to %', NEW.linked_place_id;{% endif %}
+    NEW.token_info := token_strip_info(NEW.token_info);
     RETURN NEW;
   END IF;
 
@@ -577,12 +576,9 @@ BEGIN
   -- imported as place=postcode. That's why relations are allowed to pass here.
   -- This can go away in a couple of versions.
   IF NEW.class = 'place'  and NEW.type = 'postcode' and NEW.osm_type != 'R' THEN
+    NEW.token_info := token_strip_info(NEW.token_info);
     RETURN NEW;
   END IF;
-
-  -- Extra the tokenizer information from the name field.
-  token_info = (NEW.token_info->>'names')::INTEGER[];
-  NEW.token_info := NULL;
 
   -- Speed up searches - just use the centroid of the feature
   -- cheaper but less acurate
@@ -814,7 +810,7 @@ BEGIN
 
       IF NEW.name is not NULL THEN
           NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-          name_vector := token_info;
+          name_vector := token_get_name_search_tokens(NEW.token_info);
 
           IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
             result := add_location(NEW.place_id, NEW.country_code, NEW.partition,
@@ -849,6 +845,7 @@ BEGIN
       END IF;
       {% endif %}
 
+      NEW.token_info := token_strip_info(NEW.token_info);
       RETURN NEW;
     END IF;
 
@@ -921,7 +918,7 @@ BEGIN
 
   -- Initialise the name vector using our name
   NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-  name_vector := token_info;
+  name_vector := token_get_name_search_tokens(NEW.token_info);
 
   -- make sure all names are in the word table
   IF NEW.admin_level = 2
@@ -1012,6 +1009,7 @@ BEGIN
 
   {% if debug %}RAISE WARNING 'place update % % finsihed.', NEW.osm_type, NEW.osm_id;{% endif %}
 
+  NEW.token_info := token_strip_info(NEW.token_info);
   RETURN NEW;
 END;
 $$
