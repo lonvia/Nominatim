@@ -150,7 +150,7 @@ class LegacyNameAnalyzer:
 
             # terms for other address parts
             token_info['addr'] = {k : self._get_addr_terms(v) for k, v in address.items()
-                                  if k not in ('country', 'street', 'place', 'postcode',
+                                  if k not in ('country', 'street', 'place', 'postcode', 'full',
                                                'housenumber', 'streetnumber', 'conscriptionnumber')}
 
         return token_info
