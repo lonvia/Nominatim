@@ -1,6 +1,7 @@
 """
 Tokenizer implementing nromalisation as used before Nominatim 4.
 """
+import functools
 import re
 
 import psycopg2.extras
@@ -95,6 +96,8 @@ class LegacyNameAnalyzer:
         self.conn.autocommit = True
         psycopg2.extras.register_hstore(self.conn)
 
+        self._precompute_housenumbers()
+
 
     def close(self):
         """ Shut down the analyzer and free all resources.
@@ -127,20 +130,14 @@ class LegacyNameAnalyzer:
 
             if address:
                 # add housenumber tokens to word table
-                hnrs = [v for k, v in address.items()
-                        if k in ('housenumber', 'streetnumber', 'conscriptionnumber')]
+                hnrs = tuple((v for k, v in address.items()
+                        if k in ('housenumber', 'streetnumber', 'conscriptionnumber')))
                 if hnrs:
-                    cur.execute("""SELECT array_agg(getorcreate_housenumber_id(make_standard_name(hnr.name)))::text
-                                   FROM (VALUES {}) as hnr(name)
-                                """.format(','.join(['(%s)']  * len(hnrs))),
-                                hnrs)
-                    token_info['hnr'] = cur.fetchone()[0]
+                    token_info['hnr'] = self._get_housenumber_ids(hnrs)
 
                 # add postcode token to word table
                 if 'postcode' in address:
-                    postcode = address['postcode']
-                    if re.search(r'[:,;]', postcode) is None:
-                        cur.execute('SELECT getorcreate_postcode_id(%s)', (postcode, ))
+                    self._create_postcode_id(address['postcode'])
 
                 # terms for matching up streets and places
                 for atype in ('street', 'place'):
@@ -168,3 +165,26 @@ class LegacyNameAnalyzer:
 
 
         return token_info
+
+    @functools.lru_cache(maxsize=32)
+    def _create_postcode_id(self, postcode):
+        if re.search(r'[:,;]', postcode) is None:
+            with self.conn.cursor() as cur:
+                cur.execute('SELECT getorcreate_postcode_id(%s)', (postcode, ))
+
+    def _get_housenumber_ids(self, hnrs):
+        if hnrs in self._cached_housenumbers:
+            return self._cached_housenumbers[hnrs]
+
+        with self.conn.cursor() as cur:
+            cur.execute("""SELECT array_agg(getorcreate_housenumber_id(make_standard_name(hnr.name)))::text
+                           FROM (VALUES {}) as hnr(name)
+                        """.format(','.join(['(%s)']  * len(hnrs))),
+                        hnrs)
+            return cur.fetchone()[0]
+
+    def _precompute_housenumbers(self):
+        with self.conn.cursor() as cur:
+            cur.execute("""SELECT i, ARRAY[getorcreate_housenumber_id(make_standard_name(i::text))]::text
+                           FROM generate_series(1, 100) as i""")
+            self._cached_housenumbers = {(str(r[0]), ) : r[1] for r in cur}
