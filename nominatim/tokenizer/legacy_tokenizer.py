@@ -142,10 +142,8 @@ class LegacyNameAnalyzer:
                 # terms for matching up streets and places
                 for atype in ('street', 'place'):
                     if atype in address:
-                        cur.execute("""SELECT word_ids_from_name(%s)::text,
-                                              ARRAY[getorcreate_name_id(make_standard_name(%s), '')]::text""",
-                                    (address[atype], address[atype]))
-                        token_info[atype + '_match'], token_info[atype + '_search'] = cur.fetchone()
+                        token_info[atype + '_match'], token_info[atype + '_search'] = \
+                            self._get_street_place_terms(address[atype])
 
                 values = []
                 num = 0
@@ -165,6 +163,14 @@ class LegacyNameAnalyzer:
 
 
         return token_info
+
+    @functools.lru_cache(maxsize=256)
+    def _get_street_place_terms(self, name):
+        with self.conn.cursor() as cur:
+            cur.execute("""SELECT word_ids_from_name(%s)::text,
+                                  ARRAY[getorcreate_name_id(make_standard_name(%s), '')]::text""",
+                        (name, name))
+            return cur.fetchone()
 
     @functools.lru_cache(maxsize=32)
     def _create_postcode_id(self, postcode):
