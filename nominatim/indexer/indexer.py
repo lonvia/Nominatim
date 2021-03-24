@@ -159,52 +159,55 @@ class Indexer:
         """
         LOG.warning("Starting %s (using batch size %s)", runner.name(), batch)
 
-        with WorkerPool(self.dsn, runner, self.num_threads) as pool:
-            total_tuples = 0
-            slices = []
+        try:
+            with WorkerPool(self.dsn, runner, self.num_threads) as pool:
+                total_tuples = 0
+                slices = []
 
-            with connect(self.dsn) as conn:
-                psycopg2.extras.register_hstore(conn, globally=True) #argh global
-                with conn.cursor() as cur:
-                    total_tuples = cur.scalar(runner.sql_count_objects())
-                    LOG.debug("Total number of rows: %i", total_tuples)
+                with connect(self.dsn) as conn:
+                    psycopg2.extras.register_hstore(conn, globally=True) #argh global
+                    with conn.cursor() as cur:
+                        total_tuples = cur.scalar(runner.sql_count_objects())
+                        LOG.debug("Total number of rows: %i", total_tuples)
 
-                conn.commit()
+                    conn.commit()
 
-                progress = ProgressLogger(runner.name(), total_tuples)
-                timing_find_thread = 0
+                    progress = ProgressLogger(runner.name(), total_tuples)
+                    timing_find_thread = 0
 
-                with conn.cursor(name="placeids") as cur:
-                    cur.execute(runner.sql_get_objects())
+                    with conn.cursor(name="placeids") as cur:
+                        cur.execute(runner.sql_get_objects())
 
+                        worker = pool.next_free_worker()
+                        while True:
+                            done_items = worker.continue_slice()
+
+                            if done_items < 0:
+                                ids = [row[0] for row in cur.fetchmany(300)]
+                                if not ids:
+                                    break
+
+                                worker.start_slice(ids, batch)
+                            else:
+                                progress.add(done_items)
+
+                                t0 = time.time()
+                                worker = pool.next_free_worker()
+                                timing_find_thread += time.time() - t0
+
+                    conn.commit()
+
+                # let all workers finish
+                while pool.has_workers():
                     worker = pool.next_free_worker()
-                    while True:
-                        done_items = worker.continue_slice()
+                    done_items = worker.continue_slice()
+                    if done_items < 0:
+                        pool.shutdown_worker(worker)
+                    else:
+                        progress.add(done_items)
 
-                        if done_items < 0:
-                            ids = [row[0] for row in cur.fetchmany(300)]
-                            if not ids:
-                                break
-
-                            worker.start_slice(ids, batch)
-                        else:
-                            progress.add(done_items)
-
-                            t0 = time.time()
-                            worker = pool.next_free_worker()
-                            timing_find_thread += time.time() - t0
-
-                conn.commit()
-
-            # let all workers finish
-            while pool.has_workers():
-                worker = pool.next_free_worker()
-                done_items = worker.continue_slice()
-                if done_items < 0:
-                    pool.shutdown_worker(worker)
-                else:
-                    progress.add(done_items)
-
-        total_time = progress.done()
-        LOG.warning("Time waiting for Postgresql: {:.2f}s ({:.2f}%)".format(
-                     timing_find_thread, timing_find_thread*100/total_time))
+            total_time = progress.done()
+            LOG.warning("Time waiting for Postgresql: {:.2f}s ({:.2f}%)".format(
+                         timing_find_thread, timing_find_thread*100/total_time))
+        finally:
+            runner.close()

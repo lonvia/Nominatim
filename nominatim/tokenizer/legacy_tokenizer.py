@@ -102,6 +102,9 @@ class LegacyNameAnalyzer:
     def close(self):
         """ Shut down the analyzer and free all resources.
         """
+        print("CACHE INFO postcode", self._create_postcode_id.cache_info())
+        print("CACHE INFO street/place", self._get_street_place_terms.cache_info())
+        print("CACHE INFO addr", self._get_addr_terms.cache_info())
         if self.conn:
             self.conn.close()
             self.conn = None
