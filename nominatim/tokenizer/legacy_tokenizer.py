@@ -122,47 +122,44 @@ class LegacyNameAnalyzer:
         names = place.get('name')
         address = place.get('address')
 
-        with self.conn.cursor() as cur:
-            if names:
+        if names:
+            with self.conn.cursor() as cur:
                 # create the token IDs for all names
                 cur.execute("SELECT make_keywords(%s)::text", (names, ))
                 token_info['names'] = cur.fetchone()[0]
 
-            if address:
-                # add housenumber tokens to word table
-                hnrs = tuple((v for k, v in address.items()
-                        if k in ('housenumber', 'streetnumber', 'conscriptionnumber')))
-                if hnrs:
-                    token_info['hnr'] = self._get_housenumber_ids(hnrs)
+        if address:
+            # add housenumber tokens to word table
+            hnrs = tuple((v for k, v in address.items()
+                    if k in ('housenumber', 'streetnumber', 'conscriptionnumber')))
+            if hnrs:
+                token_info['hnr'] = self._get_housenumber_ids(hnrs)
 
-                # add postcode token to word table
-                if 'postcode' in address:
-                    self._create_postcode_id(address['postcode'])
+            # add postcode token to word table
+            if 'postcode' in address:
+                self._create_postcode_id(address['postcode'])
 
-                # terms for matching up streets and places
-                for atype in ('street', 'place'):
-                    if atype in address:
-                        token_info[atype + '_match'], token_info[atype + '_search'] = \
-                            self._get_street_place_terms(address[atype])
+            # terms for matching up streets and places
+            for atype in ('street', 'place'):
+                if atype in address:
+                    token_info[atype + '_match'], token_info[atype + '_search'] = \
+                        self._get_street_place_terms(address[atype])
 
-                values = []
-                num = 0
-                for k, v in address.items():
-                    if v and k not in ('country', 'street', 'place', 'postcode',
-                                       'housenumber', 'streetnumber', 'conscriptionnumber'):
-                        values.extend((k, v))
-                        num += 1
-
-                if values:
-                    cur.execute("""SELECT v.k, addr_ids_from_name(v.v)::text,
-                                          word_ids_from_name(v.v)::text
-                                   FROM (VALUES {}) as v(k, v)
-                                """.format(','.join(['(%s, %s)'] * num)),
-                                values)
-                    token_info['addr'] = {r[0] : r[1:3] for r in cur}
-
+            # terms for other address parts
+            token_info['addr'] = {k : self._get_addr_terms(v) for k, v in address.items()
+                                  if k not in ('country', 'street', 'place', 'postcode',
+                                               'housenumber', 'streetnumber', 'conscriptionnumber')}
 
         return token_info
+
+    @functools.lru_cache(maxsize=1024)
+    def _get_addr_terms(self, name):
+        with self.conn.cursor() as cur:
+            cur.execute("""SELECT addr_ids_from_name(%s)::text,
+                                  word_ids_from_name(%s)::text""",
+                        (name, name))
+            return cur.fetchone()
+
 
     @functools.lru_cache(maxsize=256)
     def _get_street_place_terms(self, name):

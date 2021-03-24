@@ -53,7 +53,7 @@ class RankRunner(AbstractPlacexRunner):
     def sql_get_objects(self):
         return """SELECT place_id FROM placex
                   WHERE indexed_status > 0 and rank_address = {}
-                  ORDER BY geometry_sector""".format(self.rank)
+                  ORDER BY geometry_sector, centroid""".format(self.rank)
 
 
 class BoundaryRunner(AbstractPlacexRunner):
