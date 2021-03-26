@@ -264,7 +264,6 @@ DECLARE
   addr_item RECORD;
   addr_place RECORD;
   parent_address_place_ids BIGINT[];
-  extra_addr_ids BIGINT[] := '{}'::BIGINT[];
 BEGIN
   nameaddress_vector := '{}'::INTEGER[];
 
@@ -295,7 +294,7 @@ BEGIN
       -- If the parent already lists the place in place_address line, then we
       -- are done. Otherwise, add its own place_address line.
       IF not parent_address_place_ids @> ARRAY[addr_place.place_id] THEN
-        extra_addr_ids := extra_addr_ids || addr_place.place_id;
+        nameaddress_vector := array_merge(nameaddress_vector, addr_place.keywords);
 
         INSERT INTO place_addressline (place_id, address_place_id, fromarea,
                                        isaddress, distance, cached_rank_address)
@@ -304,13 +303,6 @@ BEGIN
       END IF;
     END IF;
   END LOOP;
-
-  -- Pick up search terms for any extra address line we have added.
-  IF array_length(extra_addr_ids, 1) > 0 THEN
-    SELECT array_merge_agg(search_name.name_vector) INTO extra_address_vector
-      FROM search_name WHERE place_id = ANY(extra_addr_ids);
-    nameaddress_vector := array_merge(extra_address_vector, nameaddress_vector);
-  END IF;
 
   name_vector := token_get_name_search_tokens(token_info);
 
@@ -401,10 +393,13 @@ BEGIN
   LOOP
     IF location.place_id is null THEN
       {% if not db.reverse_only %}
-      nameaddress_vector := array_merge(nameaddress_vector,
-                                        location.search_tokens::int[]);
+      nameaddress_vector := array_merge(nameaddress_vector, location.search_tokens);
       {% endif %}
     ELSE
+      {% if not db.reverse_only %}
+      nameaddress_vector := array_merge(nameaddress_vector, location.keywords);
+      {% endif %}
+
       location_isaddress := not address_havelevel[location.rank_address];
       IF not address_havelevel[location.rank_address] THEN
         address_havelevel[location.rank_address] := true;
@@ -475,21 +470,15 @@ BEGIN
       END IF;
     END IF;
 
-    addr_place_ids := addr_place_ids || location.place_id;
+    {% if not db.reverse_only %}
+    nameaddress_vector := array_merge(nameaddress_vector, location.keywords);
+    {% endif %}
 
     INSERT INTO place_addressline (place_id, address_place_id, fromarea,
                                      isaddress, distance, cached_rank_address)
         VALUES (obj_place_id, location.place_id, not location.isguess,
                 location_isaddress, location.distance, location.rank_address);
   END LOOP;
-
-  {% if not db.reverse_only %}
-    -- Get the search name for all address parts.
-    SELECT array_merge_agg(name_vector) INTO new_address_vector
-      FROM search_name WHERE place_id = ANY(addr_place_ids);
-    nameaddress_vector := array_merge(new_address_vector, nameaddress_vector);
-  {% endif %}
-
 END;
 $$
 LANGUAGE plpgsql;
@@ -674,6 +663,8 @@ DECLARE
   linked_node_id BIGINT;
   linked_importance FLOAT;
   linked_wikipedia TEXT;
+
+  is_place_address BOOLEAN;
 
   result BOOLEAN;
 BEGIN
@@ -878,13 +869,14 @@ BEGIN
 
     {% if debug %}RAISE WARNING 'finding street for % %', NEW.osm_type, NEW.osm_id;{% endif %}
     NEW.parent_place_id := null;
+    is_place_address := coalesce(not NEW.address ? 'street' and NEW.address ? 'place', FALSE);
 
     -- We have to find our parent road.
     NEW.parent_place_id := find_parent_for_poi(NEW.osm_type, NEW.osm_id,
                                                NEW.partition,
                                                ST_Envelope(NEW.geometry),
                                                addr_street, addr_place,
-                                               not NEW.address ? 'street' and NEW.address ? 'place');
+                                               is_place_address);
 
     -- If we found the road take a shortcut here.
     -- Otherwise fall back to the full address getting method below.
@@ -894,7 +886,7 @@ BEGIN
       SELECT p.country_code, p.postcode, p.name FROM placex p
        WHERE p.place_id = NEW.parent_place_id INTO location;
 
-      IF not NEW.address ? 'street' and NEW.address ? 'place' THEN
+      IF is_place_address THEN
         -- Check if the addr:place tag is part of the parent name
         SELECT count(*) INTO i
           FROM svals(location.name) AS pname WHERE pname = NEW.address->'place';
@@ -918,16 +910,6 @@ BEGIN
 
       IF NEW.name is not NULL THEN
           NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-
-          IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
-            name_vector := token_get_name_search_tokens(NEW.token_info);
-            result := add_location(NEW.place_id, NEW.country_code, NEW.partition,
-                                   name_vector, NEW.rank_search, NEW.rank_address,
-                                   upper(trim(NEW.address->'postcode')), NEW.geometry,
-                                   NEW.centroid);
-            {% if debug %}RAISE WARNING 'Place added to location table';{% endif %}
-          END IF;
-
       END IF;
 
       {% if not db.reverse_only %}
@@ -935,7 +917,7 @@ BEGIN
         SELECT * INTO name_vector, nameaddress_vector
           FROM create_poi_search_terms(NEW.place_id,
                                        NEW.partition, NEW.parent_place_id,
-                                       coalesce(not NEW.address ? 'street' and NEW.address ? 'place', FALSE),
+                                       is_place_address,
                                        NEW.country_code, NEW.token_info,
                                        NEW.centroid);
 
@@ -1031,7 +1013,6 @@ BEGIN
 
   -- Initialise the name vector using our name
   NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-  name_vector := token_get_name_search_tokens(NEW.token_info);
 
   -- make sure all names are in the word table
   IF NEW.admin_level = 2
@@ -1074,7 +1055,7 @@ BEGIN
   ELSEIF NEW.rank_address > 25 THEN
     max_rank := 25;
   ELSE
-    max_rank = NEW.rank_address;
+    max_rank := NEW.rank_address;
   END IF;
 
   SELECT * FROM insert_addresslines(NEW.place_id, NEW.partition, max_rank,
@@ -1096,25 +1077,33 @@ BEGIN
   IF NEW.name IS NOT NULL THEN
 
     IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
-      result := add_location(NEW.place_id, NEW.country_code, NEW.partition, name_vector, NEW.rank_search, NEW.rank_address, upper(trim(NEW.address->'postcode')), NEW.geometry, NEW.centroid);
+      result := add_location(NEW.place_id, NEW.country_code, NEW.partition,
+                             token_get_name_search_tokens(NEW.token_info),
+                             NEW.rank_search, NEW.rank_address,
+                             upper(trim(NEW.address->'postcode')),
+                             NEW.geometry, NEW.centroid);
       {% if debug %}RAISE WARNING 'added to location (full)';{% endif %}
     END IF;
 
-    IF NEW.rank_search between 26 and 27 and NEW.class = 'highway' THEN
+    IF NEW.rank_search between 26 and 27 THEN
       result := insertLocationRoad(NEW.partition, NEW.place_id, NEW.country_code, NEW.geometry);
       {% if debug %}RAISE WARNING 'insert into road location table (full)';{% endif %}
     END IF;
 
-    result := insertSearchName(NEW.partition, NEW.place_id, name_vector,
-                               NEW.rank_search, NEW.rank_address, NEW.geometry);
-    {% if debug %}RAISE WARNING 'added to search name (full)';{% endif %}
+    IF NEW.rank_address between 16 and 27 THEN
+      result := insertSearchName(NEW.partition, NEW.place_id,
+                                 token_get_name_match_tokens(NEW.token_info),
+                                 NEW.rank_search, NEW.rank_address, NEW.geometry);
+      {% if debug %}RAISE WARNING 'added to search name (full)';{% endif %}
+    END IF;
 
     {% if not db.reverse_only %}
         INSERT INTO search_name (place_id, search_rank, address_rank,
                                  importance, country_code, name_vector,
                                  nameaddress_vector, centroid)
                VALUES (NEW.place_id, NEW.rank_search, NEW.rank_address,
-                       NEW.importance, NEW.country_code, name_vector,
+                       NEW.importance, NEW.country_code,
+                       token_get_name_search_tokens(NEW.token_info),
                        nameaddress_vector, NEW.centroid);
     {% endif %}
 

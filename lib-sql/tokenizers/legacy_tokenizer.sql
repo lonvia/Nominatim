@@ -5,6 +5,13 @@ AS $$
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
 
+CREATE OR REPLACE FUNCTION token_get_name_match_tokens(info JSONB)
+  RETURNS INTEGER[]
+AS $$
+  SELECT (info->>'names')::INTEGER[]
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
+
 CREATE OR REPLACE FUNCTION token_get_housenumber_search_tokens(info JSONB)
   RETURNS INTEGER[]
 AS $$
