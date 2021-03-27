@@ -157,11 +157,7 @@ BEGIN
                                                  token_addr_place_match_tokens(NEW.token_info),
                                                  NEW.partition, place_centroid, NEW.linegeo);
 
-  IF NEW.address is not NULL AND NEW.address ? 'postcode' AND NEW.address->'postcode' not similar to '%(,|;)%' THEN
-    interpol_postcode := NEW.address->'postcode';
-  ELSE
-    interpol_postcode := NULL;
-  END IF;
+  interpol_postcode := token_normalized_postcode(NEW.address->'postcode');
 
   NEW.token_info := token_strip_info(NEW.token_info);
   IF NEW.address ? '_inherited'THEN
@@ -212,12 +208,13 @@ BEGIN
 
             -- determine postcode
             postcode := coalesce(interpol_postcode,
-                                 prevnode.address->'postcode',
-                                 nextnode.address->'postcode',
+                                 token_normalized_postcode(prevnode.address->'postcode'),
+                                 token_normalized_postcode(nextnode.address->'postcode'),
                                  postcode);
 
             IF postcode is NULL THEN
-                SELECT placex.postcode FROM placex WHERE place_id = NEW.parent_place_id INTO postcode;
+                SELECT token_normalized_postcode(placex.postcode) FROM placex
+                  WHERE place_id = NEW.parent_place_id INTO postcode;
             END IF;
             IF postcode is NULL THEN
                 postcode := get_nearest_postcode(NEW.country_code, nextnode.geometry);
@@ -227,7 +224,7 @@ BEGIN
                 NEW.startnumber := startnumber;
                 NEW.endnumber := endnumber;
                 NEW.linegeo := sectiongeo;
-                NEW.postcode := upper(trim(postcode));
+                NEW.postcode := postcode;
              ELSE
               insert into location_property_osmline
                      (linegeo, partition, osm_id, parent_place_id,

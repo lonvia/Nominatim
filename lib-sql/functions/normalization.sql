@@ -75,7 +75,7 @@ DECLARE
   lookup_word TEXT;
   return_word_id INTEGER;
 BEGIN
-  lookup_word := upper(trim(postcode));
+  lookup_word := token_normalized_postcode(postcode);
   lookup_token := ' ' || make_standard_name(lookup_word);
   SELECT min(word_id) FROM word
     WHERE word_token = lookup_token and word = lookup_word

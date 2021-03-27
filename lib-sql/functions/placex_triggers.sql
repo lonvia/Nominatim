@@ -898,15 +898,9 @@ BEGIN
       NEW.country_code := location.country_code;
       {% if debug %}RAISE WARNING 'Got parent details from search name';{% endif %}
 
-      -- determine postcode
-      IF NEW.address is not null AND NEW.address ? 'postcode' THEN
-          NEW.postcode = upper(trim(NEW.address->'postcode'));
-      ELSE
-         NEW.postcode := location.postcode;
-      END IF;
-      IF NEW.postcode is null THEN
-        NEW.postcode := get_nearest_postcode(NEW.country_code, NEW.geometry);
-      END IF;
+      NEW.postcode := coalesce(token_normalized_postcode(NEW.address->'postcode'),
+                               location.postcode,
+                               get_nearest_postcode(NEW.country_code, NEW.geometry));
 
       IF NEW.name is not NULL THEN
           NEW.name := add_default_place_name(NEW.country_code, NEW.name);
@@ -1064,14 +1058,8 @@ BEGIN
 
   {% if debug %}RAISE WARNING 'RETURN insert_addresslines: %, %, %', NEW.parent_place_id, NEW.postcode, nameaddress_vector;{% endif %}
 
-  IF NEW.address is not null AND NEW.address ? 'postcode' 
-     AND NEW.address->'postcode' not similar to '%(,|;)%' THEN
-    NEW.postcode := upper(trim(NEW.address->'postcode'));
-  END IF;
-
-  IF NEW.postcode is null AND NEW.rank_search > 8 THEN
-    NEW.postcode := get_nearest_postcode(NEW.country_code, NEW.geometry);
-  END IF;
+  NEW.postcode := coalesce(token_normalized_postcode(NEW.address->'postcode'),
+                           NEW.postcode);
 
   -- if we have a name add this to the name search table
   IF NEW.name IS NOT NULL THEN
@@ -1079,8 +1067,7 @@ BEGIN
     IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
       result := add_location(NEW.place_id, NEW.country_code, NEW.partition,
                              token_get_name_search_tokens(NEW.token_info),
-                             NEW.rank_search, NEW.rank_address,
-                             upper(trim(NEW.address->'postcode')),
+                             NEW.rank_search, NEW.rank_address, NEW.postcode,
                              NEW.geometry, NEW.centroid);
       {% if debug %}RAISE WARNING 'added to location (full)';{% endif %}
     END IF;
@@ -1109,7 +1096,11 @@ BEGIN
 
   END IF;
 
-  {% if debug %}RAISE WARNING 'place update % % finsihed.', NEW.osm_type, NEW.osm_id;{% endif %}
+  IF NEW.postcode is null THEN
+    NEW.postcode := get_nearest_postcode(NEW.country_code, NEW.geometry);
+  END IF;
+
+  {% if debug %}RAISE WARNING 'place update % % finished.', NEW.osm_type, NEW.osm_id;{% endif %}
 
   NEW.token_info := token_strip_info(NEW.token_info);
   RETURN NEW;

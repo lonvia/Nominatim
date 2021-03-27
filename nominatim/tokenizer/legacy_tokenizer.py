@@ -109,6 +109,20 @@ class LegacyNameAnalyzer:
             self.conn.close()
             self.conn = None
 
+
+    def get_normalized_postcode(self, place):
+        """ Get the normalized version of the postcode.
+
+            This function is currently unused but mat be put into use later.
+            It must return exactly the same normalized form as the SQL
+            function 'token_normalized_postcode()'.
+        """
+        if 'address' not in place:
+            return None
+
+        return self._normalize_postcode(place['address'].get('postcode'))
+
+
     def tokenize(self, place):
         """ Tokenize the given names. `places` is a dictionary of
             properties of the object to get the name tokens for. The place
@@ -139,8 +153,9 @@ class LegacyNameAnalyzer:
                 token_info['hnr'] = self._get_housenumber_ids(hnrs)
 
             # add postcode token to word table
-            if 'postcode' in address:
-                self._create_postcode_id(address['postcode'])
+            postcode = self._normalize_postcode(address.get('postcode'))
+            if postcode:
+                self._create_postcode_id(postcode)
 
             # terms for matching up streets and places
             for atype in ('street', 'place'):
@@ -154,6 +169,14 @@ class LegacyNameAnalyzer:
                                                'housenumber', 'streetnumber', 'conscriptionnumber')}
 
         return token_info
+
+
+    def _normalize_postcode(self, postcode):
+        if postcode is not None and re.search(r'[:,;]', postcode) is None:
+          return postcode.strip().upper()
+
+        return None
+
 
     @functools.lru_cache(maxsize=1024)
     def _get_addr_terms(self, name):
@@ -174,9 +197,8 @@ class LegacyNameAnalyzer:
 
     @functools.lru_cache(maxsize=32)
     def _create_postcode_id(self, postcode):
-        if re.search(r'[:,;]', postcode) is None:
-            with self.conn.cursor() as cur:
-                cur.execute('SELECT getorcreate_postcode_id(%s)', (postcode, ))
+        with self.conn.cursor() as cur:
+            cur.execute('SELECT create_postcode_id(%s)', (postcode, ))
 
     def _get_housenumber_ids(self, hnrs):
         if hnrs in self._cached_housenumbers:

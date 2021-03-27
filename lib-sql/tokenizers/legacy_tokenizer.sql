@@ -61,6 +61,13 @@ AS $$
   SELECT key, (value->>1)::int[], (value->>0)::int[] FROM jsonb_each(info->'addr');
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
+
+CREATE OR REPLACE FUNCTION token_normalized_postcode(postcode TEXT)
+  RETURNS TEXT
+AS $$
+  SELECT CASE WHEN postcode SIMILAR TO '%(,|;)%' THEN NULL ELSE upper(trim(postcode))END;
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
 -- --------------- private functions ----------------------------
 
 
@@ -156,4 +163,26 @@ BEGIN
 END;
 $$
 LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION create_postcode_id(postcode TEXT)
+  RETURNS INTEGER
+  AS $$
+DECLARE
+  lookup_token TEXT;
+  return_word_id INTEGER;
+BEGIN
+  lookup_token := ' ' || make_standard_name(postcode);
+  SELECT min(word_id) FROM word
+    WHERE word_token = lookup_token and word = postcode
+          and class='place' and type='postcode'
+    INTO return_word_id;
+  IF return_word_id IS NULL THEN
+    return_word_id := nextval('seq_word');
+    INSERT INTO word VALUES (return_word_id, lookup_token, postcode,
+                             'place', 'postcode', null, 0);
+  END IF;
+  RETURN return_word_id;
+END;
+$$
+LANGUAGE plpgsql STRICT;
 
