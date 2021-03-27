@@ -614,7 +614,12 @@ END;
 $$
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION placex_prepare_update(p placex, OUT name HSTORE, OUT address HSTORE)
+-- country_feature is set if this is an administrative boundary for the country
+-- with the given country code.
+CREATE OR REPLACE FUNCTION placex_prepare_update(p placex,
+                                                 OUT name HSTORE,
+                                                 OUT address HSTORE,
+                                                 OUT country_feature VARCHAR)
   AS $$
 BEGIN
   -- For POI nodes, check if the address should be derived from a surrounding
@@ -635,6 +640,13 @@ BEGIN
 
   address := address - '_unlisted_place'::TEXT;
   name := p.name;
+
+  country_feature := CASE WHEN p.admin_level = 2
+                               and p.class = 'boundary' and p.type = 'administrative'
+                               and p.osm_type = 'R'
+                          THEN p.country_code
+                          ELSE null
+                     END;
 END;
 $$
 LANGUAGE plpgsql STABLE;
@@ -1007,15 +1019,11 @@ BEGIN
   -- Initialise the name vector using our name
   NEW.name := add_default_place_name(NEW.country_code, NEW.name);
 
-  -- make sure all names are in the word table
   IF NEW.admin_level = 2
      AND NEW.class = 'boundary' AND NEW.type = 'administrative'
      AND NEW.country_code IS NOT NULL AND NEW.osm_type = 'R'
   THEN
-    PERFORM create_country(NEW.name, lower(NEW.country_code));
-    {% if debug %}RAISE WARNING 'Country names updated';{% endif %}
-
-    -- Also update the list of country names. Adding an additional sanity
+    -- Update the list of country names. Adding an additional sanity
     -- check here: make sure the country does overlap with the area where
     -- we expect it to be as per static country grid.
     FOR location IN

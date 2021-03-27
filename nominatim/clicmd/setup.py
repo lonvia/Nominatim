@@ -115,11 +115,13 @@ class SetupAll:
             database_import.load_data(args.config.get_libpq_dsn(),
                                       args.threads or psutil.cpu_count() or 1)
 
-            LOG.warning("Setting up tokenizer")
-            tokenizer = tokenizer_factory.create_tokenizer(args.config,
-                                                           args.sqllib_dir,
-                                                           args.phplib_dir)
+        LOG.warning("Setting up tokenizer")
+        tokenizer = tokenizer_factory.create_tokenizer(args.config,
+                                                       args.sqllib_dir,
+                                                       args.phplib_dir)
 
+
+        if args.continue_at is None or args.continue_at == 'load-data':
             LOG.warning('Calculate postcodes')
             run_legacy_script('setup.php', '--calculate-postcodes',
                               nominatim_env=args, throw_on_fail=not args.ignore_errors)
@@ -136,7 +138,7 @@ class SetupAll:
                                                   args.sqllib_dir,
                                                   drop=args.no_updates)
             LOG.warning('Create search index for default country names.')
-            database_import.create_country_names(conn, args.config)
+            database_import.create_country_names(conn, tokenizer, args.config.LANGUAGES)
 
         webdir = args.project_dir / 'website'
         LOG.warning('Setup website at %s', webdir)

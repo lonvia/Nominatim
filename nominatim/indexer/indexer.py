@@ -6,8 +6,6 @@ import logging
 import select
 import time
 
-import psycopg2.extras
-
 from .progress import ProgressLogger
 from .worker import IndexWorker
 from ..db.connection import connect
@@ -165,7 +163,6 @@ class Indexer:
                 slices = []
 
                 with connect(self.dsn) as conn:
-                    psycopg2.extras.register_hstore(conn, globally=True) #argh global
                     with conn.cursor() as cur:
                         total_tuples = cur.scalar(runner.sql_count_objects())
                         LOG.debug("Total number of rows: %i", total_tuples)

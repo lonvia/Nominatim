@@ -110,6 +110,17 @@ class LegacyNameAnalyzer:
             self.conn = None
 
 
+    def add_country_words(self, names):
+        """ Add the given country names. 'names' is an iterable of tuple pairs
+            with country_code and the name.
+        """
+        with self.conn.cursor() as cur:
+            cur.execute("""SELECT getorcreate_country(make_standard_name(v.name), v.cc)
+                           FROM (VALUES {}) as v(cc, name)
+                        """.format(','.join(["(%s, %s)"]  * len(names))),
+                        [val for sublist in names for val in sublist])
+
+
     def normalize_postcode(self, postcode):
         """ Get the normalized version of the postcode.
 
@@ -147,10 +158,17 @@ class LegacyNameAnalyzer:
         address = place.get('address')
 
         if names:
+            country_feature = place.get('country_feature')
+
             with self.conn.cursor() as cur:
                 # create the token IDs for all names
                 cur.execute("SELECT make_keywords(%s)::text", (names, ))
                 token_info['names'] = cur.fetchone()[0]
+
+                # also add country tokens, if applicable
+                if country_feature and re.fullmatch(r'[A-Za-z][A-Za-z]', country_feature):
+                    cur.execute("SELECT create_country(%s, %s)",
+                                (names, country_feature.lower()))
 
         if address:
             # add housenumber tokens to word table

@@ -92,29 +92,8 @@ $$
 LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION getorcreate_country(lookup_word TEXT,
-                                               lookup_country_code varchar(2))
-  RETURNS INTEGER
-  AS $$
-DECLARE
-  lookup_token TEXT;
-  return_word_id INTEGER;
-BEGIN
-  lookup_token := ' '||trim(lookup_word);
-  SELECT min(word_id) FROM word
-    WHERE word_token = lookup_token and country_code=lookup_country_code
-    INTO return_word_id;
-  IF return_word_id IS NULL THEN
-    return_word_id := nextval('seq_word');
-    INSERT INTO word VALUES (return_word_id, lookup_token, null,
-                             null, null, lookup_country_code, 0);
-  END IF;
-  RETURN return_word_id;
-END;
-$$
-LANGUAGE plpgsql;
-
-
+-- XXX Function kept for initial postcode creation (UK and GB tables).
+-- Needs to be removed when postcode creation is rewritten.
 CREATE OR REPLACE FUNCTION getorcreate_amenity(lookup_word TEXT, normalized_word TEXT,
                                                lookup_class text, lookup_type text)
   RETURNS INTEGER
@@ -189,43 +168,8 @@ $$
 LANGUAGE plpgsql;
 
 
--- Normalize a string and lookup its word ids (partial words).
-CREATE OR REPLACE FUNCTION addr_ids_from_name(lookup_word TEXT)
-  RETURNS INTEGER[]
-  AS $$
-DECLARE
-  words TEXT[];
-  id INTEGER;
-  return_word_id INTEGER[];
-  word_ids INTEGER[];
-  j INTEGER;
-BEGIN
-  words := string_to_array(make_standard_name(lookup_word), ' ');
-  IF array_upper(words, 1) IS NOT NULL THEN
-    FOR j IN 1..array_upper(words, 1) LOOP
-      IF (words[j] != '') THEN
-        SELECT array_agg(word_id) INTO word_ids
-          FROM word
-         WHERE word_token = words[j] and class is null and type is null;
-
-        IF word_ids IS NULL THEN
-          id := nextval('seq_word');
-          INSERT INTO word VALUES (id, words[j], null, null, null, null, 0);
-          return_word_id := return_word_id || id;
-        ELSE
-          return_word_id := array_merge(return_word_id, word_ids);
-        END IF;
-      END IF;
-    END LOOP;
-  END IF;
-
-  RETURN return_word_id;
-END;
-$$
-LANGUAGE plpgsql;
-
-
 -- Normalize a string and look up its name ids (full words).
+-- XXX still used in Tiger and AUX imports
 CREATE OR REPLACE FUNCTION word_ids_from_name(lookup_word TEXT)
   RETURNS INTEGER[]
   AS $$
@@ -241,36 +185,6 @@ BEGIN
 END;
 $$
 LANGUAGE plpgsql STABLE STRICT;
-
-
-CREATE OR REPLACE FUNCTION create_country(src HSTORE, country_code varchar(2))
-  RETURNS VOID
-  AS $$
-DECLARE
-  s TEXT;
-  w INTEGER;
-  words TEXT[];
-  item RECORD;
-  j INTEGER;
-BEGIN
-  FOR item IN SELECT (each(src)).* LOOP
-
-    s := make_standard_name(item.value);
-    w := getorcreate_country(s, country_code);
-
-    words := regexp_split_to_array(item.value, E'[,;()]');
-    IF array_upper(words, 1) != 1 THEN
-      FOR j IN 1..array_upper(words, 1) LOOP
-        s := make_standard_name(words[j]);
-        IF s != '' THEN
-          w := getorcreate_country(s, country_code);
-        END IF;
-      END LOOP;
-    END IF;
-  END LOOP;
-END;
-$$
-LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION make_keywords(src TEXT)

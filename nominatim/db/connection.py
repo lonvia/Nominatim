@@ -116,6 +116,10 @@ def connect(dsn):
     """
     try:
         conn = psycopg2.connect(dsn, connection_factory=_Connection)
+        try:
+            psycopg2.extras.register_hstore(conn, globally=True) #XXX do this only once
+        except psycopg2.ProgrammingError:
+            pass # ignore errors where hstore is not yet installed
         ctxmgr = contextlib.closing(conn)
         ctxmgr.connection = conn
         return ctxmgr

@@ -304,34 +304,27 @@ def create_search_indices(conn, config, sqllib_dir, drop=False):
 
     sql.run_sql_file(conn, 'indices.sql', drop=drop)
 
-def create_country_names(conn, config):
+
+def create_country_names(conn, tokenizer, languages=None):
     """ Create search index for default country names.
     """
 
+    # set of pairs (country_code, name)
+    names = {('gb', 'UK'), ('us', 'United States')}
+
     with conn.cursor() as cur:
-        cur.execute("""SELECT getorcreate_country(make_standard_name('uk'), 'gb')""")
-        cur.execute("""SELECT getorcreate_country(make_standard_name('united states'), 'us')""")
-        cur.execute("""SELECT COUNT(*) FROM
-                       (SELECT getorcreate_country(make_standard_name(country_code),
-                       country_code) FROM country_name WHERE country_code is not null) AS x""")
-        cur.execute("""SELECT COUNT(*) FROM
-                       (SELECT getorcreate_country(make_standard_name(name->'name'), country_code) 
-                       FROM country_name WHERE name ? 'name') AS x""")
-        sql_statement = """SELECT COUNT(*) FROM (SELECT getorcreate_country(make_standard_name(v),
-                           country_code) FROM (SELECT country_code, skeys(name)
-                           AS k, svals(name) AS v FROM country_name) x WHERE k"""
+        cur.execute("""SELECT country_code, name FROM country_name
+                       WHERE country_code is not null""")
+        for row in cur:
+            # country codes
+            names.add((row[0], row[0]))
 
-        languages = config.LANGUAGES
-
-        if languages:
-            sql_statement = "{} IN (".format(sql_statement)
-            delim = ''
-            for language in languages.split(','):
-                sql_statement = "{}{}'name:{}'".format(sql_statement, delim, language)
-                delim = ', '
-            sql_statement = '{})'.format(sql_statement)
-        else:
-            sql_statement = "{} LIKE 'name:%'".format(sql_statement)
-        sql_statement = "{}) v".format(sql_statement)
-        cur.execute(sql_statement)
+            # country names (only in languages as provided)
+            if row[1]:
+                for key, val in row[1].items():
+                    if key == 'name' or \
+                       (key.startswith('name:') and (not languages or key[5:] in languages)):
+                        names.add((row[0], val))
     conn.commit()
+
+    tokenizer.get_name_analyzer().add_country_words(names)
