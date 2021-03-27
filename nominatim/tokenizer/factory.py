@@ -61,7 +61,7 @@ def create_tokenizer(config, sqllib_dir, phplib_dir):
     tokenizer_module = _import_tokenizer(basedir / 'tokenizer.py')
 
     tokenizer = tokenizer_module.create(config.get_libpq_dsn(), basedir)
-    tokenizer.init_new_db()
+    tokenizer.init_new_db(config)
 
     return tokenizer
 

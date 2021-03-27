@@ -108,7 +108,7 @@ class SetupAll:
 
             LOG.warning('Initialise tables')
             with connect(args.config.get_libpq_dsn()) as conn:
-                database_import.truncate_data_tables(conn, args.config.MAX_WORD_FREQUENCY)
+                database_import.truncate_data_tables(conn)
 
         if args.continue_at is None or args.continue_at == 'load-data':
             LOG.warning('Load data into placex table')

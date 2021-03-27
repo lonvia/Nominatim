@@ -22,7 +22,7 @@ class LegacyTokenizer:
         self.data_dir = data_dir
 
 
-    def init_new_db(self):
+    def init_new_db(self, config):
         """ Set up the tokenizer for a new import.
 
             This copies all necessary data in the project directory to make
@@ -33,8 +33,16 @@ class LegacyTokenizer:
             use the content of the placex table to initialise its data
             structures.
         """
-        self.update_sql_functions()
         with connect(self.dsn) as conn:
+            with conn.cursor() as cur:
+                # Used by getorcreate_word_id to ignore frequent partial words.
+                # Must be set to a fixed number on import and then never changed.
+                cur.execute("""CREATE OR REPLACE FUNCTION get_maxwordfreq()
+                               RETURNS integer AS
+                               $$ SELECT %s as maxwordfreq $$ LANGUAGE SQL IMMUTABLE
+                            """, (int(config.MAX_WORD_FREQUENCY), ))
+
+            self.update_sql_functions()
             self._compute_word_frequencies(conn)
 
 

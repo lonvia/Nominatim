@@ -205,7 +205,7 @@ def create_partition_tables(conn, config, sqllib_dir):
     sql.run_sql_file(conn, 'partition-tables.src.sql')
 
 
-def truncate_data_tables(conn, max_word_frequency=None):
+def truncate_data_tables(conn):
     """ Truncate all data tables to prepare for a fresh load.
     """
     with conn.cursor() as cur:
@@ -229,14 +229,7 @@ def truncate_data_tables(conn, max_word_frequency=None):
         for table in [r[0] for r in list(cur)]:
             cur.execute('TRUNCATE ' + table)
 
-        if max_word_frequency is not None:
-            # Used by getorcreate_word_id to ignore frequent partial words.
-            cur.execute("""CREATE OR REPLACE FUNCTION get_maxwordfreq()
-                           RETURNS integer AS $$
-                             SELECT {} as maxwordfreq;
-                           $$ LANGUAGE SQL IMMUTABLE
-                        """.format(max_word_frequency))
-        conn.commit()
+    conn.commit()
 
 _COPY_COLUMNS = 'osm_type, osm_id, class, type, name, admin_level, address, extratags, geometry'
 
