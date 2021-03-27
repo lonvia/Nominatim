@@ -68,6 +68,13 @@ AS $$
   SELECT CASE WHEN postcode SIMILAR TO '%(,|;)%' THEN NULL ELSE upper(trim(postcode))END;
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
+
+CREATE OR REPLACE FUNCTION token_normalized_housenumber(housenumber TEXT)
+  RETURNS TEXT
+AS $$
+  SELECT housenumber;
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
 -- --------------- private functions ----------------------------
 
 

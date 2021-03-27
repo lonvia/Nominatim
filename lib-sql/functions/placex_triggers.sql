@@ -849,18 +849,17 @@ BEGIN
   -- For low level elements we inherit from our parent road
   IF NEW.rank_search > 27 THEN
     {% if debug %}RAISE WARNING 'Copy over address tags';{% endif %}
-    -- housenumber is a computed field, so start with an empty value
     IF NEW.address is not NULL THEN
         IF NEW.address ? 'conscriptionnumber' THEN
           IF NEW.address ? 'streetnumber' THEN
-              NEW.housenumber := (NEW.address->'conscriptionnumber') || '/' || (NEW.address->'streetnumber');
+              NEW.housenumber := token_normalized_housenumber(NEW.address->'conscriptionnumber') || '/' || token_normalized_housenumber(NEW.address->'streetnumber');
           ELSE
-              NEW.housenumber := NEW.address->'conscriptionnumber';
+              NEW.housenumber := token_normalized_housenumber(NEW.address->'conscriptionnumber');
           END IF;
         ELSEIF NEW.address ? 'streetnumber' THEN
-          NEW.housenumber := NEW.address->'streetnumber';
+          NEW.housenumber := token_normalized_housenumber(NEW.address->'streetnumber');
         ELSEIF NEW.address ? 'housenumber' THEN
-          NEW.housenumber := NEW.address->'housenumber';
+          NEW.housenumber := token_normalized_housenumber(NEW.address->'housenumber');
         END IF;
 
         addr_street := token_addr_street_match_tokens(NEW.token_info);

@@ -110,18 +110,25 @@ class LegacyNameAnalyzer:
             self.conn = None
 
 
-    def get_normalized_postcode(self, place):
+    def normalize_postcode(self, postcode):
         """ Get the normalized version of the postcode.
 
             This function is currently unused but mat be put into use later.
             It must return exactly the same normalized form as the SQL
             function 'token_normalized_postcode()'.
         """
-        if 'address' not in place:
-            return None
+        if postcode is not None and re.search(r'[:,;]', postcode) is None:
+          return postcode.strip().upper()
 
-        return self._normalize_postcode(place['address'].get('postcode'))
 
+    def normalize_housenumber(self, housenumber):
+        """ Get normalized version of a housenumber.
+
+            This function is currently unused but mat be put into use later.
+            It must return exactly the same normalized form as the SQL
+            function 'token_normalized_housenumber()'.
+        """
+        return housenumber
 
     def tokenize(self, place):
         """ Tokenize the given names. `places` is a dictionary of
@@ -153,7 +160,7 @@ class LegacyNameAnalyzer:
                 token_info['hnr'] = self._get_housenumber_ids(hnrs)
 
             # add postcode token to word table
-            postcode = self._normalize_postcode(address.get('postcode'))
+            postcode = self.normalize_postcode(address.get('postcode'))
             if postcode:
                 self._create_postcode_id(postcode)
 
@@ -169,13 +176,6 @@ class LegacyNameAnalyzer:
                                                'housenumber', 'streetnumber', 'conscriptionnumber')}
 
         return token_info
-
-
-    def _normalize_postcode(self, postcode):
-        if postcode is not None and re.search(r'[:,;]', postcode) is None:
-          return postcode.strip().upper()
-
-        return None
 
 
     @functools.lru_cache(maxsize=1024)
