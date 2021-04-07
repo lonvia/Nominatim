@@ -8,7 +8,6 @@ import psycopg2.extras
 class AbstractPlacexRunner:
     """ Base class for runners that work with the placex table.
     """
-    FIELDS = "(placex_prepare_update(placex)).*"
 
     def __init__(self, rank, tokenizer):
         self.tokenizer = tokenizer.get_name_analyzer()
