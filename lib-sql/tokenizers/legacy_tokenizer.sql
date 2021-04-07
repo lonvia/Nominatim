@@ -15,7 +15,7 @@ $$ LANGUAGE SQL IMMUTABLE STRICT;
 CREATE OR REPLACE FUNCTION token_get_housenumber_search_tokens(info JSONB)
   RETURNS INTEGER[]
 AS $$
-  SELECT (info->>'hnr')::INTEGER[]
+  SELECT (info->>'hnr_search')::INTEGER[]
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
 
@@ -69,13 +69,30 @@ AS $$
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
 
-CREATE OR REPLACE FUNCTION token_normalized_housenumber(housenumber TEXT)
+CREATE OR REPLACE FUNCTION token_normalized_housenumber(info JSONB)
   RETURNS TEXT
 AS $$
-  SELECT housenumber;
+  SELECT info->>'hnr_match';
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
 -- --------------- private functions ----------------------------
+
+-- Create housenumber tokens from an OSM addr:housenumber.
+-- The housnumber is split at comma and semicolon as necessary.
+-- The function returns the normalized form of the housenumber suitable
+-- for comparison.
+CREATE OR REPLACE FUNCTION create_housenumbers(housenumbers TEXT[],
+                                               OUT tokens TEXT,
+                                               OUT normtext TEXT)
+  AS $$
+BEGIN
+  SELECT array_to_string(array_agg(trans), ';'), array_agg(tid)::TEXT
+    INTO normtext, tokens
+    FROM (SELECT lookup_word as trans, getorcreate_housenumber_id(lookup_word) as tid
+          FROM (SELECT make_standard_name(h) as lookup_word
+                FROM unnest(housenumbers) h) x) y;
+END;
+$$ LANGUAGE plpgsql STABLE STRICT;
 
 
 CREATE OR REPLACE FUNCTION getorcreate_housenumber_id(lookup_word TEXT)
@@ -281,3 +298,4 @@ BEGIN
 END;
 $$
 LANGUAGE plpgsql;
+

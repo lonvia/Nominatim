@@ -862,17 +862,7 @@ BEGIN
   IF NEW.rank_search > 27 THEN
     {% if debug %}RAISE WARNING 'Copy over address tags';{% endif %}
     IF NEW.address is not NULL THEN
-        IF NEW.address ? 'conscriptionnumber' THEN
-          IF NEW.address ? 'streetnumber' THEN
-              NEW.housenumber := token_normalized_housenumber(NEW.address->'conscriptionnumber') || '/' || token_normalized_housenumber(NEW.address->'streetnumber');
-          ELSE
-              NEW.housenumber := token_normalized_housenumber(NEW.address->'conscriptionnumber');
-          END IF;
-        ELSEIF NEW.address ? 'streetnumber' THEN
-          NEW.housenumber := token_normalized_housenumber(NEW.address->'streetnumber');
-        ELSEIF NEW.address ? 'housenumber' THEN
-          NEW.housenumber := token_normalized_housenumber(NEW.address->'housenumber');
-        END IF;
+        NEW.housenumber := token_normalized_housenumber(NEW.token_info);
 
         addr_street := token_addr_street_match_tokens(NEW.token_info);
         addr_place := token_addr_place_match_tokens(NEW.token_info);

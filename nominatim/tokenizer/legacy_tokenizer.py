@@ -140,15 +140,6 @@ class LegacyNameAnalyzer:
           return postcode.strip().upper()
 
 
-    def normalize_housenumber(self, housenumber):
-        """ Get normalized version of a housenumber.
-
-            This function is currently unused but mat be put into use later.
-            It must return exactly the same normalized form as the SQL
-            function 'token_normalized_housenumber()'.
-        """
-        return housenumber
-
     def tokenize(self, place):
         """ Tokenize the given names. `places` is a dictionary of
             properties of the object to get the name tokens for. The place
@@ -183,7 +174,7 @@ class LegacyNameAnalyzer:
             hnrs = tuple((v for k, v in address.items()
                     if k in ('housenumber', 'streetnumber', 'conscriptionnumber')))
             if hnrs:
-                token_info['hnr'] = self._get_housenumber_ids(hnrs)
+                token_info['hnr_search'], token_info['hnr_match'] = self._get_housenumber_ids(hnrs)
 
             # add postcode token to word table
             postcode = self.normalize_postcode(address.get('postcode'))
@@ -228,17 +219,20 @@ class LegacyNameAnalyzer:
 
     def _get_housenumber_ids(self, hnrs):
         if hnrs in self._cached_housenumbers:
-            return self._cached_housenumbers[hnrs]
+            return self._cached_housenumbers[hnrs], hnrs[0]
+
+        # split numbers if necessary
+        simple_set = set()
+        for hnr in hnrs:
+            simple_set.update((x.strip() for x in re.split(r'[;,]', hnr)))
 
         with self.conn.cursor() as cur:
-            cur.execute("""SELECT array_agg(getorcreate_housenumber_id(make_standard_name(hnr.name)))::text
-                           FROM (VALUES {}) as hnr(name)
-                        """.format(','.join(['(%s)']  * len(hnrs))),
-                        hnrs)
-            return cur.fetchone()[0]
+            cur.execute("SELECT (create_housenumbers(%s)).* ", (list(simple_set), ))
+            return cur.fetchone()
 
     def _precompute_housenumbers(self):
         with self.conn.cursor() as cur:
-            cur.execute("""SELECT i, ARRAY[getorcreate_housenumber_id(make_standard_name(i::text))]::text
+            # shortcut here because integer housenumbers are already normalised
+            cur.execute("""SELECT i, ARRAY[getorcreate_housenumber_id(i::text)]::text
                            FROM generate_series(1, 100) as i""")
             self._cached_housenumbers = {(str(r[0]), ) : r[1] for r in cur}
