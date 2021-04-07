@@ -177,9 +177,11 @@ def setup_website(basedir, phplib_dir, config):
 
                       @define('CONST_Debug', $_GET['debug'] ?? false);
                       @define('CONST_LibDir', '{0}');
+                      @define('CONST_TokenizerDir', '{2}');
                       @define('CONST_NominatimVersion', '{1[0]}.{1[1]}.{1[2]}-{1[3]}');
 
-                      """.format(phplib_dir, NOMINATIM_VERSION))
+                      """.format(phplib_dir, NOMINATIM_VERSION,
+                                 config.project_dir / 'tokenizer'))
 
     for php_name, conf_name, var_type in PHP_CONST_DEFS:
         if var_type == bool:

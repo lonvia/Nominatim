@@ -2,7 +2,6 @@
 @define('CONST_LibDir', dirname(dirname(__FILE__)));
 
 require_once(CONST_LibDir.'/init-cmd.php');
-require_once(CONST_LibDir.'/Geocode.php');
 require_once(CONST_LibDir.'/ParameterParser.php');
 ini_set('memory_limit', '800M');
 
@@ -37,6 +36,7 @@ getCmdOpt($_SERVER['argv'], $aCMDOptions, $aCMDResult, true, true);
 
 loadSettings($aCMDResult['project-dir'] ?? getcwd());
 
+@define('CONST_TokenizerDir', CONST_InstallDir.'/tokenizer');
 @define('CONST_Database_DSN', getSetting('DATABASE_DSN'));
 @define('CONST_Default_Language', getSetting('DEFAULT_LANGUAGE', false));
 @define('CONST_Log_DB', getSettingBool('LOG_DB'));
@@ -52,6 +52,8 @@ loadSettings($aCMDResult['project-dir'] ?? getcwd());
 @define('CONST_Use_US_Tiger_Data', getSettingBool('USE_US_TIGER_DATA'));
 @define('CONST_MapIcon_URL', getSetting('MAPICON_URL', false));
 
+
+require_once(CONST_LibDir.'/Geocode.php');
 
 $oDB = new Nominatim\DB;
 $oDB->connect();

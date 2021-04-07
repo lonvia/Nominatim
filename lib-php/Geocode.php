@@ -8,6 +8,7 @@ require_once(CONST_LibDir.'/ReverseGeocode.php');
 require_once(CONST_LibDir.'/SearchDescription.php');
 require_once(CONST_LibDir.'/SearchContext.php');
 require_once(CONST_LibDir.'/TokenList.php');
+require_once(CONST_TokenizerDir.'/tokenizer.php');
 
 class Geocode
 {
@@ -41,23 +42,14 @@ class Geocode
     protected $sQuery = false;
     protected $aStructuredQuery = false;
 
-    protected $oNormalizer = null;
+    protected $oTokenizer;
 
 
     public function __construct(&$oDB)
     {
         $this->oDB =& $oDB;
         $this->oPlaceLookup = new PlaceLookup($this->oDB);
-        $this->oNormalizer = \Transliterator::createFromRules(CONST_Term_Normalization_Rules);
-    }
-
-    private function normTerm($sTerm)
-    {
-        if ($this->oNormalizer === null) {
-            return $sTerm;
-        }
-
-        return $this->oNormalizer->transliterate($sTerm);
+        $this->oTokenizer = new \Nominatim\Tokenizer($this->oDB);
     }
 
     public function setLanguagePreference($aLangPref)
@@ -513,7 +505,7 @@ class Geocode
 
         Debug::newSection('Query Preprocessing');
 
-        $sNormQuery = $this->normTerm($this->sQuery);
+        $sNormQuery = $this->oTokenizer->normalizeString($this->sQuery);
         Debug::printVar('Normalized query', $sNormQuery);
 
         $sLanguagePrefArraySQL = $this->oDB->getArraySQL(
@@ -557,43 +549,34 @@ class Geocode
 
                 foreach ($aSpecialTermsRaw as $aSpecialTerm) {
                     $sQuery = str_replace($aSpecialTerm[0], ' ', $sQuery);
-                    if (!$sSpecialTerm) {
-                        $sSpecialTerm = $aSpecialTerm[1];
-                    }
+                    $sSpecialTerm = $aSpecialTerm[1];
                 }
             }
-            if (!$sSpecialTerm && $this->aStructuredQuery
-                && isset($this->aStructuredQuery['amenity'])) {
-                $sSpecialTerm = $this->aStructuredQuery['amenity'];
+            if ($this->aStructuredQuery && isset($this->aStructuredQuery['amenity'])) {
+                If (!$sSpecialTerm) {
+                    $sSpecialTerm = $this->aStructuredQuery['amenity'];
+                }
                 unset($this->aStructuredQuery['amenity']);
             }
 
             if ($sSpecialTerm && !$aSearches[0]->hasOperator()) {
-                $sSpecialTerm = pg_escape_string($sSpecialTerm);
-                $sToken = $this->oDB->getOne(
-                    'SELECT make_standard_name(:term)',
-                    array(':term' => $sSpecialTerm),
-                    'Cannot decode query. Wrong encoding?'
-                );
-                $sSQL = 'SELECT class, type FROM word ';
-                $sSQL .= '   WHERE word_token in (\' '.$sToken.'\')';
-                $sSQL .= '   AND class is not null AND class not in (\'place\')';
+                $aTokens = $this->oTokenizer->tokensForSpecialTerm($sSpecialTerm);
 
-                Debug::printSQL($sSQL);
-                $aSearchWords = $this->oDB->getAll($sSQL);
-                $aNewSearches = array();
-                foreach ($aSearches as $oSearch) {
-                    foreach ($aSearchWords as $aSearchTerm) {
-                        $oNewSearch = clone $oSearch;
-                        $oNewSearch->setPoiSearch(
-                            Operator::TYPE,
-                            $aSearchTerm['class'],
-                            $aSearchTerm['type']
-                        );
-                        $aNewSearches[] = $oNewSearch;
+                if (!empty($aTokens)) {
+                    $aNewSearches = array();
+                    foreach ($aSearches as $oSearch) {
+                        foreach ($aTokens as $oToken) {
+                            $oNewSearch = clone $oSearch;
+                            $oNewSearch->setPoiSearch(
+                                $oToken->iOperator,
+                                $oToken->sClass,
+                                $oToken->sType
+                            );
+                            $aNewSearches[] = $oNewSearch;
+                        }
                     }
+                    $aSearches = $aNewSearches;
                 }
-                $aSearches = $aNewSearches;
             }
 
             // Split query into phrases
@@ -638,7 +621,7 @@ class Geocode
                     $aTokens,
                     $this->aCountryCodes,
                     $sNormQuery,
-                    $this->oNormalizer
+                    $this->oTokenizer->oNormalizer
                 );
 
                 $oCtx->setFullNameWords($oValidTokens->getFullWordIDs());

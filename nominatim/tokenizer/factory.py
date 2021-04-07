@@ -39,11 +39,10 @@ def _copy_src_file(srcdir, targetdir, basename, suffix):
     target.write_text(src.read_text())
 
 
-def create_tokenizer(config, sqllib_dir, phplib_dir):
-    """ Create a new tokenizer as defined by the given configuration.
+def create_tokenizer_directory(config, sqllib_dir, phplib_dir):
+    """ Create the tokenizer diretory in the project directory and populate it.
 
-        The tokenizer data and code is copied into the 'tokenizer' directory
-        of the project directory and the tokenizer loaded from its new location.
+        Usually called as part of create_tokenizer().
     """
     # Create the directory for the tokenizer data
     basedir = config.project_dir / 'tokenizer'
@@ -57,6 +56,17 @@ def create_tokenizer(config, sqllib_dir, phplib_dir):
     _copy_src_file(Path(__file__) / '..', basedir, name, '.py')
     _copy_src_file(sqllib_dir / 'tokenizers', basedir, name, '.sql')
     _copy_src_file(phplib_dir / 'tokenizers', basedir, name, '.php')
+
+    return basedir
+
+
+def create_tokenizer(config, sqllib_dir, phplib_dir):
+    """ Create a new tokenizer as defined by the given configuration.
+
+        The tokenizer data and code is copied into the 'tokenizer' directory
+        of the project directory and the tokenizer loaded from its new location.
+    """
+    basedir = create_tokenizer_directory(config, sqllib_dir, phplib_dir)
 
     tokenizer_module = _import_tokenizer(basedir / 'tokenizer.py')
 
