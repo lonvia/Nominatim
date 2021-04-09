@@ -299,3 +299,53 @@ END;
 $$
 LANGUAGE plpgsql;
 
+
+CREATE OR REPLACE FUNCTION getorcreate_amenity(lookup_word TEXT, normalized_word TEXT,
+                                               lookup_class text, lookup_type text)
+  RETURNS INTEGER
+  AS $$
+DECLARE
+  lookup_token TEXT;
+  return_word_id INTEGER;
+BEGIN
+  lookup_token := ' '||trim(lookup_word);
+  SELECT min(word_id) FROM word
+  WHERE word_token = lookup_token and word = normalized_word
+        and class = lookup_class and type = lookup_type
+  INTO return_word_id;
+  IF return_word_id IS NULL THEN
+    return_word_id := nextval('seq_word');
+    INSERT INTO word VALUES (return_word_id, lookup_token, normalized_word,
+                             lookup_class, lookup_type, null, 0);
+  END IF;
+  RETURN return_word_id;
+END;
+$$
+LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION getorcreate_amenityoperator(lookup_word TEXT,
+                                                       normalized_word TEXT,
+                                                       lookup_class text,
+                                                       lookup_type text,
+                                                       op text)
+  RETURNS INTEGER
+  AS $$
+DECLARE
+  lookup_token TEXT;
+  return_word_id INTEGER;
+BEGIN
+  lookup_token := ' '||trim(lookup_word);
+  SELECT min(word_id) FROM word
+  WHERE word_token = lookup_token and word = normalized_word
+        and class = lookup_class and type = lookup_type and operator = op
+  INTO return_word_id;
+  IF return_word_id IS NULL THEN
+    return_word_id := nextval('seq_word');
+    INSERT INTO word VALUES (return_word_id, lookup_token, normalized_word,
+                             lookup_class, lookup_type, null, 0, op);
+  END IF;
+  RETURN return_word_id;
+END;
+$$
+LANGUAGE plpgsql;
