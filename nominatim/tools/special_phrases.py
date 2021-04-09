@@ -8,12 +8,13 @@ import re
 import subprocess
 import json
 from os.path import isfile
-from icu import Transliterator
 from psycopg2.sql import Identifier, Literal, SQL
 from nominatim.tools.exec_utils import get_url
 from nominatim.errors import UsageError
+from nominatim.tokenizer.factory import get_tokenizer_for_db
 
 LOG = logging.getLogger()
+
 class SpecialPhrasesImporter():
     # pylint: disable-msg=too-many-instance-attributes
     # pylint: disable-msg=too-few-public-methods
@@ -25,6 +26,7 @@ class SpecialPhrasesImporter():
         self.config = config
         self.phplib_dir = phplib_dir
         self.black_list, self.white_list = self._load_white_and_black_lists()
+        self.analyzer = get_tokenizer_for_db(config).get_name_analyzer()
         #Compile the regex here to increase performances.
         self.occurence_pattern = re.compile(
             r'\| ([^\|]+) \|\| ([^\|]+) \|\| ([^\|]+) \|\| ([^\|]+) \|\| ([\-YN])'
@@ -43,6 +45,7 @@ class SpecialPhrasesImporter():
         #This set will contain all existing place_classtype tables which doesn't match any
         #special phrases class/type on the wiki.
         self.table_phrases_to_delete = set()
+
 
     def import_from_wiki(self, languages=None):
         """
@@ -169,7 +172,6 @@ class SpecialPhrasesImporter():
 
         for match in matches:
             phrase_label = match[0].strip()
-            normalized_label = self.transliterator.transliterate(phrase_label)
             phrase_class = match[1].strip()
             phrase_type = match[2].strip()
             phrase_operator = match[3].strip()
@@ -209,33 +211,10 @@ class SpecialPhrasesImporter():
 
             class_type_pairs.add((phrase_class, phrase_type))
 
-            self._process_amenity(
-                phrase_label, normalized_label, phrase_class,
-                phrase_type, phrase_operator
-            )
+            self.analyzer.add_special_phrase(phrase_label, phrase_class,
+                                             phrase_type, phrase_operator)
 
         return class_type_pairs
-
-    def _process_amenity(self, phrase_label, normalized_label,
-                         phrase_class, phrase_type, phrase_operator):
-        # pylint: disable-msg=too-many-arguments
-        """
-            Add phrase lookup and corresponding class and
-            type to the word table based on the operator.
-        """
-        with self.db_connection.cursor() as db_cursor:
-            if phrase_operator == 'near':
-                db_cursor.execute("""SELECT getorcreate_amenityoperator(
-                                  make_standard_name(%s), %s, %s, %s, 'near')""",
-                                  (phrase_label, normalized_label, phrase_class, phrase_type))
-            elif phrase_operator == 'in':
-                db_cursor.execute("""SELECT getorcreate_amenityoperator(
-                                  make_standard_name(%s), %s, %s, %s, 'in')""",
-                                  (phrase_label, normalized_label, phrase_class, phrase_type))
-            else:
-                db_cursor.execute("""SELECT getorcreate_amenity(
-                                  make_standard_name(%s), %s, %s, %s)""",
-                                  (phrase_label, normalized_label, phrase_class, phrase_type))
 
 
     def _create_place_classtype_table_and_indexes(self, class_type_pairs):

@@ -4,6 +4,7 @@ Tokenizer implementing nromalisation as used before Nominatim 4.
 import functools
 import re
 
+from icu import Transliterator
 import psycopg2.extras
 
 from nominatim.db.connection import connect
@@ -20,6 +21,7 @@ class LegacyTokenizer:
     def __init__(self, dsn, data_dir):
         self.dsn = dsn
         self.data_dir = data_dir
+        self.normalization = None
 
 
     def init_new_db(self, config):
@@ -45,12 +47,13 @@ class LegacyTokenizer:
             self.update_sql_functions()
             self._compute_word_frequencies(conn)
 
+        self.normalization = config.TERM_NORMALIZATION
 
 
-    def init_from_project(self):
+    def init_from_project(self, config):
         """ Initialise the tokenizer from the project directory.
         """
-        pass
+        self.normalization = config.TERM_NORMALIZATION
 
 
     def update_sql_functions(self):
@@ -65,7 +68,9 @@ class LegacyTokenizer:
 
             Analyzers are not thread-safe. You need to instantiate one per thread.
         """
-        return LegacyNameAnalyzer(self.dsn)
+        return LegacyNameAnalyzer(self.dsn,
+                                  Transliterator.createFromRules("special-phrases normalizer",
+                                                                 self.normalization))
 
 
     def _compute_word_frequencies(self, conn):
@@ -90,6 +95,10 @@ class LegacyTokenizer:
         conn.commit()
 
 
+    def _setup_normalizer(self, config):
+        self.transliterator = Transliterator.createFromRules("special-phrases normalizer",
+                                                             config.TERM_NORMALIZATION)
+
 
 class LegacyNameAnalyzer:
     """ The legacy analyzer uses the special Postgresql module for
@@ -99,7 +108,8 @@ class LegacyNameAnalyzer:
         normalization.
     """
 
-    def __init__(self, dsn):
+    def __init__(self, dsn, normalizer):
+        self.normalizer = normalizer
         self.conn = connect(dsn).connection
         self.conn.autocommit = True
         psycopg2.extras.register_hstore(self.conn)
@@ -127,6 +137,20 @@ class LegacyNameAnalyzer:
                            FROM (VALUES {}) as v(cc, name)
                         """.format(','.join(["(%s, %s)"]  * len(names))),
                         [val for sublist in names for val in sublist])
+
+
+    def add_special_phrase(self, name, osm_key, osm_value, operator):
+        normalized = self.normalizer.transliterate(name)
+
+        with self.conn.cursor() as cur:
+            if operator in ('near', 'in'):
+                cur.execute("""SELECT getorcreate_amenityoperator(
+                                 make_standard_name(%s), %s, %s, %s, %s)""",
+                            (name, normalized, osm_key, osm_value, operator))
+            else:
+                cur.execute("""SELECT getorcreate_amenity(
+                                 make_standard_name(%s), %s, %s, %s)""",
+                            (name, normalized, osm_key, osm_value))
 
 
     def normalize_postcode(self, postcode):
