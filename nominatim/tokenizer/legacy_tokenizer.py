@@ -3,12 +3,14 @@ Tokenizer implementing nromalisation as used before Nominatim 4.
 """
 import functools
 import re
+from textwrap import dedent
 
 from icu import Transliterator
 import psycopg2.extras
 
 from nominatim.db.connection import connect
 from nominatim.db.utils import execute_file
+from nominatim.db import properties
 
 def create(dsn, data_dir):
     return LegacyTokenizer(dsn, data_dir)
@@ -24,7 +26,7 @@ class LegacyTokenizer:
         self.normalization = None
 
 
-    def init_new_db(self, config):
+    def init_new_db(self, config, sqllib_dir, phplib_dir):
         """ Set up the tokenizer for a new import.
 
             This copies all necessary data in the project directory to make
@@ -44,22 +46,35 @@ class LegacyTokenizer:
                                $$ SELECT %s as maxwordfreq $$ LANGUAGE SQL IMMUTABLE
                             """, (int(config.MAX_WORD_FREQUENCY), ))
 
-            self.update_sql_functions()
+            self.update_sql_functions(sqllib_dir)
             self._compute_word_frequencies(conn)
 
+            properties.set_property(conn, "tokenizer_normalization", config.TERM_NORMALIZATION)
+
         self.normalization = config.TERM_NORMALIZATION
+
+        php_file = self.data_dir / "tokenizer.php"
+        php_file.write_text(dedent("""\
+            <?php
+
+            @define('CONST_Max_Word_Frequency', {0.MAX_WORD_FREQUENCY});
+            @define('CONST_Term_Normalization_Rules', "{0.TERM_NORMALIZATION}");
+
+            require_once('{1}/tokenizers/legacy_tokenizer.php');
+            """.format(config, str(phplib_dir))))
 
 
     def init_from_project(self, config):
         """ Initialise the tokenizer from the project directory.
         """
-        self.normalization = config.TERM_NORMALIZATION
+        with connect(self.dsn) as conn:
+            self.normalization = properties.get_property(conn, "tokenizer_normalization")
 
 
-    def update_sql_functions(self):
+    def update_sql_functions(self, sqllib_dir):
         """ Reimport the SQL functions for this tokenizer.
         """
-        execute_file(self.dsn, self.data_dir / 'tokenizer.sql')
+        execute_file(self.dsn, sqllib_dir / 'tokenizers' / 'legacy_tokenizer.sql')
 
 
     def get_name_analyzer(self):
