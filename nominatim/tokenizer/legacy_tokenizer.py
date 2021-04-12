@@ -2,7 +2,9 @@
 Tokenizer implementing nromalisation as used before Nominatim 4.
 """
 import functools
+import logging
 import re
+import shutil
 from textwrap import dedent
 
 from icu import Transliterator
@@ -12,6 +14,8 @@ from nominatim.db.connection import connect
 from nominatim.db.utils import execute_file
 from nominatim.db.sql_preprocessor import SQLPreprocessor
 from nominatim.db import properties
+
+LOG = logging.getLogger()
 
 def create(dsn, data_dir):
     return LegacyTokenizer(dsn, data_dir)
@@ -27,7 +31,7 @@ class LegacyTokenizer:
         self.normalization = None
 
 
-    def init_new_db(self, config, sqllib_dir, phplib_dir):
+    def init_new_db(self, config, sqllib_dir, phplib_dir, module_dir):
         """ Set up the tokenizer for a new import.
 
             This copies all necessary data in the project directory to make
@@ -38,7 +42,16 @@ class LegacyTokenizer:
             use the content of the placex table to initialise its data
             structures.
         """
+        if config.DATABASE_MODULE_PATH:
+            LOG.info("Using custom path for database module at '%s'",
+                     config.DATABASE_MODULE_PATH)
+            module_dir = config.DATABASE_MODULE_PATH
+        else:
+            self._install_module(module_dir, config.project_dir / 'module')
+            module_dir = config.project_dir / 'module'
+
         with connect(self.dsn) as conn:
+            self._check_module(module_dir, conn)
             # create the word table
             sql_processor = SQLPreprocessor(conn, config, sqllib_dir)
             sql_processor.run_sql_file(conn, 'tokenizers/legacy_tokenizer_tables.sql')
@@ -112,6 +125,45 @@ class LegacyTokenizer:
     def _setup_normalizer(self, config):
         self.transliterator = Transliterator.createFromRules("special-phrases normalizer",
                                                              config.TERM_NORMALIZATION)
+
+
+    def _install_module(self, src_dir, module_dir):
+        """ Copy the normalization module from src_dir into the project
+            directory under the '/module' directory. If 'module_dir' is set, then
+            use the module from there instead and check that it is accessible
+            for Postgresql.
+
+            The function detects when the installation is run from the
+            build directory. It doesn't touch the module in that case.
+
+            If 'conn' is given, then the function also tests if the module
+            can be access via the given database.
+        """
+        if module_dir.exists() and src_dir.samefile(module_dir):
+            LOG.info('Running from build directory. Leaving database module as is.')
+            return
+
+        if not module_dir.exists():
+            module_dir.mkdir()
+
+        destfile = module_dir / 'nominatim.so'
+        shutil.copy(str(src_dir / 'nominatim.so'), str(destfile))
+        destfile.chmod(0o755)
+
+        LOG.info('Database module installed at %s', str(destfile))
+
+
+    def _check_module(self, module_dir, conn):
+        with conn.cursor() as cur:
+            try:
+                cur.execute("""CREATE FUNCTION nominatim_test_import_func(text)
+                               RETURNS text AS '{}/nominatim.so', 'transliteration'
+                               LANGUAGE c IMMUTABLE STRICT;
+                               DROP FUNCTION nominatim_test_import_func(text)
+                            """.format(module_dir))
+            except psycopg2.DatabaseError as err:
+                LOG.fatal("Error accessing database module: %s", err)
+                raise UsageError("Database module cannot be accessed.") from err
 
 
 class LegacyNameAnalyzer:

@@ -29,7 +29,7 @@ def _import_tokenizer(name):
     return importlib.import_module('nominatim.tokenizer.' + name + '_tokenizer')
 
 
-def create_tokenizer(config, sqllib_dir, phplib_dir):
+def create_tokenizer(config, sqllib_dir, phplib_dir, module_dir):
     """ Create a new tokenizer as defined by the given configuration.
 
         The tokenizer data and code is copied into the 'tokenizer' directory
@@ -45,7 +45,7 @@ def create_tokenizer(config, sqllib_dir, phplib_dir):
     tokenizer_module = _import_tokenizer(config.TOKENIZER)
 
     tokenizer = tokenizer_module.create(config.get_libpq_dsn(), basedir)
-    tokenizer.init_new_db(config, sqllib_dir, phplib_dir)
+    tokenizer.init_new_db(config, sqllib_dir, phplib_dir, module_dir)
 
     with connect(config.get_libpq_dsn()) as conn:
         properties.set_property(conn, 'tokenizer', config.TOKENIZER)

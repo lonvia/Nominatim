@@ -68,13 +68,6 @@ class SetupAll:
                                                     args.no_partitions,
                                                     rouser=args.config.DATABASE_WEBUSER)
 
-            if args.module_dir:
-                LOG.warning('Installing database module')
-                with connect(args.config.get_libpq_dsn()) as conn:
-                    database_import.install_module(args.module_dir, args.project_dir,
-                                                   args.config.DATABASE_MODULE_PATH,
-                                                   conn=conn)
-
             LOG.warning('Importing OSM data file')
             database_import.import_osm_data(Path(args.osm_file),
                                             args.osm2pgsql_options(0, 1),
@@ -119,7 +112,8 @@ class SetupAll:
         LOG.warning("Setting up tokenizer")
         tokenizer = tokenizer_factory.create_tokenizer(args.config,
                                                        args.sqllib_dir,
-                                                       args.phplib_dir)
+                                                       args.phplib_dir,
+                                                       args.module_dir)
 
 
         if args.continue_at is None or args.continue_at == 'load-data':
