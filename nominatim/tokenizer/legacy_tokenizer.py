@@ -10,6 +10,7 @@ import psycopg2.extras
 
 from nominatim.db.connection import connect
 from nominatim.db.utils import execute_file
+from nominatim.db.sql_preprocessor import SQLPreprocessor
 from nominatim.db import properties
 
 def create(dsn, data_dir):
@@ -38,15 +39,11 @@ class LegacyTokenizer:
             structures.
         """
         with connect(self.dsn) as conn:
-            with conn.cursor() as cur:
-                # Used by getorcreate_word_id to ignore frequent partial words.
-                # Must be set to a fixed number on import and then never changed.
-                cur.execute("""CREATE OR REPLACE FUNCTION get_maxwordfreq()
-                               RETURNS integer AS
-                               $$ SELECT %s as maxwordfreq $$ LANGUAGE SQL IMMUTABLE
-                            """, (int(config.MAX_WORD_FREQUENCY), ))
+            # create the word table
+            sql_processor = SQLPreprocessor(conn, config, sqllib_dir)
+            sql_processor.run_sql_file(conn, 'tokenizers/legacy_tokenizer_tables.sql')
 
-            self.update_sql_functions(sqllib_dir)
+            self.update_sql_functions(config, sqllib_dir)
             self._compute_word_frequencies(conn)
 
             properties.set_property(conn, "tokenizer_normalization", config.TERM_NORMALIZATION)
@@ -71,10 +68,12 @@ class LegacyTokenizer:
             self.normalization = properties.get_property(conn, "tokenizer_normalization")
 
 
-    def update_sql_functions(self, sqllib_dir):
+    def update_sql_functions(self, config, sqllib_dir):
         """ Reimport the SQL functions for this tokenizer.
         """
-        execute_file(self.dsn, sqllib_dir / 'tokenizers' / 'legacy_tokenizer.sql')
+        with connect(self.dsn) as conn:
+            sqlp = SQLPreprocessor(conn, config, sqllib_dir)
+            sqlp.run_sql_file(conn, 'tokenizers/legacy_tokenizer.sql')
 
 
     def get_name_analyzer(self):

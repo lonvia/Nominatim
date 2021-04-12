@@ -209,7 +209,6 @@ def truncate_data_tables(conn):
     """ Truncate all data tables to prepare for a fresh load.
     """
     with conn.cursor() as cur:
-        cur.execute('TRUNCATE word')
         cur.execute('TRUNCATE placex')
         cur.execute('TRUNCATE place_addressline')
         cur.execute('TRUNCATE location_area')
