@@ -1,7 +1,7 @@
 DROP TABLE IF EXISTS word;
 CREATE TABLE word (
   word_id INTEGER,
-  word_token text,
+  word_token text NOT NULL,
   word text,
   class text,
   type text,

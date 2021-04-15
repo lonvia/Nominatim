@@ -196,16 +196,15 @@ CREATE OR REPLACE FUNCTION getorcreate_word_id(lookup_word TEXT)
   RETURNS INTEGER
   AS $$
 DECLARE
-  lookup_token TEXT;
   return_word_id INTEGER;
   count INTEGER;
 BEGIN
   SELECT min(word_id), max(search_name_count) FROM word
-    WHERE word_token = lookup_token and class is null and type is null
+    WHERE word_token = lookup_word and class is null and type is null
     INTO return_word_id, count;
   IF return_word_id IS NULL THEN
     return_word_id := nextval('seq_word');
-    INSERT INTO word VALUES (return_word_id, lookup_token, null, null, null, null, 0);
+    INSERT INTO word VALUES (return_word_id, lookup_word, null, null, null, null, 0);
   ELSE
     IF count > get_maxwordfreq() THEN
       return_word_id := NULL;

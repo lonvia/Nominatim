@@ -190,17 +190,18 @@ class LegacyIcuNameAnalyzer:
             return
 
         self._add_normalized_country_names(country_code,
-                                           [(self.make_standard_word(n), ) for n in names])
+                                           set((self.make_standard_word(n) for n in names)))
 
 
     def _add_normalized_country_names(self, country_code, normalized_names):
+        filtered = [(n, ) for n in normalized_names if n]
         with self.conn.cursor() as cur:
             sql = """INSERT INTO word (word_id, word_token, country_code, search_name_count)
                      (SELECT nextval('seq_word'), ' ' || name, '{0}', 0 FROM (VALUES %s) AS v (name)
                       WHERE NOT EXISTS (SELECT * FROM word
                                         WHERE word_token = ' ' || name and country_code = '{0}'))
                   """.format(country_code)
-            psycopg2.extras.execute_values(cur, sql, normalized_names)
+            psycopg2.extras.execute_values(cur, sql, filtered)
 
 
     def add_special_phrase(self, name, osm_key, osm_value, operator):
@@ -277,13 +278,12 @@ class LegacyIcuNameAnalyzer:
                                 SELECT getorcreate_word_id(token) as wid
                                   FROM unnest(%s) as token)y
                             """,
-                             (list(norm_names), list(partials)))
+                             ([n for n in norm_names if n], [p for p in partials if p]))
                 token_info['names'] = cur.fetchone()[0]
 
                 # also add country tokens, if applicable
                 if country_feature and re.fullmatch(r'[A-Za-z][A-Za-z]', country_feature):
-                    self._add_normalized_country_names(country_feature.lower(),
-                                                       [(n, ) for n in norm_names])
+                    self._add_normalized_country_names(country_feature.lower(), norm_names)
 
         if address:
             # add housenumber tokens to word table
@@ -314,6 +314,9 @@ class LegacyIcuNameAnalyzer:
     @functools.lru_cache(maxsize=1024)
     def _get_addr_terms(self, name):
         norm = self.make_standard_word(name)
+        if not norm:
+            return '{}', '{}'
+
         with self.conn.cursor() as cur:
             cur.execute("""SELECT addr_ids_from_name(%s)::text,
                                   word_ids_from_name(%s)::text""",
@@ -324,6 +327,9 @@ class LegacyIcuNameAnalyzer:
     @functools.lru_cache(maxsize=256)
     def _get_street_place_terms(self, name):
         norm = self.make_standard_word(name)
+        if not norm:
+            return '{}', '{}'
+
         with self.conn.cursor() as cur:
             cur.execute("""SELECT word_ids_from_name(%s)::text,
                                   ARRAY[getorcreate_name_id(%s, '')]::text""",
