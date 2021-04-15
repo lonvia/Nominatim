@@ -256,23 +256,23 @@ def create_search_indices(conn, config, sqllib_dir, drop=False):
 def create_country_names(conn, tokenizer, languages=None):
     """ Create search index for default country names.
     """
-
-    # set of pairs (country_code, name)
-    names = {('gb', 'UK'), ('us', 'United States')}
-
     with conn.cursor() as cur:
         cur.execute("""SELECT country_code, name FROM country_name
                        WHERE country_code is not null""")
-        for row in cur:
-            # country codes
-            names.add((row[0], row[0]))
+        for code, name in cur:
+            names = [code]
+            if code == 'gb':
+                names.append('UK')
+            if code == 'us':
+                names.append('United States')
 
             # country names (only in languages as provided)
-            if row[1]:
-                for key, val in row[1].items():
+            if name:
+                for key, val in name.items():
                     if key == 'name' or \
                        (key.startswith('name:') and (not languages or key[5:] in languages)):
-                        names.add((row[0], val))
+                        names.append(val)
+
+            tokenizer.get_name_analyzer().add_country_names(code, names)
     conn.commit()
 
-    tokenizer.get_name_analyzer().add_country_words(names)

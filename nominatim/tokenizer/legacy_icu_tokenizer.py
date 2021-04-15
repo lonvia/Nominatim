@@ -1,26 +1,27 @@
 """
-Tokenizer implementing normalisation as used before Nominatim 4.
+Tokenizer implementing simple normalisation as used before Nominatim 4
+but using libICU to latinise the words.
 """
+import io
 import functools
-import logging
 import re
-import shutil
+import json
 from textwrap import dedent
+from pathlib import Path
 
 from icu import Transliterator
 import psycopg2.extras
+from collections import Counter
 
 from nominatim.db.connection import connect
 from nominatim.db.utils import execute_file
 from nominatim.db.sql_preprocessor import SQLPreprocessor
 from nominatim.db import properties
 
-LOG = logging.getLogger()
-
 def create(dsn, data_dir):
-    return LegacyTokenizer(dsn, data_dir)
+    return LegacyICUTokenizer(dsn, data_dir)
 
-class LegacyTokenizer:
+class LegacyICUTokenizer:
     """ The legacy tokenizer uses a special Postgresql module to normalize
         names and SQL functions to split them into tokens.
     """
@@ -29,6 +30,8 @@ class LegacyTokenizer:
         self.dsn = dsn
         self.data_dir = data_dir
         self.normalization = None
+        self.transliterator = None
+        self.abbreviations = None
 
 
     def init_new_db(self, config, sqllib_dir, phplib_dir, module_dir, config_dir):
@@ -42,16 +45,17 @@ class LegacyTokenizer:
             use the content of the placex table to initialise its data
             structures.
         """
-        if config.DATABASE_MODULE_PATH:
-            LOG.info("Using custom path for database module at '%s'",
-                     config.DATABASE_MODULE_PATH)
-            module_dir = config.DATABASE_MODULE_PATH
+        if config.TOKENIZER_CONFIG:
+            cfgfile = Path(config.TOKENIZER_CONFIG)
         else:
-            self._install_module(module_dir, config.project_dir / 'module')
-            module_dir = config.project_dir / 'module'
+            cfgfile = config_dir / 'legacy_icu_tokenizer.json'
+
+        rules = json.loads(cfgfile.read_text())
+        self.transliterator = ';'.join(rules['normalization']) + ';'
+        self.abbreviations = rules["abbreviations"]
+        self.normalization = config.TERM_NORMALIZATION
 
         with connect(self.dsn) as conn:
-            self._check_module(module_dir, conn)
             # create the word table
             sql_processor = SQLPreprocessor(conn, config, sqllib_dir)
             sql_processor.run_sql_file(conn, 'tokenizers/legacy_tokenizer_tables.sql')
@@ -59,9 +63,13 @@ class LegacyTokenizer:
             self.update_sql_functions(config, sqllib_dir)
             self._compute_word_frequencies(conn)
 
-            properties.set_property(conn, "tokenizer_normalization", config.TERM_NORMALIZATION)
+            properties.set_property(conn, "tokenizer_normalization",
+                                    config.TERM_NORMALIZATION)
+            properties.set_property(conn, "tokenizer_transliterator",
+                                    self.transliterator)
+            properties.set_property(conn, "tokenizer_abbreviations",
+                                    json.dumps(self.abbreviations))
 
-        self.normalization = config.TERM_NORMALIZATION
 
         php_file = self.data_dir / "tokenizer.php"
         php_file.write_text(dedent("""\
@@ -70,7 +78,7 @@ class LegacyTokenizer:
             @define('CONST_Max_Word_Frequency', {0.MAX_WORD_FREQUENCY});
             @define('CONST_Term_Normalization_Rules', "{0.TERM_NORMALIZATION}");
 
-            require_once('{1}/tokenizers/legacy_tokenizer.php');
+            require_once('{1}/tokenizers/legacy_icu_tokenizer.php');
             """.format(config, str(phplib_dir))))
 
 
@@ -79,6 +87,8 @@ class LegacyTokenizer:
         """
         with connect(self.dsn) as conn:
             self.normalization = properties.get_property(conn, "tokenizer_normalization")
+            self.transliterator = properties.get_property(conn, "tokenizer_transliterator")
+            self.abbreviations = json.loads(properties.get_property(conn, "tokenizer_abbreviations"))
 
 
     def update_sql_functions(self, config, sqllib_dir):
@@ -86,7 +96,7 @@ class LegacyTokenizer:
         """
         with connect(self.dsn) as conn:
             sqlp = SQLPreprocessor(conn, config, sqllib_dir)
-            sqlp.run_sql_file(conn, 'tokenizers/legacy_tokenizer.sql')
+            sqlp.run_sql_file(conn, 'tokenizers/legacy_icu_tokenizer.sql')
 
 
     def get_name_analyzer(self):
@@ -95,30 +105,37 @@ class LegacyTokenizer:
 
             Analyzers are not thread-safe. You need to instantiate one per thread.
         """
-        return LegacyNameAnalyzer(self.dsn,
-                                  Transliterator.createFromRules("special-phrases normalizer",
-                                                                 self.normalization))
+        norm = Transliterator.createFromRules("normalizer", self.normalization)
+        trans = Transliterator.createFromRules("transliterator", self.transliterator)
+        return LegacyIcuNameAnalyzer(self.dsn, norm, trans, self.abbreviations)
 
 
     def _compute_word_frequencies(self, conn):
-        """ Compute the frequencies of words.
+        """ Compute the frequencies of partial words.
 
             They are used to decide if partial words are handled as stop words.
             Stop words are never added to the search_name table. Therefore they
             need to be known before indexing creates the search terms.
         """
+        words = Counter()
+        analyzer = self.get_name_analyzer()
+
+        # get partial words and their frequencies
+        with conn.cursor(name="words") as cur:
+            cur.execute("SELECT svals(name) as v, count(*) FROM place GROUP BY v")
+
+            for name, cnt in cur:
+                for word in analyzer.make_standard_word(name).split():
+                    words[word] += cnt
+
+        # copy them back into the word table
+        copystr = io.StringIO(''.join(('{}\t{}\n'.format(*args) for args in words.items())))
+
         with conn.cursor() as cur:
-            cur.execute("""CREATE TEMP TABLE word_frequencies AS
-                          (SELECT unnest(make_keywords(v)) as id, sum(count) as count
-                           FROM (select svals(name) as v, count(*)from place group by v) cnt
-                            WHERE v is not null
-                             GROUP BY id)""")
+            cur.copy_from(copystr, 'word', columns=['word_token', 'search_name_count'])
+            cur.execute("""UPDATE word SET word_id = nextval('seq_word')
+                           WHERE word_id is null""")
 
-            # copy the word frequencies
-            cur.execute("""update word set search_name_count = count from word_frequencies wf where wf.id = word.word_id""")
-
-            # and drop the temporary frequency table again
-            cur.execute("drop table word_frequencies");
         conn.commit()
 
 
@@ -127,46 +144,7 @@ class LegacyTokenizer:
                                                              config.TERM_NORMALIZATION)
 
 
-    def _install_module(self, src_dir, module_dir):
-        """ Copy the normalization module from src_dir into the project
-            directory under the '/module' directory. If 'module_dir' is set, then
-            use the module from there instead and check that it is accessible
-            for Postgresql.
-
-            The function detects when the installation is run from the
-            build directory. It doesn't touch the module in that case.
-
-            If 'conn' is given, then the function also tests if the module
-            can be access via the given database.
-        """
-        if module_dir.exists() and src_dir.samefile(module_dir):
-            LOG.info('Running from build directory. Leaving database module as is.')
-            return
-
-        if not module_dir.exists():
-            module_dir.mkdir()
-
-        destfile = module_dir / 'nominatim.so'
-        shutil.copy(str(src_dir / 'nominatim.so'), str(destfile))
-        destfile.chmod(0o755)
-
-        LOG.info('Database module installed at %s', str(destfile))
-
-
-    def _check_module(self, module_dir, conn):
-        with conn.cursor() as cur:
-            try:
-                cur.execute("""CREATE FUNCTION nominatim_test_import_func(text)
-                               RETURNS text AS '{}/nominatim.so', 'transliteration'
-                               LANGUAGE c IMMUTABLE STRICT;
-                               DROP FUNCTION nominatim_test_import_func(text)
-                            """.format(module_dir))
-            except psycopg2.DatabaseError as err:
-                LOG.fatal("Error accessing database module: %s", err)
-                raise UsageError("Database module cannot be accessed.") from err
-
-
-class LegacyNameAnalyzer:
+class LegacyIcuNameAnalyzer:
     """ The legacy analyzer uses the special Postgresql module for
         splitting names.
 
@@ -174,14 +152,25 @@ class LegacyNameAnalyzer:
         normalization.
     """
 
-    def __init__(self, dsn, normalizer):
+    def __init__(self, dsn, normalizer, transliterator, abbreviations):
         self.normalizer = normalizer
+        self.transliterator = transliterator
+        self.abbreviations = abbreviations
         self.conn = connect(dsn).connection
         self.conn.autocommit = True
         psycopg2.extras.register_hstore(self.conn)
 
         self._precompute_housenumbers()
 
+    def make_standard_word(self, name):
+        """ Create the normalised version of the name.
+        """
+        norm = ' ' + self.transliterator.transliterate(name) + ' '
+        for full, abbr in self.abbreviations:
+            if full in norm:
+                norm = norm.replace(full, abbr)
+
+        return norm.strip()
 
     def close(self):
         """ Shut down the analyzer and free all resources.
@@ -197,25 +186,53 @@ class LegacyNameAnalyzer:
     def add_country_names(self, country_code, names):
         """ Add the names 'names' for the country with the given country_code.
         """
+        if not re.fullmatch(r'[a-z][a-z]', country_code):
+            return
+
+        self._add_normalized_country_names(country_code,
+                                           [(self.make_standard_word(n), ) for n in names])
+
+
+    def _add_normalized_country_names(self, country_code, normalized_names):
         with self.conn.cursor() as cur:
-            cur.execute("""SELECT getorcreate_country(make_standard_name(v.name), %s)
-                           FROM (VALUES {}) as v(name)
-                        """.format(','.join(["(%s)"]  * len(names))),
-                        [country_code] + names)
+            sql = """INSERT INTO word (word_id, word_token, country_code, search_name_count)
+                     (SELECT nextval('seq_word'), ' ' || name, '{0}', 0 FROM (VALUES %s) AS v (name)
+                      WHERE NOT EXISTS (SELECT * FROM word
+                                        WHERE word_token = ' ' || name and country_code = '{0}'))
+                  """.format(country_code)
+            psycopg2.extras.execute_values(cur, sql, normalized_names)
 
 
     def add_special_phrase(self, name, osm_key, osm_value, operator):
         normalized = self.normalizer.transliterate(name)
+        token = self.make_standard_word(name)
+
+        if operator in ('near', 'in'):
+            sql = """INSERT INTO word (word_id, word_token, word, class, type, operator, search_name_count)
+                     (SELECT nextval('seq_word'), ' ' || token, name, cls, typ, op, 0
+                      FROM (VALUES (%s, %s, %s, %s, %s)) AS v (token, name, cls, typ, op)
+                      WHERE NOT EXISTS (SELECT * FROM word
+                                        WHERE word_token = ' ' || token
+                                              and word = name
+                                              and country_code = cc
+                                              and cls = class and type = typ
+                                              and operator = op))
+                  """
+            values = (token, normalized, osm_key, osm_value, operator)
+        else:
+            sql = """INSERT INTO word (word_id, word_token, word, class, type, search_name_count)
+                     (SELECT nextval('seq_word'), ' ' || token, name, cls, typ, 0
+                      FROM (VALUES (%s, %s, %s, %s)) AS v (token, name, cls, typ)
+                      WHERE NOT EXISTS (SELECT * FROM word
+                                        WHERE word_token = ' ' || token
+                                              and word = name
+                                              and country_code = cc
+                                              and cls = class and type = typ))
+                  """
+            values = (token, normalized, osm_key, osm_value)
 
         with self.conn.cursor() as cur:
-            if operator in ('near', 'in'):
-                cur.execute("""SELECT getorcreate_amenityoperator(
-                                 make_standard_name(%s), %s, %s, %s, %s)""",
-                            (name, normalized, osm_key, osm_value, operator))
-            else:
-                cur.execute("""SELECT getorcreate_amenity(
-                                 make_standard_name(%s), %s, %s, %s)""",
-                            (name, normalized, osm_key, osm_value))
+            cur.execute(cur, sql, values)
 
 
     def normalize_postcode(self, postcode):
@@ -248,15 +265,25 @@ class LegacyNameAnalyzer:
         if names:
             country_feature = place.get('country_feature')
 
+            norm_names = set((self.make_standard_word(name) for name in names.values()))
+            partials = set((part for names in norm_names for part in names.split()))
+
             with self.conn.cursor() as cur:
                 # create the token IDs for all names
-                cur.execute("SELECT make_keywords(%s)::text", (names, ))
+                cur.execute("""SELECT array_remove(array_agg(wid), null)::TEXT FROM
+                               (SELECT getorcreate_name_id(token, '') as wid
+                                  FROM unnest(%s) as token
+                                 UNION ALL
+                                SELECT getorcreate_word_id(token) as wid
+                                  FROM unnest(%s) as token)y
+                            """,
+                             (list(norm_names), list(partials)))
                 token_info['names'] = cur.fetchone()[0]
 
                 # also add country tokens, if applicable
                 if country_feature and re.fullmatch(r'[A-Za-z][A-Za-z]', country_feature):
-                    cur.execute("SELECT create_country(%s, %s)",
-                                (names, country_feature.lower()))
+                    self._add_normalized_country_names(country_feature.lower(),
+                                                       [(n, ) for n in norm_names])
 
         if address:
             # add housenumber tokens to word table
@@ -286,19 +313,21 @@ class LegacyNameAnalyzer:
 
     @functools.lru_cache(maxsize=1024)
     def _get_addr_terms(self, name):
+        norm = self.make_standard_word(name)
         with self.conn.cursor() as cur:
             cur.execute("""SELECT addr_ids_from_name(%s)::text,
                                   word_ids_from_name(%s)::text""",
-                        (name, name))
+                        (norm, norm))
             return cur.fetchone()
 
 
     @functools.lru_cache(maxsize=256)
     def _get_street_place_terms(self, name):
+        norm = self.make_standard_word(name)
         with self.conn.cursor() as cur:
             cur.execute("""SELECT word_ids_from_name(%s)::text,
-                                  ARRAY[getorcreate_name_id(make_standard_name(%s), '')]::text""",
-                        (name, name))
+                                  ARRAY[getorcreate_name_id(%s, '')]::text""",
+                        (norm, norm))
             return cur.fetchone()
 
     @functools.lru_cache(maxsize=32)
@@ -314,10 +343,14 @@ class LegacyNameAnalyzer:
         simple_set = set()
         for hnr in hnrs:
             simple_set.update((x.strip() for x in re.split(r'[;,]', hnr)))
+        normalised = [self.make_standard_word(w) for w in simple_set]
 
         with self.conn.cursor() as cur:
-            cur.execute("SELECT (create_housenumbers(%s)).* ", (list(simple_set), ))
-            return cur.fetchone()
+            cur.execute(""" SELECT array_agg(getorcreate_housenumber_id(hnr))::TEXT
+                            FROM unnest(%s) AS hnr
+                        """, (normalised, ))
+
+            return cur.fetchone()[0], ';'.join(normalised)
 
     def _precompute_housenumbers(self):
         with self.conn.cursor() as cur:

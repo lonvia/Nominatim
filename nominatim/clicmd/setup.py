@@ -119,8 +119,8 @@ class SetupAll:
 
         if args.continue_at is None or args.continue_at == 'load-data':
             LOG.warning('Calculate postcodes')
-            run_legacy_script('setup.php', '--calculate-postcodes',
-                              nominatim_env=args, throw_on_fail=not args.ignore_errors)
+            #run_legacy_script('setup.php', '--calculate-postcodes',
+            #                  nominatim_env=args, throw_on_fail=not args.ignore_errors)
 
         if args.continue_at is None or args.continue_at in ('load-data', 'indexing'):
             LOG.warning('Indexing places')
