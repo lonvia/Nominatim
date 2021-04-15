@@ -1,5 +1,5 @@
 """
-Tokenizer implementing nromalisation as used before Nominatim 4.
+Tokenizer implementing normalisation as used before Nominatim 4.
 """
 import functools
 import logging
@@ -31,7 +31,7 @@ class LegacyTokenizer:
         self.normalization = None
 
 
-    def init_new_db(self, config, sqllib_dir, phplib_dir, module_dir):
+    def init_new_db(self, config, sqllib_dir, phplib_dir, module_dir, config_dir):
         """ Set up the tokenizer for a new import.
 
             This copies all necessary data in the project directory to make

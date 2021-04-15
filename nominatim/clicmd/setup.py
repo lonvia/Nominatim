@@ -113,7 +113,8 @@ class SetupAll:
         tokenizer = tokenizer_factory.create_tokenizer(args.config,
                                                        args.sqllib_dir,
                                                        args.phplib_dir,
-                                                       args.module_dir)
+                                                       args.module_dir,
+                                                       args.config_dir)
 
 
         if args.continue_at is None or args.continue_at == 'load-data':
