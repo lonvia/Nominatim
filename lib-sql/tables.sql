@@ -109,6 +109,7 @@ CREATE TABLE location_property_osmline (
     linegeo GEOMETRY,
     interpolationtype TEXT,
     address HSTORE,
+    token_info JSONB, -- custom column for tokenizer use only
     postcode TEXT,
     country_code VARCHAR(2)
   ){{db.tablespace.search_data}};
@@ -158,6 +159,7 @@ CREATE TABLE placex (
   indexed_status SMALLINT,
   LIKE place INCLUDING CONSTRAINTS,
   wikipedia TEXT, -- calculated wikipedia article name (language:title)
+  token_info JSONB, -- custom column for tokenizer use only
   country_code varchar(2),
   housenumber TEXT,
   postcode TEXT,
