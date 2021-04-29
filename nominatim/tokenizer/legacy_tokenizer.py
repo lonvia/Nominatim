@@ -240,6 +240,7 @@ class LegacyNameAnalyzer:
         self.conn.autocommit = True
         self.normalizer = normalizer
         psycopg2.extras.register_hstore(self.conn)
+        self._prepare_queries()
 
         self._cache = _TokenCache(self.conn)
 
@@ -337,42 +338,53 @@ class LegacyNameAnalyzer:
             Returns a JSON-serialisable structure that will be handed into
             the database via the token_info field.
         """
-        token_info = _TokenInfo(self._cache)
-
         names = place.get('name')
+        address = place.get('address')
+
+        if not names and not address:
+            return {}
 
         if names:
-            token_info.add_names(self.conn, names)
-
             country_feature = place.get('country_feature')
             if country_feature and re.fullmatch(r'[A-Za-z][A-Za-z]', country_feature):
                 self.add_country_names(country_feature.lower(), list(names.values()))
 
-        address = place.get('address')
+        hnrs = []
+        addr_terms = []
+        street = None
+        place = None
 
         if address:
-            hnrs = []
-            addr_terms = []
             for key, value in address.items():
                 if key == 'postcode':
                     self._add_postcode(value)
                 elif key in ('housenumber', 'streetnumber', 'conscriptionnumber'):
                     hnrs.append(value)
                 elif key == 'street':
-                    token_info.add_street(self.conn, value)
+                    street = value
                 elif key == 'place':
-                    token_info.add_place(self.conn, value)
+                    place = value
                 elif not key.startswith('_') and \
                      key not in ('country', 'full'):
                     addr_terms.append((key, value))
 
-            if hnrs:
-                token_info.add_housenumbers(self.conn, hnrs)
+        if not hnrs:
+            hnrs = None
+        elif len(hnrs) > 1 or ',' in hnrs[0] or ';' in hnrs[0]:
+            # split numbers if necessary
+            simple_list = []
+            for hnr in hnrs:
+                simple_list.extend((x.strip() for x in re.split(r'[;,]', hnr)))
 
-            if addr_terms:
-                token_info.add_address_terms(self.conn, addr_terms)
+            hnrs = list(set(simple_list))
 
-        return token_info.data
+        with self.conn.cursor() as cur:
+            cur.execute('EXECUTE get_place_token_info(%s, %s, %s, %s)',
+                        (names, street, place, hnrs))
+            token_info = dict(cur.fetchone())
+
+        if addr_terms:
+            token_info['addr'] = self._get_address_terms(addr_terms)
 
 
     def _add_postcode(self, postcode):
@@ -386,76 +398,26 @@ class LegacyNameAnalyzer:
             self._cache.postcodes.get(postcode.strip().upper(), _create_postcode_from_db)
 
 
-class _TokenInfo:
-    """ Collect token information to be sent back to the database.
-    """
-    def __init__(self, cache):
-        self.cache = cache
-        self.data = {}
+    def _prepare_queries(self):
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                PREPARE get_place_token_info(hstore, text, text, text[]) AS
+                  SELECT make_keywords($1)::text as names,
+                         word_ids_from_name($2)::text as street,
+                         CASE WHEN $3 is null THEN null
+                          ELSE (addr_ids_from_name($3)
+                                || getorcreate_name_id(make_standard_name($3), ''))::text
+                          END as place_search,
+                         word_ids_from_name($3)::text as place_match,
+                         (create_housenumbers($4)).*
+                """)
 
 
-    def add_names(self, conn, names):
-        """ Add token information for the names of the place.
-        """
-        with conn.cursor() as cur:
-            # Create the token IDs for all names.
-            self.data['names'] = cur.scalar("SELECT make_keywords(%s)::text",
-                                            (names, ))
-
-
-    def add_housenumbers(self, conn, hnrs):
-        """ Extract housenumber information from the address.
-        """
-        if len(hnrs) == 1:
-            token = self.cache.get_housenumber(hnrs[0])
-            if token is not None:
-                self.data['hnr_tokens'] = token
-                self.data['hnr'] = hnrs[0]
-                return
-
-        # split numbers if necessary
-        simple_list = []
-        for hnr in hnrs:
-            simple_list.extend((x.strip() for x in re.split(r'[;,]', hnr)))
-
-        if len(simple_list) > 1:
-            simple_list = list(set(simple_list))
-
-        with conn.cursor() as cur:
-            cur.execute("SELECT (create_housenumbers(%s)).* ", (simple_list, ))
-            self.data['hnr_tokens'], self.data['hnr'] = cur.fetchone()
-
-
-    def add_street(self, conn, street):
-        """ Add addr:street match terms.
-        """
-        def _get_street(name):
-            with conn.cursor() as cur:
-                return cur.scalar("SELECT word_ids_from_name(%s)::text", (name, ))
-
-        self.data['street'] = self.cache.streets.get(street, _get_street)
-
-
-    def add_place(self, conn, place):
-        """ Add addr:place search and match terms.
-        """
-        def _get_place(name):
-            with conn.cursor() as cur:
-                cur.execute("""SELECT (addr_ids_from_name(%s)
-                                       || getorcreate_name_id(make_standard_name(%s), ''))::text,
-                                      word_ids_from_name(%s)::text""",
-                            (name, name, name))
-                return cur.fetchone()
-
-        self.data['place_search'], self.data['place_match'] = \
-            self.cache.places.get(place, _get_place)
-
-
-    def add_address_terms(self, conn, terms):
+    def _get_address_terms(self, terms):
         """ Add additional address terms.
         """
         def _get_address_term(name):
-            with conn.cursor() as cur:
+            with self.conn.cursor() as cur:
                 cur.execute("""SELECT addr_ids_from_name(%s)::text,
                                       word_ids_from_name(%s)::text""",
                             (name, name))
@@ -463,9 +425,9 @@ class _TokenInfo:
 
         tokens = {}
         for key, value in terms:
-            tokens[key] = self.cache.address_terms.get(value, _get_address_term)
+            tokens[key] = self._cache.address_terms.get(value, _get_address_term)
 
-        self.data['addr'] = tokens
+        return tokens
 
 
 class _LRU:
@@ -504,15 +466,7 @@ class _TokenCache:
     """
     def __init__(self, conn):
         # various LRU caches
-        self.streets = _LRU(maxsize=256)
-        self.places = _LRU(maxsize=128)
         self.address_terms = _LRU(maxsize=1024)
-
-        # Lookup houseunumbers up to 100 and cache them
-        with conn.cursor() as cur:
-            cur.execute("""SELECT i, ARRAY[getorcreate_housenumber_id(i::text)]::text
-                           FROM generate_series(1, 100) as i""")
-            self._cached_housenumbers = {str(r[0]) : r[1] for r in cur}
 
         # Get postcodes that are already saved
         postcodes = OrderedDict()
@@ -522,8 +476,3 @@ class _TokenCache:
             for row in cur:
                 postcodes[row[0]] = None
         self.postcodes = _LRU(maxsize=32, init_data=postcodes)
-
-    def get_housenumber(self, number):
-        """ Get a housenumber token from the cache.
-        """
-        return self._cached_housenumbers.get(number)

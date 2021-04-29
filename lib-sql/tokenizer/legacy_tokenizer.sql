@@ -142,12 +142,12 @@ LANGUAGE plpgsql;
 -- The function returns the normalized form of the housenumber suitable
 -- for comparison.
 CREATE OR REPLACE FUNCTION create_housenumbers(housenumbers TEXT[],
-                                               OUT tokens TEXT,
-                                               OUT normtext TEXT)
+                                               OUT hnr_tokens TEXT,
+                                               OUT hnr TEXT)
   AS $$
 BEGIN
   SELECT array_to_string(array_agg(trans), ';'), array_agg(tid)::TEXT
-    INTO normtext, tokens
+    INTO hnr, hnr_tokens
     FROM (SELECT lookup_word as trans, getorcreate_housenumber_id(lookup_word) as tid
           FROM (SELECT make_standard_name(h) as lookup_word
                 FROM unnest(housenumbers) h) x) y;
@@ -174,7 +174,7 @@ BEGIN
   RETURN return_word_id;
 END;
 $$
-LANGUAGE plpgsql;
+LANGUAGE plpgsql STRICT;
 
 
 CREATE OR REPLACE FUNCTION create_postcode_id(postcode TEXT)
@@ -258,7 +258,7 @@ BEGIN
   RETURN return_word_id;
 END;
 $$
-LANGUAGE plpgsql;
+LANGUAGE plpgsql STRICT;
 
 
 -- Normalize a string and look up its name ids (full words).
@@ -348,7 +348,7 @@ BEGIN
   RETURN result;
 END;
 $$
-LANGUAGE plpgsql;
+LANGUAGE plpgsql STRICT;
 
 
 CREATE OR REPLACE FUNCTION precompute_words(src TEXT)
