@@ -61,7 +61,7 @@ jobs:
               shell: bash
               if: matrix.ubuntu == 18
 
-           - name: PHP linting
+            - name: PHP linting
               run: phpcs --report-width=120 .
               working-directory: Nominatim
 
