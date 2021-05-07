@@ -27,7 +27,7 @@ def _import_tokenizer(name):
     """
     try:
         return importlib.import_module('nominatim.tokenizer.' + name + '_tokenizer')
-    except ModuleNotFoundError as exp:
+    except ImportError as exp:
         LOG.fatal("No tokenizer named '%s' available. "
                   "Check the setting of NOMINATIM_TOKENIZER.", name)
         raise UsageError('Tokenizer not found') from exp
