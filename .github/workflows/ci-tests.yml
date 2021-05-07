@@ -4,16 +4,20 @@ on: [ push, pull_request ]
 
 jobs:
     tests:
-        runs-on: ubuntu-20.04
-
         strategy:
             matrix:
-                postgresql: [9.5, 13]
+                ubuntu: [18, 20]
                 include:
-                    - postgresql: 9.5
+                    - ubuntu: 18
+                      postgresql: 9.5
                       postgis: 2.5
-                    - postgresql: 13
+                      php: 7.1
+                    - ubuntu: 20
+                      postgresql: 13
                       postgis: 3
+                      php: 7.4
+
+        runs-on: ubuntu-${{ matrix.ubuntu }}.04
 
         steps:
             - uses: actions/checkout@v2
@@ -24,7 +28,8 @@ jobs:
             - name: Setup PHP
               uses: shivammathur/setup-php@v2
               with:
-                  php-version: '7.4'
+                  php-version: ${{ matrix.php }}
+                  extensions: pgsql, intl-60.2
                   tools: phpunit, phpcs, composer
 
             - name: Get Date
@@ -122,12 +127,6 @@ jobs:
             - uses: actions/setup-python@v2
               with:
                 python-version: 3.5
-              if: matrix.ubuntu == 18
-
-            - uses: shivammathur/setup-php@v2
-              with:
-                php-version: 7.1
-                extensions: pgsql, intl-60.2
               if: matrix.ubuntu == 18
 
             - uses: ./Nominatim/.github/actions/setup-postgresql
