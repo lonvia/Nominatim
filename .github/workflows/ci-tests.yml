@@ -50,10 +50,18 @@ jobs:
                   postgis-version: ${{ matrix.postgis }}
             - uses: ./Nominatim/.github/actions/build-nominatim
 
-            - name: Install test prerequsites
-              run: sudo apt-get install -y -qq php-codesniffer pylint python3-pytest python3-behave python3-pytest-cov php-codecoverage php-xdebug
+            - name: Install test prerequsites for Ubunutu 20
+              run: sudo apt-get install -y -qq pylint python3-pytest python3-behave python3-pytest-cov php-codecoverage php-xdebug
+              if: matrix.ubuntu == 20
 
-            - name: PHP linting
+             - name: Install extra dependencies for Ubuntu 18
+              run: |
+                sudo apt-get install libicu-dev python3-pytest python3-behave python3-pytest-cov
+                pip3 install -U python-dotenv psycopg2==2.7.7 jinja2==2.8 psutil==5.4.2 pyicu osmium pylint=2.4.4
+              shell: bash
+              if: matrix.ubuntu == 18
+
+           - name: PHP linting
               run: phpcs --report-width=120 .
               working-directory: Nominatim
 
