@@ -124,6 +124,12 @@ jobs:
                 python-version: 3.5
               if: matrix.ubuntu == 18
 
+            - uses: shivammathur/setup-php@v2
+              with:
+                php-version: 7.1
+                extensions: pgsql, intl-60.2
+              if: matrix.ubuntu == 18
+
             - uses: ./Nominatim/.github/actions/setup-postgresql
               with:
                   postgresql-version: ${{ matrix.postgresql }}

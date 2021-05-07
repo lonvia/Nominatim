@@ -45,7 +45,7 @@ For running Nominatim:
   * [psutil](https://github.com/giampaolo/psutil)
   * [Jinja2](https://palletsprojects.com/p/jinja/)
   * [PyICU](https://pypi.org/project/PyICU/)
-  * [PHP](https://php.net) (7.0 or later)
+  * [PHP](https://php.net) (7.1 or later)
   * PHP-pgsql
   * PHP-intl (bundled with PHP)
   * PHP-cgi (for running queries from the command line)
