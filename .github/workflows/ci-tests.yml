@@ -77,6 +77,7 @@ jobs:
             - name: PHP unit tests
               run: phpunit --coverage-clover ../../coverage-php.xml ./
               working-directory: Nominatim/test/php
+              if: matrix.ubuntu == 20
 
             - name: Python unit tests
               run: py.test-3 --cov=nominatim --cov-report=xml test/python
