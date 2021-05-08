@@ -80,7 +80,7 @@ jobs:
               if: matrix.ubuntu == 20
 
             - name: Python unit tests
-              run: py.test-3 --cov=nominatim --cov-report=xml test/python
+              run: py.test --cov=nominatim --cov-report=xml test/python
               working-directory: Nominatim
 
             - name: BDD tests
