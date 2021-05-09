@@ -52,7 +52,7 @@ jobs:
 
             - uses: actions/setup-python@v2
               with:
-                python-version: 3.5
+                python-version: 3.6
               if: matrix.ubuntu == 18
 
             - name: Install test prerequsites for Ubunutu 20
@@ -146,7 +146,7 @@ jobs:
 
             - uses: actions/setup-python@v2
               with:
-                python-version: 3.5
+                python-version: 3.6
               if: matrix.ubuntu == 18
 
             - uses: ./Nominatim/.github/actions/setup-postgresql
