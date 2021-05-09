@@ -131,9 +131,9 @@ def table_factory(temp_db_cursor):
 def def_config():
     cfg = Configuration(None, SRC_DIR.resolve() / 'settings')
     cfg.set_libdirs(module='.', osm2pgsql='.',
-                    php=str(SRC_DIR / 'lib-php'),
-                    sql=str(SRC_DIR / 'lib-sql'),
-                    data=str(SRC_DIR / 'data'))
+                    php=SRC_DIR / 'lib-php',
+                    sql=SRC_DIR / 'lib-sql',
+                    data=SRC_DIR / 'data')
     return cfg
 
 @pytest.fixture
@@ -291,8 +291,8 @@ def osm2pgsql_options(temp_db):
 def sql_preprocessor(temp_db_conn, tmp_path, monkeypatch, table_factory):
     table_factory('country_name', 'partition INT', ((0, ), (1, ), (2, )))
     cfg = Configuration(None, SRC_DIR.resolve() / 'settings')
-    cfg.set_libdirs(module='.', osm2pgsql='.', php=str(SRC_DIR / 'lib-php'),
-                    sql=str(tmp_path), data=str(SRC_DIR / 'data'))
+    cfg.set_libdirs(module='.', osm2pgsql='.', php=SRC_DIR / 'lib-php',
+                    sql=tmp_path, data=SRC_DIR / 'data')
 
     return SQLPreprocessor(temp_db_conn, cfg)
 
