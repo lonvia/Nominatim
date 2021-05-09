@@ -73,6 +73,7 @@ jobs:
             - name: Python linting
               run: pylint --extension-pkg-whitelist=osmium nominatim
               working-directory: Nominatim
+              if: matrix.ubuntu == 20
 
             - name: PHP unit tests
               run: phpunit --coverage-clover ../../coverage-php.xml ./
