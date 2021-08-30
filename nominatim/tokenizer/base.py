@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple, Dict, Any
 
 from nominatim.config import Configuration
+from nominatim.indexer.place_info import PlaceInfo
 
 # pylint: disable=unnecessary-pass
 
@@ -105,7 +106,7 @@ class AbstractAnalyzer(ABC):
 
 
     @abstractmethod
-    def process_place(self, place: Dict) -> Any:
+    def process_place(self, place: PlaceInfo) -> Any:
         """ Extract tokens for the given place and compute the
             information to be handed to the PL/pgSQL processor for building
             the search index.

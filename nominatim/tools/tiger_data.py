@@ -13,6 +13,7 @@ from nominatim.db.connection import connect
 from nominatim.db.async_connection import WorkerPool
 from nominatim.db.sql_preprocessor import SQLPreprocessor
 from nominatim.errors import UsageError
+from nominatim.indexer.place_info import PlaceInfo
 
 LOG = logging.getLogger()
 
@@ -58,7 +59,7 @@ def handle_threaded_sql_statements(pool, fd, analyzer):
             address = dict(street=row['street'], postcode=row['postcode'])
             args = ('SRID=4326;' + row['geometry'],
                     int(row['from']), int(row['to']), row['interpolation'],
-                    psycopg2.extras.Json(analyzer.process_place(dict(address=address))),
+                    psycopg2.extras.Json(analyzer.process_place(PlaceInfo(dict(address=address)))),
                     analyzer.normalize_postcode(row['postcode']))
         except ValueError:
             continue

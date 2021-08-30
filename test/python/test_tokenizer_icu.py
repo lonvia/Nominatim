@@ -11,6 +11,7 @@ from nominatim.tokenizer.icu_name_processor import ICUNameProcessorRules
 from nominatim.tokenizer.icu_rule_loader import ICURuleLoader
 from nominatim.db import properties
 from nominatim.db.sql_preprocessor import SQLPreprocessor
+from nominatim.indexer.place_info import PlaceInfo
 
 from mock_icu_word_table import MockIcuWordTable
 
@@ -323,29 +324,32 @@ class TestPlaceNames:
 
 
     def test_simple_names(self):
-        info = self.analyzer.process_place({'name': {'name': 'Soft bAr', 'ref': '34'}})
+        info = self.analyzer.process_place(PlaceInfo({'name': {'name': 'Soft bAr', 'ref': '34'}}))
 
         self.expect_name_terms(info, '#Soft bAr', '#34', 'Soft', 'bAr', '34')
 
 
     @pytest.mark.parametrize('sep', [',' , ';'])
     def test_names_with_separator(self, sep):
-        info = self.analyzer.process_place({'name': {'name': sep.join(('New York', 'Big Apple'))}})
+        info = self.analyzer.process_place(PlaceInfo({'name': {'name': sep.join(('New York', 'Big Apple'))}}))
 
         self.expect_name_terms(info, '#New York', '#Big Apple',
                                      'new', 'york', 'big', 'apple')
 
 
     def test_full_names_with_bracket(self):
-        info = self.analyzer.process_place({'name': {'name': 'Houseboat (left)'}})
+        info = self.analyzer.process_place(PlaceInfo({'name': {'name': 'Houseboat (left)'}}))
 
         self.expect_name_terms(info, '#Houseboat (left)', '#Houseboat',
                                      'houseboat', 'left')
 
 
     def test_country_name(self, word_table):
-        info = self.analyzer.process_place({'name': {'name': 'Norge'},
-                                           'country_feature': 'no'})
+        info = self.analyzer.process_place(PlaceInfo({'name': {'name': 'Norge'},
+                                                      'rank_address': 4,
+                                                      'class': 'boundary',
+                                                      'type': 'administrative',
+                                                      'country_code': 'no'}))
 
         self.expect_name_terms(info, '#norge', 'norge')
         assert word_table.get_country() == {('no', 'NORGE')}
@@ -361,7 +365,7 @@ class TestPlaceAddress:
 
 
     def process_address(self, **kwargs):
-        return self.analyzer.process_place({'address': kwargs})
+        return self.analyzer.process_place(PlaceInfo({'address': kwargs}))
 
 
     def name_token_set(self, *expected_terms):

@@ -54,15 +54,24 @@ class IndexerTestDB:
                              END IF;
                              RETURN NEW;
                            END; $$ LANGUAGE plpgsql;""")
-            cur.execute("""CREATE OR REPLACE FUNCTION placex_prepare_update(p placex,
-                                                      OUT name HSTORE,
-                                                      OUT address HSTORE,
-                                                      OUT country_feature VARCHAR,
-                                                      OUT linked_place_id BIGINT)
+            cur.execute("""CREATE TYPE prepare_update_info AS (
+                                       name HSTORE,
+                                       address HSTORE,
+                                       rank_address SMALLINT,
+                                       country_code TEXT,
+                                       class TEXT,
+                                       type TEXT,
+                                       linked_place_id BIGINT
+                                     );
+                           CREATE OR REPLACE FUNCTION placex_update_prepare(p placex,
+                                                      OUT result prepare_update_info)
                            AS $$
                            BEGIN
-                            address := p.address;
-                            name := p.name;
+                            result.address := p.address;
+                            result.name := p.name;
+                            result.rank_address := p.rank_address;
+                            result.class := p.class;
+                            result.type := p.type;
                            END;
                            $$ LANGUAGE plpgsql STABLE;
                         """)
