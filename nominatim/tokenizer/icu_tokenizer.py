@@ -16,6 +16,8 @@ from nominatim.db.sql_preprocessor import SQLPreprocessor
 from nominatim.tokenizer.icu_rule_loader import ICURuleLoader
 from nominatim.tokenizer.icu_name_processor import ICUNameProcessor, ICUNameProcessorRules
 from nominatim.tokenizer.base import AbstractAnalyzer, AbstractTokenizer
+from nominatim.indexer.place_info import PlaceInfo
+from nominatim.declutter.places import get_searchable_names
 
 DBCFG_TERM_NORMALIZATION = "tokenizer_term_normalization"
 
@@ -357,8 +359,19 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
     def add_country_names(self, country_code, names):
         """ Add names for the given country to the search index.
         """
+        # Make sure any decluttering for country names applies.
+        info = PlaceInfo({'name': names, 'country_code': country_code,
+                          'rank_address': 4, 'class': 'boundary',
+                          'type': 'administrative'})
+        self._add_country_full_names(country_code, get_searchable_names(info))
+
+
+    def _add_country_full_names(self, country_code, names):
+        """ Add names for the given country from an already sanatized
+            name list.
+        """
         word_tokens = set()
-        for name in self._compute_full_names(names):
+        for name, _ in names:
             norm_name = self.name_processor.get_search_normalized(name)
             if norm_name:
                 word_tokens.add(norm_name)
@@ -390,7 +403,7 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
         """
         token_info = _TokenInfo(self._cache)
 
-        names = place.name
+        names = get_searchable_names(place)
 
         if names:
             fulls, partials = self._compute_name_tokens(names)
@@ -398,7 +411,7 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
             token_info.add_names(fulls, partials)
 
             if place.is_country():
-                self.add_country_names(place.country_code, names)
+                self._add_country_full_names(place.country_code, names)
 
         address = place.address
         if address:
@@ -461,11 +474,13 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
         """ Computes the full name and partial name tokens for the given
             dictionary of names.
         """
-        full_names = self._compute_full_names(names)
+        if isinstance(names, str):
+            names = ((names, {}), )
+
         full_tokens = set()
         partial_tokens = set()
 
-        for name in full_names:
+        for name, prop in names:
             norm_name = self.name_processor.get_normalized(name)
             full, part = self._cache.names.get(norm_name, (None, None))
             if full is None:
@@ -484,23 +499,6 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
             partial_tokens.update(part)
 
         return full_tokens, partial_tokens
-
-
-    @staticmethod
-    def _compute_full_names(names):
-        """ Return the set of all full name word ids to be used with the
-            given dictionary of names.
-        """
-        full_names = set()
-        for name in (n.strip() for ns in names.values() for n in re.split('[;,]', ns)):
-            if name:
-                full_names.add(name)
-
-                brace_idx = name.find('(')
-                if brace_idx >= 0:
-                    full_names.add(name[:brace_idx].strip())
-
-        return full_names
 
 
     def _add_postcode(self, postcode):
