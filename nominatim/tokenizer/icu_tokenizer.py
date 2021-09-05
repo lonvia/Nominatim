@@ -17,7 +17,7 @@ from nominatim.tokenizer.icu_rule_loader import ICURuleLoader
 from nominatim.tokenizer.icu_name_processor import ICUNameProcessor, ICUNameProcessorRules
 from nominatim.tokenizer.base import AbstractAnalyzer, AbstractTokenizer
 from nominatim.indexer.place_info import PlaceInfo
-from nominatim.declutter.places import get_searchable_names
+from nominatim.declutter.places import get_searchable_names, PlaceName
 
 DBCFG_TERM_NORMALIZATION = "tokenizer_term_normalization"
 
@@ -371,8 +371,8 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
             name list.
         """
         word_tokens = set()
-        for name, _ in names:
-            norm_name = self.name_processor.get_search_normalized(name)
+        for name in names:
+            norm_name = self.name_processor.get_search_normalized(name.name)
             if norm_name:
                 word_tokens.add(norm_name)
 
@@ -470,18 +470,19 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
 
         return tokens
 
+    def _compute_name_token(self, name):
+        return self._compute_name_tokens((PlaceName(name, 'name', None), ))
+
+
     def _compute_name_tokens(self, names):
         """ Computes the full name and partial name tokens for the given
             dictionary of names.
         """
-        if isinstance(names, str):
-            names = ((names, {}), )
-
         full_tokens = set()
         partial_tokens = set()
 
-        for name, prop in names:
-            norm_name = self.name_processor.get_normalized(name)
+        for name in names:
+            norm_name = self.name_processor.get_normalized(name.name)
             full, part = self._cache.names.get(norm_name, (None, None))
             if full is None:
                 variants = self.name_processor.get_variants_ascii(norm_name)
