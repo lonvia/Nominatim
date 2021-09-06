@@ -482,19 +482,22 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
         partial_tokens = set()
 
         for name in names:
-            norm_name = self.name_processor.get_normalized(name.name)
-            full, part = self._cache.names.get(norm_name, (None, None))
-            if full is None:
-                variants = self.name_processor.get_variants_ascii(norm_name)
-                if not variants:
-                    continue
+            word, vtype, variants = self.name_processor.get_variants(name)
+            if not variants:
+                continue
 
+            if vtype:
+                word += '@' + vtype
+
+            full, part = self._cache.names.get(word, (None, None))
+
+            if full is None:
                 with self.conn.cursor() as cur:
                     cur.execute("SELECT (getorcreate_full_word(%s, %s)).*",
-                                (norm_name, variants))
+                                (word, variants))
                     full, part = cur.fetchone()
 
-                self._cache.names[norm_name] = (full, part)
+                self._cache.names[word] = (full, part)
 
             full_tokens.add(full)
             partial_tokens.update(part)

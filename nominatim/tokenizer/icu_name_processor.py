@@ -4,6 +4,7 @@ ICU library.
 """
 from collections import defaultdict
 import itertools
+import functools
 
 from icu import Transliterator
 import datrie
@@ -87,6 +88,7 @@ class ICUNameProcessor:
         """
         return self.normalizer.transliterate(name).strip()
 
+    @functools.lru_cache(maxsize=5000)
     def get_variants_ascii(self, norm_name):
         """ Compute the spelling variants for the given normalized name
             and transliterate the result.
@@ -126,6 +128,18 @@ class ICUNameProcessor:
 
         return self._compute_result_set(partials, baseform[startpos:])
 
+    def get_variants(self, name):
+        """ Compute spelling variants given the tagged name.
+            Returns a tuple of (word, variant type, list of variants).
+        """
+        norm_name = self.get_normalized(name.name)
+
+        if name.get_attr('is_ref', False):
+            # references do not produce any variants
+            return norm_name, 'ref', [name.name]
+
+        # other words produce non-types
+        return norm_name, None, self.get_variants_ascii(norm_name)
 
     def _compute_result_set(self, partials, prefix):
         results = set()
