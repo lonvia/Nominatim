@@ -13,12 +13,15 @@ class Word
     private $iSearchNameCount;
     /// Number of terms in the word.
     private $iTermCount;
+    /// Match score.
+    private $iMatchScore;
 
-    public function __construct($iId, $iSearchNameCount, $iTermCount)
+    public function __construct($iId, $iSearchNameCount, $iTermCount, $iMatchScore = 1)
     {
         $this->iId = $iId;
         $this->iSearchNameCount = $iSearchNameCount;
         $this->iTermCount = $iTermCount;
+        $this->iMatchScore = $iMatchScore;
     }
 
     public function getId()
@@ -63,13 +66,13 @@ class Word
             if ($this->iTermCount > 1
                 && ($oPosition->isPhrase('') || !$oPosition->isFirstPhrase())
             ) {
-                $oNewSearch = $oSearch->clone(1);
+                $oNewSearch = $oSearch->clone($this->iMatchScore);
                 $oNewSearch->addAddressToken($this->iId);
 
                 return array($oNewSearch);
             }
         } elseif (!$oSearch->hasName(true)) {
-            $oNewSearch = $oSearch->clone(1);
+            $oNewSearch = $oSearch->clone($this->iMatchScore);
             $oNewSearch->addNameToken(
                 $this->iId,
                 CONST_Search_NameOnlySearchFrequencyThreshold
@@ -90,7 +93,8 @@ class Word
                 'Type' => 'word',
                 'Info' => array(
                            'count' => $this->iSearchNameCount,
-                           'terms' => $this->iTermCount
+                           'terms' => $this->iTermCount,
+                           'score' => $this->iMatchScore
                           )
                );
     }

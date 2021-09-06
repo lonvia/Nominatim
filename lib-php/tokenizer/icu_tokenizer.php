@@ -80,19 +80,26 @@ class Tokenizer
         $aWordLists = array();
         $aTokens = array();
         foreach ($aPhrases as $iPhrase => $oPhrase) {
-            $sNormQuery .= ','.$this->normalizeString($oPhrase->getPhrase());
-            $sPhrase = $this->makeStandardWord($oPhrase->getPhrase());
-            Debug::printVar('Phrase', $sPhrase);
+            $sNormPhrase = $this->normalizeString($oPhrase->getPhrase());
+            Debug::printVar('Phrase', $sNormPhrase);
 
-            $oWordList = new SimpleWordList($sPhrase);
-            $aTokens = array_merge($aTokens, $oWordList->getTokens());
+            $oWordList = new SimpleWordList($sNormPhrase);
+
+            foreach ($oWordList->getTokens() as $sToken) {
+                $sTransToken = $this->makeStandardWord($sToken);
+                if (!isset($aTokens[$sTransToken])) {
+                    $aTokens[$sTransToken] = array();
+                }
+                $aTokens[$sTransToken][$sToken] = $sToken;
+            }
+
             $aWordLists[] = $oWordList;
         }
 
         Debug::printVar('Tokens', $aTokens);
         Debug::printVar('WordLists', $aWordLists);
 
-        $oValidTokens = $this->computeValidTokens($aTokens, $sNormQuery);
+        $oValidTokens = $this->computeValidTokens($aTokens);
 
         foreach ($aPhrases as $iPhrase => $oPhrase) {
             $oPhrase->setWordSets($aWordLists[$iPhrase]->getWordSets($oValidTokens));
@@ -102,16 +109,16 @@ class Tokenizer
     }
 
 
-    private function computeValidTokens($aTokens, $sNormQuery)
+    private function computeValidTokens($aTokens)
     {
         $oValidTokens = new TokenList();
 
         if (!empty($aTokens)) {
-            $this->addTokensFromDB($oValidTokens, $aTokens, $sNormQuery);
+            $this->addTokensFromDB($oValidTokens, $aTokens);
 
             // Try more interpretations for Tokens that could not be matched.
-            foreach ($aTokens as $sToken) {
-                if ($sToken[0] != ' ' && !$oValidTokens->contains($sToken)) {
+            foreach ($aTokens as $sToken => $aNormalized) {
+                if (!$oValidTokens->contains($sToken)) {
                     if (preg_match('/^([0-9]{5}) [0-9]{4}$/', $sToken, $aData)) {
                         // US ZIP+4 codes - merge in the 5-digit ZIP code
                         $oValidTokens->addToken(
@@ -134,7 +141,7 @@ class Tokenizer
     }
 
 
-    private function addTokensFromDB(&$oValidTokens, $aTokens, $sNormQuery)
+    private function addTokensFromDB(&$oValidTokens, $aTokens)
     {
         // Check which tokens we have, get the ID numbers
         $sSQL = 'SELECT word_id, word_token, type, word,';
@@ -142,7 +149,7 @@ class Tokenizer
         $sSQL .= "      info->>'class' as class, info->>'type' as ctype,";
         $sSQL .= "      info->>'count' as count";
         $sSQL .= ' FROM word WHERE word_token in (';
-        $sSQL .= join(',', $this->oDB->getDBQuotedList($aTokens)).')';
+        $sSQL .= join(',', $this->oDB->getDBQuotedList(array_keys($aTokens))).')';
 
         Debug::printSQL($sSQL);
 
@@ -151,18 +158,23 @@ class Tokenizer
         foreach ($aDBWords as $aWord) {
             $iId = (int) $aWord['word_id'];
             $sTok = $aWord['word_token'];
+            $aNorms = $aTokens[$sTok];
 
             switch ($aWord['type']) {
                 case 'C':  // country name tokens
                     if ($aWord['word'] !== null) {
-                        $oValidTokens->addToken(
-                            $sTok,
-                            new Token\Country($iId, $aWord['word'])
-                        );
+                        foreach ($aNorms as $sNorm) {
+                            $oValidTokens->addToken(
+                                $sNorm,
+                                new Token\Country($iId, $aWord['word'])
+                            );
+                        }
                     }
                     break;
                 case 'H':  // house number tokens
-                    $oValidTokens->addToken($sTok, new Token\HouseNumber($iId, $aWord['word_token']));
+                    foreach ($aNorms as $sNorm) {
+                        $oValidTokens->addToken($sNorm, new Token\HouseNumber($iId, $aWord['word_token']));
+                    }
                     break;
                 case 'P':  // postcode tokens
                     // Postcodes are not normalized, so they may have content
@@ -172,37 +184,48 @@ class Tokenizer
                         && pg_escape_string($aWord['word']) == $aWord['word']
                     ) {
                         $sNormPostcode = $this->normalizeString($aWord['word']);
-                        if (strpos($sNormQuery, $sNormPostcode) !== false) {
-                            $oValidTokens->addToken(
-                                $sTok,
-                                new Token\Postcode($iId, $aWord['word'], null)
-                            );
+                        foreach ($aNorms as $sNorm) {
+                            if ($sNormPostcode == $sNorm) {
+                                $oValidTokens->addToken(
+                                    $sNorm,
+                                    new Token\Postcode($iId, $aWord['word'], null)
+                                );
+                            }
                         }
                     }
                     break;
                 case 'S':  // tokens for classification terms (special phrases)
                     if ($aWord['class'] !== null && $aWord['ctype'] !== null) {
-                        $oValidTokens->addToken($sTok, new Token\SpecialTerm(
-                            $iId,
-                            $aWord['class'],
-                            $aWord['ctype'],
-                            (isset($aWord['operator'])) ? Operator::NEAR : Operator::NONE
-                        ));
+                        foreach ($aNorms as $sNorm) {
+                            if ($aWord['word'] == $sNorm) {
+                                $oValidTokens->addToken($sTok, new Token\SpecialTerm(
+                                    $iId,
+                                    $aWord['class'],
+                                    $aWord['ctype'],
+                                    (isset($aWord['operator'])) ? Operator::NEAR : Operator::NONE
+                                ));
+                            }
+                        }
                     }
                     break;
                 case 'W': // full-word tokens
-                    $oValidTokens->addToken($sTok, new Token\Word(
-                        $iId,
-                        (int) $aWord['count'],
-                        substr_count($aWord['word_token'], ' ')
-                    ));
+                    foreach ($aNorms as $sNorm) {
+                        $oValidTokens->addToken($sNorm, new Token\Word(
+                            $iId,
+                            (int) $aWord['count'],
+                            substr_count($aWord['word_token'], ' ') + 1,
+                            levenshtein($aWord['word'], $sNorm) + 1
+                        ));
+                    }
                     break;
                 case 'w':  // partial word terms
-                    $oValidTokens->addToken($sTok, new Token\Partial(
-                        $iId,
-                        $aWord['word_token'],
-                        (int) $aWord['count']
-                    ));
+                    foreach ($aNorms as $sNorm) {
+                        $oValidTokens->addToken($sNorm, new Token\Partial(
+                            $iId,
+                            $aWord['word_token'],
+                            (int) $aWord['count']
+                        ));
+                    }
                     break;
                 default:
                     break;
