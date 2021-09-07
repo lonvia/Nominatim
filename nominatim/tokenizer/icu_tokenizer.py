@@ -17,7 +17,7 @@ from nominatim.tokenizer.icu_rule_loader import ICURuleLoader
 from nominatim.tokenizer.icu_name_processor import ICUNameProcessor, ICUNameProcessorRules
 from nominatim.tokenizer.base import AbstractAnalyzer, AbstractTokenizer
 from nominatim.indexer.place_info import PlaceInfo
-from nominatim.declutter.places import get_searchable_names, PlaceName
+from nominatim.declutter.places import PlaceProcessor, PlaceName
 
 DBCFG_TERM_NORMALIZATION = "tokenizer_term_normalization"
 
@@ -40,6 +40,7 @@ class LegacyICUTokenizer(AbstractTokenizer):
         self.data_dir = data_dir
         self.naming_rules = None
         self.term_normalization = None
+        self.place_processor = None
 
 
     def init_new_db(self, config, init_db=True):
@@ -53,6 +54,8 @@ class LegacyICUTokenizer(AbstractTokenizer):
         self.naming_rules = ICUNameProcessorRules(loader=loader)
         self.term_normalization = config.TERM_NORMALIZATION
 
+        self.place_processor = PlaceProcessor(config)
+
         self._install_php(config.lib_dir.php)
         self._save_config()
 
@@ -61,9 +64,11 @@ class LegacyICUTokenizer(AbstractTokenizer):
             self._init_db_tables(config)
 
 
-    def init_from_project(self):
+    def init_from_project(self, config):
         """ Initialise the tokenizer from the project directory.
         """
+        self.place_processor = PlaceProcessor(config)
+
         with connect(self.dsn) as conn:
             self.naming_rules = ICUNameProcessorRules(conn=conn)
             self.term_normalization = get_property(conn, DBCFG_TERM_NORMALIZATION)
@@ -83,10 +88,10 @@ class LegacyICUTokenizer(AbstractTokenizer):
             sqlp.run_sql_file(conn, 'tokenizer/icu_tokenizer.sql')
 
 
-    def check_database(self):
+    def check_database(self, config):
         """ Check that the tokenizer is set up correctly.
         """
-        self.init_from_project()
+        self.init_from_project(config)
 
         if self.naming_rules is None:
             return "Configuration for tokenizer 'icu' are missing."
@@ -109,7 +114,9 @@ class LegacyICUTokenizer(AbstractTokenizer):
 
             Analyzers are not thread-safe. You need to instantiate one per thread.
         """
-        return LegacyICUNameAnalyzer(self.dsn, ICUNameProcessor(self.naming_rules))
+        return LegacyICUNameAnalyzer(self.dsn,
+                                     ICUNameProcessor(self.naming_rules),
+                                     self.place_processor)
 
 
     def _install_php(self, phpdir):
@@ -190,10 +197,11 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
         normalization.
     """
 
-    def __init__(self, dsn, name_proc):
+    def __init__(self, dsn, name_proc, place_proc):
         self.conn = connect(dsn).connection
         self.conn.autocommit = True
         self.name_processor = name_proc
+        self.place_processor = place_proc
 
         self._cache = _TokenCache()
 
@@ -363,7 +371,8 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
         info = PlaceInfo({'name': names, 'country_code': country_code,
                           'rank_address': 4, 'class': 'boundary',
                           'type': 'administrative'})
-        self._add_country_full_names(country_code, get_searchable_names(info))
+        self._add_country_full_names(country_code,
+                                     self.place_processor.get_searchable_names(info))
 
 
     def _add_country_full_names(self, country_code, names):
@@ -403,7 +412,7 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
         """
         token_info = _TokenInfo(self._cache)
 
-        names = get_searchable_names(place)
+        names = self.place_processor.get_searchable_names(place)
 
         if names:
             fulls, partials = self._compute_name_tokens(names)

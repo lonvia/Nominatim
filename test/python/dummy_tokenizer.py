@@ -21,7 +21,7 @@ class DummyTokenizer:
         self.init_state = "new"
 
 
-    def init_from_project(self):
+    def init_from_project(self, _):
         assert self.init_state is None
         self.init_state = "loaded"
 

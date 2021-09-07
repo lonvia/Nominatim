@@ -2,8 +2,9 @@
 Functions for extracting sanitized information from the information
 saved in the placex table.
 """
+import importlib
 
-import re
+from nominatim.errors import UsageError
 
 class PlaceName:
     """ A searchable name for a place together with properties.
@@ -34,70 +35,55 @@ class PlaceName:
         return self.attr.get(key, default)
 
 
-def get_searchable_names(place):
-    """ Convert the list of names for the given place into a list of
-        searchable names. A name is considered 'searchable' when its full
-        version may be used for finding the place. The function also adds
-        properties to each name describing its nature.
+class PlaceProcessor:
+    """ Pre-processor for place data processed by the indexer.
+
+        The processor can be configured through the `place_processing.yaml` file.
     """
-    if not place.name:
-        return None
 
-    names = _create_basic_name_list(place)
-    names = _split_multi_names(place, names)
-    names = _add_non_braced(place, names)
-    names = _mark_references(place, names)
-
-    return names
+    def __init__(self, config):
+        rules = config.load_sub_configuration('place_processing.yaml')
+        self._create_name_functions(rules)
 
 
-def _create_basic_name_list(place):
-    """ Convert a name dictionary retrived from the database into a list
-        of PlaceNames.
-    """
-    names = []
+    def _create_name_functions(self, rules):
+        """ Set up the pre-processing functions for names from the
+            'name' section of the given rules.
+        """
+        if 'name' not in rules:
+            raise UsageError("No 'name' section in 'place_processing.yaml'.")
 
-    for key, value in place.name.items():
-        parts = key.split(':', 1)
-        names.append(PlaceName(value.strip(),
-                               parts[0].strip(),
-                               parts[1].strip() if len(parts) > 1 else None))
+        self.name_proc_functions = []
 
-    return names
-
-
-def _split_multi_names(_, names):
-    """ Create a new name list where names with semi-colons are split in
-        separate entities.
-    """
-    new_names = []
-    for name in names:
-        split_names = re.split('[;,]', name.name)
-        if len(split_names) == 1:
-            new_names.append(name)
-        else:
-            new_names.extend(PlaceName(n, name.kind, name.suffix) for n in split_names)
-
-    return new_names
+        for func in rules['name']:
+            if 'step' not in func:
+                raise UsageError("Name processing step is missing the 'step' attribute.")
+            module_name = 'nominatim.declutter.name_transform.' + func['step'].replace('-', '_')
+            step_func_module = importlib.import_module(module_name)
+            self.name_proc_functions.append(step_func_module.create(func))
 
 
-def _add_non_braced(_, names):
-    """ Add variants for names that have a bracket extension.
-    """
-    names.extend(PlaceName(n.name.split('(')[0].strip(), n.kind, n.suffix)
-                 for n in names if '(' in n.name)
 
-    return names
+    def get_searchable_names(self, place):
+        """ Convert the list of names for the given place into a list of
+            searchable names. A name is considered 'searchable' when its full
+            version may be used for finding the place. The function also adds
+            properties to each name describing its nature.
+        """
+        if not place.name:
+            return None
 
-_REF_LIST = ("ref", "int_ref", "nat_ref", "reg_ref", "loc_ref", "old_ref",
-            "iata", "icao", "pcode")
+        names = []
 
-def _mark_references(_, names):
-    """ Set the 'is_ref' property on all names that are unabbreviable
-        references.
-    """
-    for name in names:
-        if name.kind in _REF_LIST:
-            name.set_attr('is_ref', True)
+        # Convert the dictionary into a list of PlaceNames:
+        for key, value in place.name.items():
+            parts = key.split(':', 1)
+            names.append(PlaceName(value.strip(),
+                                   parts[0].strip(),
+                                   parts[1].strip() if len(parts) > 1 else None))
 
-    return names
+        # Apply the configured transforms.
+        for func in self.name_proc_functions:
+            names = func(place, names)
+
+        return names

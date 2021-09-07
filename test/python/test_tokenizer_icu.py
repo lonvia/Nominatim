@@ -179,7 +179,7 @@ def test_init_from_project(monkeypatch, test_config, tokenizer_factory):
     monkeypatch.undo()
 
     tok = tokenizer_factory()
-    tok.init_from_project()
+    tok.init_from_project(test_config)
 
     assert tok.naming_rules is not None
     assert tok.term_normalization == ':: lower();'
