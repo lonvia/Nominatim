@@ -24,6 +24,12 @@ transliteration:
     - "[^[:Ascii:]] >"
     - ":: lower ()"
     - ":: NFC ()"
+preprocessing:
+    name:
+      - step: split-name-list
+      - step: strip-brace-terms
+      - step: mark-references
+        ref-tags: [ref, int_ref, nat_ref, reg_ref, loc_ref, old_ref, iata, icao, pcode]
 variants:
     - !include icu-rules/variants-bg.yaml
     - !include icu-rules/variants-ca.yaml

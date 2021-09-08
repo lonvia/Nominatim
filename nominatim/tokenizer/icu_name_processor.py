@@ -136,7 +136,7 @@ class ICUNameProcessor:
 
         if name.get_attr('is_ref', False):
             # references do not produce any variants
-            return norm_name, 'ref', [name.name]
+            return norm_name, 'ref', [norm_name]
 
         # other words produce non-types
         return norm_name, None, self.get_variants_ascii(norm_name)

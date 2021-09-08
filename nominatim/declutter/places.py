@@ -41,9 +41,10 @@ class PlaceProcessor:
         The processor can be configured through the `place_processing.yaml` file.
     """
 
-    def __init__(self, config):
-        rules = config.load_sub_configuration('place_processing.yaml')
-        self._create_name_functions(rules)
+    def __init__(self, rules):
+        self.name_proc_functions = []
+        if rules:
+            self._create_name_functions(rules)
 
 
     def _create_name_functions(self, rules):
@@ -52,8 +53,6 @@ class PlaceProcessor:
         """
         if 'name' not in rules:
             raise UsageError("No 'name' section in 'place_processing.yaml'.")
-
-        self.name_proc_functions = []
 
         for func in rules['name']:
             if 'step' not in func:
