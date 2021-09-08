@@ -16,8 +16,8 @@ from nominatim.db.sql_preprocessor import SQLPreprocessor
 from nominatim.tokenizer.icu_rule_loader import ICURuleLoader
 from nominatim.tokenizer.icu_name_processor import ICUNameProcessor, ICUNameProcessorRules
 from nominatim.tokenizer.base import AbstractAnalyzer, AbstractTokenizer
+from nominatim.tokenizer.place_preprocessing import PlaceProcessor, PlaceName
 from nominatim.indexer.place_info import PlaceInfo
-from nominatim.declutter.places import PlaceProcessor, PlaceName
 
 DBCFG_TERM_NORMALIZATION = "tokenizer_term_normalization"
 
@@ -368,7 +368,7 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
     def add_country_names(self, country_code, names):
         """ Add names for the given country to the search index.
         """
-        # Make sure any decluttering for country names applies.
+        # Make sure any name preprocessing for country names applies.
         info = PlaceInfo({'name': names, 'country_code': country_code,
                           'rank_address': 4, 'class': 'boundary',
                           'type': 'administrative'})

@@ -3,7 +3,7 @@ Name processor that splits name values with multiple values into their component
 """
 import re
 
-from nominatim.declutter.places import PlaceName
+from nominatim.tokenizer.place_preprocessing import PlaceName
 
 def create(func):
     """ Create a name processing function that splits name values with

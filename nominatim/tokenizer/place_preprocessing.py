@@ -57,7 +57,7 @@ class PlaceProcessor:
         for func in rules['name']:
             if 'step' not in func:
                 raise UsageError("Name processing step is missing the 'step' attribute.")
-            module_name = 'nominatim.declutter.name_transform.' + func['step'].replace('-', '_')
+            module_name = 'nominatim.tokenizer.name_transform.' + func['step'].replace('-', '_')
             step_func_module = importlib.import_module(module_name)
             self.name_proc_functions.append(step_func_module.create(func))
 

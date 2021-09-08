@@ -1,7 +1,7 @@
 """
 Name processor handling names with addendums in braces.
 """
-from nominatim.declutter.places import PlaceName
+from nominatim.tokenizer.place_preprocessing import PlaceName
 
 def create(_):
     """ Create a name processing function that creates additional name variants
