@@ -134,7 +134,7 @@ class ICUNameProcessor:
         """
         norm_name = self.get_normalized(name.name)
 
-        if name.get_attr('is_ref', False):
+        if name.get_attr('analyzer') == 'ref':
             # references do not produce any variants
             return norm_name, 'ref', [norm_name]
 
