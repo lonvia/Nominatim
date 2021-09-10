@@ -12,7 +12,11 @@ from nominatim.tokenizer.icu_name_processor import ICUNameProcessor, ICUNameProc
 from nominatim.errors import UsageError
 
 @pytest.fixture
-def cfgfile():
+def cfgfile(def_config, tmp_path):
+    project_dir = tmp_path / 'project'
+    project_dir.mkdir()
+    def_config.project_dir = project_dir
+
     def _create_config(*variants, **kwargs):
         content = dedent("""\
         normalization:
@@ -26,11 +30,13 @@ def cfgfile():
             - "::  Latin ()"
             - "'🜵' > ' '"
         """)
-        content += "variants:\n  - words:\n"
-        content += '\n'.join(("      - " + s for s in variants)) + '\n'
+        content += "word-tokens:\n  - variants:\n      - words:\n"
+        content += '\n'.join(("          - " + s for s in variants)) + '\n'
         for k, v in kwargs:
-            content += "    {}: {}\n".format(k, v)
-        return yaml.safe_load(content)
+            content += "        {}: {}\n".format(k, v)
+        (project_dir / 'icu_tokenizer.yaml').write_text(content)
+
+        return def_config
 
     return _create_config
 
@@ -40,9 +46,9 @@ def get_normalized_variants(proc, name):
 
 
 def test_variants_empty(cfgfile):
-    fpath = cfgfile('saint -> 🜵', 'street -> st')
+    config = cfgfile('saint -> 🜵', 'street -> st')
 
-    rules = ICUNameProcessorRules(loader=ICURuleLoader(fpath))
+    rules = ICUNameProcessorRules(loader=ICURuleLoader(config))
     proc = ICUNameProcessor(rules)
 
     assert get_normalized_variants(proc, '🜵') == []
@@ -83,8 +89,8 @@ VARIANT_TESTS = [
 
 @pytest.mark.parametrize("rules,name,variants", VARIANT_TESTS)
 def test_variants(cfgfile, rules, name, variants):
-    fpath = cfgfile(*rules)
-    proc = ICUNameProcessor(ICUNameProcessorRules(loader=ICURuleLoader(fpath)))
+    config = cfgfile(*rules)
+    proc = ICUNameProcessor(ICUNameProcessorRules(loader=ICURuleLoader(config)))
 
     result = get_normalized_variants(proc, name)
 
@@ -93,9 +99,9 @@ def test_variants(cfgfile, rules, name, variants):
 
 
 def test_search_normalized(cfgfile):
-    fpath = cfgfile('~street => s,st', 'master => mstr')
+    config = cfgfile('~street => s,st', 'master => mstr')
 
-    rules = ICUNameProcessorRules(loader=ICURuleLoader(fpath))
+    rules = ICUNameProcessorRules(loader=ICURuleLoader(config))
     proc = ICUNameProcessor(rules)
 
     assert proc.get_search_normalized('Master Street') == 'master street'

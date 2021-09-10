@@ -72,8 +72,9 @@ def analyzer(tokenizer_factory, test_config, monkeypatch,
                      variants=('~gasse -> gasse', 'street => st', )):
         cfgstr = {'normalization' : list(norm),
                    'transliteration' : list(trans),
-                   'variants' : [ {'words': list(variants)}]}
-        tok.naming_rules = ICUNameProcessorRules(loader=ICURuleLoader(cfgstr))
+                   'word-tokens' : [{'variants' : [ {'words': list(variants)}]}]}
+        (test_config.project_dir / 'icu_tokenizer.yaml').write_text(yaml.dump(cfgstr))
+        tok.naming_rules = ICUNameProcessorRules(loader=ICURuleLoader(test_config))
 
         return tok.name_analyzer()
 

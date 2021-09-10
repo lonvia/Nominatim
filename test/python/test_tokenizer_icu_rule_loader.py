@@ -12,7 +12,16 @@ from nominatim.errors import UsageError
 from icu import Transliterator
 
 @pytest.fixture
-def cfgrules():
+def test_config(def_config, tmp_path):
+    project_dir = tmp_path / 'project'
+    project_dir.mkdir()
+    def_config.project_dir = project_dir
+
+    return def_config
+
+
+@pytest.fixture
+def cfgrules(test_config):
     def _create_config(*variants, **kwargs):
         content = dedent("""\
         normalization:
@@ -25,36 +34,43 @@ def cfgrules():
             - "::  Latin ()"
             - "[[:Punctuation:][:Space:]]+ > ' '"
         """)
-        content += "variants:\n  - words:\n"
-        content += '\n'.join(("      - " + s for s in variants)) + '\n'
+        content += "word-tokens:\n  - variants:\n      - words:\n"
+        content += '\n'.join(("           - " + s for s in variants)) + '\n'
         for k, v in kwargs:
-            content += "    {}: {}\n".format(k, v)
-        return yaml.safe_load(content)
+            content += "        {}: {}\n".format(k, v)
+
+        (test_config.project_dir / 'icu_tokenizer.yaml').write_text(content)
+
+        return test_config
 
     return _create_config
 
 
-def test_empty_rule_set():
-    rule_cfg = yaml.safe_load(dedent("""\
+def test_empty_rule_set(test_config):
+    (test_config.project_dir / 'icu_tokenizer.yaml').write_text("""\
         normalization:
         transliteration:
-        variants:
-        """))
+        word-tokens:
+            - variants:
+        """)
 
-    rules = ICURuleLoader(rule_cfg)
+    rules = ICURuleLoader(test_config)
     assert rules.get_search_rules() == ''
     assert rules.get_normalization_rules() == ''
     assert rules.get_transliteration_rules() == ''
     assert list(rules.get_replacement_pairs()) == []
 
-CONFIG_SECTIONS = ('normalization', 'transliteration', 'variants')
+CONFIG_SECTIONS = ('normalization', 'transliteration')
 
 @pytest.mark.parametrize("section", CONFIG_SECTIONS)
-def test_missing_section(section):
+def test_missing_section(test_config, section):
     rule_cfg = { s: {} for s in CONFIG_SECTIONS if s != section}
+    rule_cfg['word-tokens'] = [{'variants' : None}]
+    (test_config.project_dir / 'icu_tokenizer.yaml').write_text(
+        yaml.dump(rule_cfg))
 
     with pytest.raises(UsageError):
-        ICURuleLoader(rule_cfg)
+        ICURuleLoader(test_config)
 
 
 def test_get_search_rules(cfgrules):
@@ -88,20 +104,20 @@ def test_get_transliteration_rules(cfgrules):
     assert trans.transliterate(" проспект-Prospekt ") == " prospekt Prospekt "
 
 
-def test_transliteration_rules_from_file(def_config, tmp_path):
-    def_config.project_dir = tmp_path
-    cfgpath = tmp_path / ('test_config.yaml')
+def test_transliteration_rules_from_file(test_config):
+    cfgpath = test_config.project_dir / ('icu_tokenizer.yaml')
     cfgpath.write_text(dedent("""\
         normalization:
         transliteration:
             - "'ax' > 'b'"
             - !include transliteration.yaml
-        variants:
+        word-tokens:
+            - variants:
         """))
-    transpath = tmp_path / ('transliteration.yaml')
+    transpath = test_config.project_dir / ('transliteration.yaml')
     transpath.write_text('- "x > y"')
 
-    loader = ICURuleLoader(def_config.load_sub_configuration('test_config.yaml'))
+    loader = ICURuleLoader(test_config)
     rules = loader.get_transliteration_rules()
     trans = Transliterator.createFromRules("test", rules)
 

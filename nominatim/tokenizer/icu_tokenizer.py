@@ -49,12 +49,11 @@ class LegacyICUTokenizer(AbstractTokenizer):
             This copies all necessary data in the project directory to make
             sure the tokenizer remains stable even over updates.
         """
-        rules = config.load_sub_configuration('icu_tokenizer.yaml', config='TOKENIZER_CONFIG')
-        loader = ICURuleLoader(rules)
+        loader = ICURuleLoader(config)
         self.naming_rules = ICUNameProcessorRules(loader=loader)
         self.term_normalization = config.TERM_NORMALIZATION
 
-        self.place_processor = PlaceProcessor(rules.get('preprocessing'))
+        self.place_processor = PlaceProcessor(loader.get_preprocessing_rules())
 
         self._install_php(config.lib_dir.php)
         self._save_config()

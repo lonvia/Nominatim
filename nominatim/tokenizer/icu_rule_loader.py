@@ -46,13 +46,31 @@ class ICURuleLoader:
     """ Compiler for ICU rules from a tokenizer configuration file.
     """
 
-    def __init__(self, rules):
-        self.variants = set()
+    def __init__(self, config):
+        rules = config.load_sub_configuration('icu_tokenizer.yaml',
+                                              config='TOKENIZER_CONFIG')
+
+        # Preprocessing rule section and all its subsections are optional.
+        self.preprocessing_rules = rules.get('preprocessing', {})
+
+        if 'name' not in self.preprocessing_rules:
+            self.preprocessing_rules['name']  = []
 
         self.normalization_rules = self._cfg_to_icu_rules(rules, 'normalization')
         self.transliteration_rules = self._cfg_to_icu_rules(rules, 'transliteration')
-        self._parse_variant_list(self._get_section(rules, 'variants'))
 
+        self.variants = set()
+        # XXX needs to be converted to list of variants
+        self._parse_variant_list(rules['word-tokens'][0]['variants'])
+
+
+    def get_preprocessing_rules(self):
+        """ Return the set of preprocessing steps as configured. The
+            following sections are guaranteed to exist and are initialised
+            with empty content when they were missing in the configuration
+            file: name.
+        """
+        return self.preprocessing_rules
 
     def get_search_rules(self):
         """ Return the ICU rules to be used during search.

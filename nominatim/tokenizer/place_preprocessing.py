@@ -42,24 +42,25 @@ class PlaceProcessor:
     """
 
     def __init__(self, rules):
-        self.name_proc_functions = []
-        if rules:
-            self._create_name_functions(rules)
+        self.name_proc_functions = self._create_name_functions(rules)
 
 
     def _create_name_functions(self, rules):
         """ Set up the pre-processing functions for names from the
             'name' section of the given rules.
         """
-        if 'name' not in rules:
-            raise UsageError("No 'name' section in 'place_processing.yaml'.")
+        assert('name' in rules)
+
+        funcs = []
 
         for func in rules['name']:
             if 'step' not in func:
                 raise UsageError("Name processing step is missing the 'step' attribute.")
             module_name = 'nominatim.tokenizer.name_transform.' + func['step'].replace('-', '_')
             step_func_module = importlib.import_module(module_name)
-            self.name_proc_functions.append(step_func_module.create(func))
+            funcs.append(step_func_module.create(func))
+
+        return funcs
 
 
 
