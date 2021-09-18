@@ -10,8 +10,12 @@ from icu import Transliterator
 
 from nominatim.errors import UsageError
 import nominatim.tokenizer.icu_variants as variants
+from nominatim.db.properties import set_property, get_property
 
 LOG = logging.getLogger()
+
+DBCFG_IMPORT_NORM_RULES = "tokenizer_import_normalisation"
+DBCFG_IMPORT_TRANS_RULES = "tokenizer_import_transliteration"
 
 def _flatten_config_list(content):
     if not content:
@@ -28,6 +32,17 @@ def _flatten_config_list(content):
             output.append(ele)
 
     return output
+
+
+def _get_section(rules, section):
+    """ Get the section named 'section' from the rules. If the section does
+        not exist, raise a usage error with a meaningful message.
+    """
+    if section not in rules:
+        LOG.fatal("Section '%s' not found in tokenizer config.", section)
+        raise UsageError("Syntax error in tokenizer configuration file.")
+
+    return rules[section]
 
 
 class VariantRule:
@@ -59,9 +74,24 @@ class ICURuleLoader:
         self.normalization_rules = self._cfg_to_icu_rules(rules, 'normalization')
         self.transliteration_rules = self._cfg_to_icu_rules(rules, 'transliteration')
 
-        self.variants = set()
-        # XXX needs to be converted to list of variants
-        self._parse_variant_list(rules['word-tokens'][0]['variants'])
+        self.analysis = {}
+        for section in _get_section(rules, 'token-analysis'):
+            name = section.get('id', 'default')
+            if name in self.analysis:
+                LOG.fatal(f"ICU tokenizer configuration has two sections with id '{name}'.")
+                UsageError("Syntax error in ICU tokenizer config.")
+            self.analysis[name] = TokenAnalyzerRule(section, self.normalization_rules)
+
+
+    def load_config_from_db(self, conn):
+        self.normalization_rules = get_property(conn, DBCFG_IMPORT_NORM_RULES
+        self.transliteration_rules = get_property(conn, DBCFG_IMPORT_TRANS_RULES)
+        # XXX should we also load/save the token-analysis section?
+
+
+    def save_config_to_db(self, conn):
+        set_property(conn, DBCFG_IMPORT_NORM_RULES, self.normalization_rules)
+        set_property(conn, DBCFG_IMPORT_TRANS_RULES, self.transliteration_rules)
 
 
     def get_preprocessing_rules(self):
@@ -103,18 +133,6 @@ class ICURuleLoader:
         return self.variants
 
 
-    @staticmethod
-    def _get_section(rules, section):
-        """ Get the section named 'section' from the rules. If the section does
-            not exist, raise a usage error with a meaningful message.
-        """
-        if section not in rules:
-            LOG.fatal("Section '%s' not found in tokenizer config.", section)
-            raise UsageError("Syntax error in tokenizer configuration file.")
-
-        return rules[section]
-
-
     def _cfg_to_icu_rules(self, rules, section):
         """ Load an ICU ruleset from the given section. If the section is a
             simple string, it is interpreted as a file name and the rules are
@@ -122,7 +140,7 @@ class ICURuleLoader:
             relative to the tokenizer rule file. If the section is a list then
             each line is assumed to be a rule. All rules are concatenated and returned.
         """
-        content = self._get_section(rules, section)
+        content = _get_section(rules, section)
 
         if content is None:
             return ''
@@ -130,15 +148,31 @@ class ICURuleLoader:
         return ';'.join(_flatten_config_list(content)) + ';'
 
 
-    def _parse_variant_list(self, rules):
-        self.variants.clear()
+class TokenAnalyzerRule:
+    """ Configuration of a single analyzer.
+    """
+
+    def __init__(self, rules, normalization_rules):
+        self.analyzer = _get_section(rules, 'analyzer')
+        # Defintion of variants is optional. Create an empty list, when the
+        # section is missing.
+        if 'variants' in rules:
+            self.variants = self._parse_variant_list(rules['variants'],
+                                                     normalization_rules)
+        else:
+            self.variants = set()
+
+
+    @staticmethod
+    def _parse_variant_list(rules, normalization_rules):
+        variants = set()
 
         if not rules:
             return
 
         rules = _flatten_config_list(rules)
 
-        vmaker = _VariantMaker(self.normalization_rules)
+        vmaker = _VariantMaker(normalization_rules)
 
         properties = []
         for section in rules:
@@ -152,7 +186,7 @@ class ICURuleLoader:
             else:
                 properties.append(props)
 
-            for rule in (section.get('words') or []):
+            for rule in (section.get('words', [])):
                 self.variants.update(vmaker.compute(rule, props))
 
 

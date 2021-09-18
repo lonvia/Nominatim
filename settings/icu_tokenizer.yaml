@@ -31,8 +31,8 @@ preprocessing:
       - step: set-analyzer-by-tag
         analyzer: ref
         kinds: [ref, int_ref, nat_ref, reg_ref, loc_ref, old_ref, iata, icao, pcode]
-word-tokens:
-    - analyser: generic
+token-analysis:
+    - analyzer: generic
       variants:
           - !include icu-rules/variants-bg.yaml
           - !include icu-rules/variants-ca.yaml
@@ -64,5 +64,5 @@ word-tokens:
           - !include icu-rules/variants-tr.yaml
           - !include icu-rules/variants-uk.yaml
           - !include icu-rules/variants-vi.yaml
-    - name: ref
+    - id: ref
       analyser: reference

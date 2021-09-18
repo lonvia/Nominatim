@@ -66,8 +66,8 @@ class LegacyICUTokenizer(AbstractTokenizer):
     def init_from_project(self, config):
         """ Initialise the tokenizer from the project directory.
         """
-        rules = config.load_sub_configuration('icu_tokenizer.yaml', config='TOKENIZER_CONFIG')
-        self.place_processor = PlaceProcessor(rules.get('preprocessing'))
+        loader = ICURuleLoader(config)
+        self.place_processor = PlaceProcessor(loader.get_preprocessing_rules())
 
         with connect(self.dsn) as conn:
             self.naming_rules = ICUNameProcessorRules(conn=conn)
