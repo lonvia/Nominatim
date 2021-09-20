@@ -45,11 +45,12 @@ class PlaceProcessor:
         self.name_proc_functions = self._create_name_functions(rules)
 
 
-    def _create_name_functions(self, rules):
+    @staticmethod
+    def _create_name_functions(rules):
         """ Set up the pre-processing functions for names from the
             'name' section of the given rules.
         """
-        assert('name' in rules)
+        assert 'name' in rules
 
         funcs = []
 

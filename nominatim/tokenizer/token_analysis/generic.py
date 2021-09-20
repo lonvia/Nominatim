@@ -6,47 +6,43 @@ from collections import defaultdict
 import itertools
 import functools
 
-from icu import Transliterator
 import datrie
 
-from nominatim.tokenizer import icu_variants as variants
+def create(name, normalizer, transliterator, analysis_rules):
+    """ Create a new analysis instance for this module.
+    """
+    return GenericTokenAnalysis(name, normalizer, transliterator,
+                                analysis_rules.variants)
 
 
-class ICUNameProcessor:
+class GenericTokenAnalysis:
     """ Collects the different transformation rules for normalisation of names
         and provides the functions to aply the transformations.
     """
 
-    def __init__(self, loader):
-        self.normalizer = Transliterator.createFromRules("icu_normalization",
-                                                         rules.norm_rules)
-        self.to_ascii = Transliterator.createFromRules("icu_to_ascii",
-                                                       rules.trans_rules +
-                                                       ";[:Space:]+ > ' '")
-        self.search = Transliterator.createFromRules("icu_search",
-                                                     rules.search_rules)
+    def __init__(self, name, normalizer, transliterator, variants):
+        self.variant_type = name
+        self.normalizer = normalizer
+        self.to_ascii = transliterator
 
-        # Intermediate reorder by source. Also compute required character set.
-        immediate = defaultdict(list)
-        chars = set()
-        for variant in rules.replacements:
-            if variant.source[-1] == ' ' and variant.replacement[-1] == ' ':
-                replstr = variant.replacement[:-1]
-            else:
-                replstr = variant.replacement
-            immediate[variant.source].append(replstr)
-            chars.update(variant.source)
-        # Then copy to datrie
-        self.replacements = datrie.Trie(''.join(chars))
-        for src, repllist in immediate.items():
-            self.replacements[src] = repllist
+        if not variants:
+            self.replacements = None
+        else:
+            # Intermediate reorder by source. Also compute required character set.
+            immediate = defaultdict(list)
+            chars = set()
+            for variant in variants:
+                if variant.source[-1] == ' ' and variant.replacement[-1] == ' ':
+                    replstr = variant.replacement[:-1]
+                else:
+                    replstr = variant.replacement
+                immediate[variant.source].append(replstr)
+                chars.update(variant.source)
+            # Then copy to datrie
+            self.replacements = datrie.Trie(''.join(chars))
+            for src, repllist in immediate.items():
+                self.replacements[src] = repllist
 
-
-    def get_normalized(self, name):
-        """ Normalize the given name, i.e. remove all elements not relevant
-            for search.
-        """
-        return self.normalizer.transliterate(name).strip()
 
     @functools.lru_cache(maxsize=5000)
     def get_variants_ascii(self, norm_name):
@@ -88,18 +84,21 @@ class ICUNameProcessor:
 
         return self._compute_result_set(partials, baseform[startpos:])
 
-    def get_variants(self, name):
+
+    def get_full_terms(self, name):
         """ Compute spelling variants given the tagged name.
-            Returns a tuple of (word, variant type, list of variants).
+            Returns a tuple of (word, variant type, list of terms).
         """
-        norm_name = self.get_normalized(name.name)
+        norm_name = self.normalizer.transliterate(name.name)
 
-        if name.get_attr('analyzer') == 'ref':
-            # references do not produce any variants
-            return norm_name, 'ref', [norm_name]
+        # If there are no variant rules, use a shortcut here.
+        if self.replacements is None:
+            terms = [self.to_ascii.transliterate(norm_name)]
+        else:
+            terms = self.get_variants_ascii(norm_name)
 
-        # other words produce non-types
-        return norm_name, None, self.get_variants_ascii(norm_name)
+        return norm_name, self.variant_type, terms
+
 
     def _compute_result_set(self, partials, prefix):
         results = set()
@@ -111,10 +110,3 @@ class ICUNameProcessor:
                 results.add(trans_name)
 
         return list(results)
-
-
-    def get_search_normalized(self, name):
-        """ Return the normalized version of the name (including transliteration)
-            to be applied at search time.
-        """
-        return self.search.transliterate(' ' + name + ' ').strip()

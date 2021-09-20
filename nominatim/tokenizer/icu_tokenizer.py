@@ -14,9 +14,8 @@ from nominatim.db.properties import set_property, get_property
 from nominatim.db.utils import CopyBuffer
 from nominatim.db.sql_preprocessor import SQLPreprocessor
 from nominatim.tokenizer.icu_rule_loader import ICURuleLoader
-from nominatim.tokenizer.icu_name_processor import ICUNameProcessor, ICUNameProcessorRules
 from nominatim.tokenizer.base import AbstractAnalyzer, AbstractTokenizer
-from nominatim.tokenizer.place_preprocessing import PlaceProcessor, PlaceName
+from nominatim.tokenizer.place_preprocessing import PlaceName
 from nominatim.indexer.place_info import PlaceInfo
 
 DBCFG_TERM_NORMALIZATION = "tokenizer_term_normalization"
@@ -38,9 +37,8 @@ class LegacyICUTokenizer(AbstractTokenizer):
     def __init__(self, dsn, data_dir):
         self.dsn = dsn
         self.data_dir = data_dir
-        self.naming_rules = None
         self.term_normalization = None
-        self.place_processor = None
+        self.loader = None
 
 
     def init_new_db(self, config, init_db=True):
@@ -49,11 +47,8 @@ class LegacyICUTokenizer(AbstractTokenizer):
             This copies all necessary data in the project directory to make
             sure the tokenizer remains stable even over updates.
         """
-        loader = ICURuleLoader(config)
-        self.naming_rules = ICUNameProcessorRules(loader=loader)
+        self.loader = ICURuleLoader(config)
         self.term_normalization = config.TERM_NORMALIZATION
-
-        self.place_processor = PlaceProcessor(loader.get_preprocessing_rules())
 
         self._install_php(config.lib_dir.php)
         self._save_config()
@@ -66,11 +61,10 @@ class LegacyICUTokenizer(AbstractTokenizer):
     def init_from_project(self, config):
         """ Initialise the tokenizer from the project directory.
         """
-        loader = ICURuleLoader(config)
-        self.place_processor = PlaceProcessor(loader.get_preprocessing_rules())
+        self.loader = ICURuleLoader(config)
 
         with connect(self.dsn) as conn:
-            self.naming_rules = ICUNameProcessorRules(conn=conn)
+            self.loader.load_config_from_db(conn)
             self.term_normalization = get_property(conn, DBCFG_TERM_NORMALIZATION)
 
 
@@ -93,7 +87,7 @@ class LegacyICUTokenizer(AbstractTokenizer):
         """
         self.init_from_project(config)
 
-        if self.naming_rules is None:
+        if self.loader is None:
             return "Configuration for tokenizer 'icu' are missing."
 
         return None
@@ -114,9 +108,9 @@ class LegacyICUTokenizer(AbstractTokenizer):
 
             Analyzers are not thread-safe. You need to instantiate one per thread.
         """
-        return LegacyICUNameAnalyzer(self.dsn,
-                                     ICUNameProcessor(self.naming_rules),
-                                     self.place_processor)
+        return ICUNameAnalyzer(self.dsn,
+                               self.loader.make_token_analysis(),
+                               self.loader.make_place_preprocessor())
 
 
     def _install_php(self, phpdir):
@@ -127,7 +121,7 @@ class LegacyICUTokenizer(AbstractTokenizer):
             <?php
             @define('CONST_Max_Word_Frequency', 10000000);
             @define('CONST_Term_Normalization_Rules', "{self.term_normalization}");
-            @define('CONST_Transliteration', "{self.naming_rules.search_rules}");
+            @define('CONST_Transliteration', "{self.loader.normalization_rules}{self.loader.transliteration_rules};[:Space:]+ > ' ';");
             require_once('{phpdir}/tokenizer/icu_tokenizer.php');"""))
 
 
@@ -136,7 +130,7 @@ class LegacyICUTokenizer(AbstractTokenizer):
             database as database properties.
         """
         with connect(self.dsn) as conn:
-            self.naming_rules.save_rules(conn)
+            self.loader.save_config_to_db(conn)
 
             set_property(conn, DBCFG_TERM_NORMALIZATION, self.term_normalization)
 
@@ -172,7 +166,7 @@ class LegacyICUTokenizer(AbstractTokenizer):
         """ Count the partial terms from the names in the place table.
         """
         words = Counter()
-        name_proc = ICUNameProcessor(self.naming_rules)
+        analysis = self.loader.make_token_analysis()
 
         with conn.cursor(name="words") as cur:
             cur.execute(""" SELECT v, count(*) FROM
@@ -181,26 +175,26 @@ class LegacyICUTokenizer(AbstractTokenizer):
 
             for name, cnt in cur:
                 terms = set()
-                for word in name_proc.get_variants_ascii(name_proc.get_normalized(name)):
-                    if ' ' in word:
-                        terms.update(word.split())
+                word = analysis.search.transliterate(name)
+                if word and ' ' in word:
+                    terms.update(word.split())
                 for term in terms:
                     words[term] += cnt
 
         return words
 
 
-class LegacyICUNameAnalyzer(AbstractAnalyzer):
+class ICUNameAnalyzer(AbstractAnalyzer):
     """ The legacy analyzer uses the ICU library for splitting names.
 
         Each instance opens a connection to the database to request the
         normalization.
     """
 
-    def __init__(self, dsn, name_proc, place_proc):
+    def __init__(self, dsn, token_analysis, place_proc):
         self.conn = connect(dsn).connection
         self.conn.autocommit = True
-        self.name_processor = name_proc
+        self.token_analysis = token_analysis
         self.place_processor = place_proc
 
         self._cache = _TokenCache()
@@ -212,6 +206,19 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
         if self.conn:
             self.conn.close()
             self.conn = None
+
+
+    def _search_normalized(self, name):
+        """ Return the search token transliteration of the given name.
+        """
+        return self.token_analysis.search.transliterate(' ' + name + ' ').strip()
+
+
+    def _normalized(self, name):
+        """ Return the normalized version of the given name with all
+            non-relevant information removed.
+        """
+        return self.token_analysis.normalizer.transliterate(name).strip()
 
 
     def get_word_token_info(self, words):
@@ -229,9 +236,9 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
         partial_tokens = {}
         for word in words:
             if word.startswith('#'):
-                full_tokens[word] = self.name_processor.get_search_normalized(word[1:])
+                full_tokens[word] = self._search_normalized(word[1:])
             else:
-                partial_tokens[word] = self.name_processor.get_search_normalized(word)
+                partial_tokens[word] = self._search_normalized(word)
 
         with self.conn.cursor() as cur:
             cur.execute("""SELECT word_token, word_id
@@ -262,7 +269,7 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
 
             This function takes minor shortcuts on transliteration.
         """
-        return self.name_processor.get_search_normalized(hnr)
+        return self._search_normalized(hnr)
 
     def update_postcodes_from_db(self):
         """ Update postcode tokens in the word table from the location_postcode
@@ -285,7 +292,7 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
                     if postcode is None:
                         to_delete.append(word)
                     else:
-                        copystr.add(self.name_processor.get_search_normalized(postcode),
+                        copystr.add(self._search_normalized(postcode),
                                     'P', postcode)
 
                 if to_delete:
@@ -303,7 +310,7 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
             completely replaced. Otherwise the phrases are added to the
             already existing ones.
         """
-        norm_phrases = set(((self.name_processor.get_normalized(p[0]), p[1], p[2], p[3])
+        norm_phrases = set(((self._normalized(p[0]), p[1], p[2], p[3])
                             for p in phrases))
 
         with self.conn.cursor() as cur:
@@ -333,7 +340,7 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
         added = 0
         with CopyBuffer() as copystr:
             for word, cls, typ, oper in to_add:
-                term = self.name_processor.get_search_normalized(word)
+                term = self._search_normalized(word)
                 if term:
                     copystr.add(term, 'S', word,
                                 json.dumps({'class': cls, 'type': typ,
@@ -381,7 +388,7 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
         """
         word_tokens = set()
         for name in names:
-            norm_name = self.name_processor.get_search_normalized(name.name)
+            norm_name = self._search_normalized(name.name)
             if norm_name:
                 word_tokens.add(norm_name)
 
@@ -491,8 +498,9 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
         partial_tokens = set()
 
         for name in names:
-            word, vtype, variants = self.name_processor.get_variants(name)
-            if not variants:
+            analyzer = self.token_analysis.analysis[name.get_attr('analyzer')]
+            word, vtype, terms = analyzer.get_full_terms(name)
+            if not terms:
                 continue
 
             if vtype:
@@ -503,7 +511,7 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
             if full is None:
                 with self.conn.cursor() as cur:
                     cur.execute("SELECT (getorcreate_full_word(%s, %s)).*",
-                                (word, variants))
+                                (word, terms))
                     full, part = cur.fetchone()
 
                 self._cache.names[word] = (full, part)
@@ -521,7 +529,7 @@ class LegacyICUNameAnalyzer(AbstractAnalyzer):
             postcode = self.normalize_postcode(postcode)
 
             if postcode not in self._cache.postcodes:
-                term = self.name_processor.get_search_normalized(postcode)
+                term = self._search_normalized(postcode)
                 if not term:
                     return
 

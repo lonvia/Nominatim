@@ -1,7 +1,7 @@
 """
 Helper class to create ICU rules from a configuration file.
 """
-import io
+import importlib
 import logging
 import itertools
 import re
@@ -9,7 +9,9 @@ import re
 from icu import Transliterator
 
 from nominatim.errors import UsageError
-import nominatim.tokenizer.icu_variants as variants
+import nominatim.tokenizer.icu_variants as icu_variants
+from nominatim.tokenizer.place_preprocessing import PlaceProcessor
+from nominatim.tokenizer.icu_token_analysis import ICUTokenAnalysis
 from nominatim.db.properties import set_property, get_property
 
 LOG = logging.getLogger()
@@ -76,64 +78,49 @@ class ICURuleLoader:
 
         self.analysis = {}
         for section in _get_section(rules, 'token-analysis'):
-            name = section.get('id', 'default')
+            name = section.get('id', None)
             if name in self.analysis:
-                LOG.fatal(f"ICU tokenizer configuration has two sections with id '{name}'.")
+                if name is None:
+                    LOG.fatal("ICU tokenizer configuration has two default token analyzers.")
+                else:
+                    LOG.fatal("ICU tokenizer configuration has two token "
+                              "analyzers with id '%s'.", name)
                 UsageError("Syntax error in ICU tokenizer config.")
             self.analysis[name] = TokenAnalyzerRule(section, self.normalization_rules)
 
 
     def load_config_from_db(self, conn):
-        self.normalization_rules = get_property(conn, DBCFG_IMPORT_NORM_RULES
+        """ Get previously saved parts of the configuration from the
+            database.
+        """
+        self.normalization_rules = get_property(conn, DBCFG_IMPORT_NORM_RULES)
         self.transliteration_rules = get_property(conn, DBCFG_IMPORT_TRANS_RULES)
         # XXX should we also load/save the token-analysis section?
 
 
     def save_config_to_db(self, conn):
+        """ Save the part of the configuration that cannot be changed into
+            the database.
+        """
         set_property(conn, DBCFG_IMPORT_NORM_RULES, self.normalization_rules)
         set_property(conn, DBCFG_IMPORT_TRANS_RULES, self.transliteration_rules)
 
 
-    def get_preprocessing_rules(self):
-        """ Return the set of preprocessing steps as configured. The
-            following sections are guaranteed to exist and are initialised
-            with empty content when they were missing in the configuration
-            file: name.
+    def make_place_preprocessor(self):
+        """ Create a place preprocessor from the configured rules.
         """
-        return self.preprocessing_rules
+        return PlaceProcessor(self.preprocessing_rules)
 
-    def get_search_rules(self):
-        """ Return the ICU rules to be used during search.
-            The rules combine normalization and transliteration.
+    def make_token_analysis(self):
+        """ Create a dictionary of configured name analyzers.
         """
-        # First apply the normalization rules.
-        rules = io.StringIO()
-        rules.write(self.normalization_rules)
-
-        # Then add transliteration.
-        rules.write(self.transliteration_rules)
-        return rules.getvalue()
-
-    def get_normalization_rules(self):
-        """ Return rules for normalisation of a term.
-        """
-        return self.normalization_rules
-
-    def get_transliteration_rules(self):
-        """ Return the rules for converting a string into its asciii representation.
-        """
-        return self.transliteration_rules
-
-    def get_replacement_pairs(self):
-        """ Return the list of possible compound decompositions with
-            application of abbreviations included.
-            The result is a list of pairs: the first item is the sequence to
-            replace, the second is a list of replacements.
-        """
-        return self.variants
+        return ICUTokenAnalysis(self.normalization_rules,
+                                self.transliteration_rules,
+                                self.analysis)
 
 
-    def _cfg_to_icu_rules(self, rules, section):
+    @staticmethod
+    def _cfg_to_icu_rules(rules, section):
         """ Load an ICU ruleset from the given section. If the section is a
             simple string, it is interpreted as a file name and the rules are
             loaded verbatim from the given file. The filename is expected to be
@@ -149,36 +136,36 @@ class ICURuleLoader:
 
 
 class TokenAnalyzerRule:
-    """ Configuration of a single analyzer.
+    """ Load the configuration for a single token analysis.
     """
 
     def __init__(self, rules, normalization_rules):
-        self.analyzer = _get_section(rules, 'analyzer')
-        # Defintion of variants is optional. Create an empty list, when the
-        # section is missing.
-        if 'variants' in rules:
-            self.variants = self._parse_variant_list(rules['variants'],
-                                                     normalization_rules)
-        else:
-            self.variants = set()
+        # Find the analysis module
+        module_name = 'nominatim.tokenizer.token_analysis.' \
+                      + _get_section(rules, 'analyzer').replace('-', '_')
+        self.create = importlib.import_module(module_name).create
+
+        self._parse_variant_list(rules, _VariantMaker(normalization_rules))
 
 
-    @staticmethod
-    def _parse_variant_list(rules, normalization_rules):
-        variants = set()
+    def _parse_variant_list(self, rules, vmaker):
+        """ Load the variants section. The section is optional. if it does
+            not exist, create an empty set of variants.
+        """
+        self.variants = set()
+
+        rules = rules.get('variants')
 
         if not rules:
             return
 
         rules = _flatten_config_list(rules)
 
-        vmaker = _VariantMaker(normalization_rules)
-
         properties = []
         for section in rules:
             # Create the property field and deduplicate against existing
             # instances.
-            props = variants.ICUVariantProperties.from_rules(section)
+            props = icu_variants.ICUVariantProperties.from_rules(section)
             for existing in properties:
                 if existing == props:
                     props = existing
@@ -186,7 +173,7 @@ class TokenAnalyzerRule:
             else:
                 properties.append(props)
 
-            for rule in (section.get('words', [])):
+            for rule in section.get('words', []):
                 self.variants.update(vmaker.compute(rule, props))
 
 
@@ -217,12 +204,12 @@ class _VariantMaker:
             for src in src_terms:
                 if src:
                     for froms, tos in _create_variants(*src, src[0], decompose):
-                        yield variants.ICUVariant(froms, tos, props)
+                        yield icu_variants.ICUVariant(froms, tos, props)
 
         for src, repl in itertools.product(src_terms, repl_terms):
             if src and repl:
                 for froms, tos in _create_variants(*src, repl, decompose):
-                    yield variants.ICUVariant(froms, tos, props)
+                    yield icu_variants.ICUVariant(froms, tos, props)
 
 
     def _parse_variant_word(self, name):

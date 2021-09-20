@@ -65,4 +65,4 @@ token-analysis:
           - !include icu-rules/variants-uk.yaml
           - !include icu-rules/variants-vi.yaml
     - id: ref
-      analyser: reference
+      analyzer: generic
