@@ -20,5 +20,5 @@ class ICUTokenAnalysis:
                                                      norm_rules + trans_rules)
 
         self.analysis = {name: arules.create(name, self.normalizer,
-                                             self.to_ascii, arules)
+                                             self.to_ascii, arules.config)
                          for name, arules in analysis_rules.items()}

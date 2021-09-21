@@ -3,13 +3,9 @@ Helper class to create ICU rules from a configuration file.
 """
 import importlib
 import logging
-import itertools
-import re
 
-from icu import Transliterator
-
+from nominatim.config import flatten_config_list
 from nominatim.errors import UsageError
-import nominatim.tokenizer.icu_variants as icu_variants
 from nominatim.tokenizer.place_preprocessing import PlaceProcessor
 from nominatim.tokenizer.icu_token_analysis import ICUTokenAnalysis
 from nominatim.db.properties import set_property, get_property
@@ -18,22 +14,6 @@ LOG = logging.getLogger()
 
 DBCFG_IMPORT_NORM_RULES = "tokenizer_import_normalisation"
 DBCFG_IMPORT_TRANS_RULES = "tokenizer_import_transliteration"
-
-def _flatten_config_list(content):
-    if not content:
-        return []
-
-    if not isinstance(content, list):
-        raise UsageError("List expected in ICU configuration.")
-
-    output = []
-    for ele in content:
-        if isinstance(ele, list):
-            output.extend(_flatten_config_list(ele))
-        else:
-            output.append(ele)
-
-    return output
 
 
 def _get_section(rules, section):
@@ -45,18 +25,6 @@ def _get_section(rules, section):
         raise UsageError("Syntax error in tokenizer configuration file.")
 
     return rules[section]
-
-
-class VariantRule:
-    """ Saves a single variant expansion.
-
-        An expansion consists of the normalized replacement term and
-        a dicitonary of properties that describe when the expansion applies.
-    """
-
-    def __init__(self, replacement, properties):
-        self.replacement = replacement
-        self.properties = properties or {}
 
 
 class ICURuleLoader:
@@ -132,130 +100,19 @@ class ICURuleLoader:
         if content is None:
             return ''
 
-        return ';'.join(_flatten_config_list(content)) + ';'
+        return ';'.join(flatten_config_list(content, section)) + ';'
 
 
 class TokenAnalyzerRule:
-    """ Load the configuration for a single token analysis.
+    """ Container for the analysis module and the configuration of a
+        single token analyzer.
     """
 
     def __init__(self, rules, normalization_rules):
         # Find the analysis module
         module_name = 'nominatim.tokenizer.token_analysis.' \
                       + _get_section(rules, 'analyzer').replace('-', '_')
-        self.create = importlib.import_module(module_name).create
+        analysis_mod = importlib.import_module(module_name)
+        self.create = analysis_mod.create
 
-        self._parse_variant_list(rules, _VariantMaker(normalization_rules))
-
-
-    def _parse_variant_list(self, rules, vmaker):
-        """ Load the variants section. The section is optional. if it does
-            not exist, create an empty set of variants.
-        """
-        self.variants = set()
-
-        rules = rules.get('variants')
-
-        if not rules:
-            return
-
-        rules = _flatten_config_list(rules)
-
-        properties = []
-        for section in rules:
-            # Create the property field and deduplicate against existing
-            # instances.
-            props = icu_variants.ICUVariantProperties.from_rules(section)
-            for existing in properties:
-                if existing == props:
-                    props = existing
-                    break
-            else:
-                properties.append(props)
-
-            for rule in section.get('words', []):
-                self.variants.update(vmaker.compute(rule, props))
-
-
-class _VariantMaker:
-    """ Generater for all necessary ICUVariants from a single variant rule.
-
-        All text in rules is normalized to make sure the variants match later.
-    """
-
-    def __init__(self, norm_rules):
-        self.norm = Transliterator.createFromRules("rule_loader_normalization",
-                                                   norm_rules)
-
-
-    def compute(self, rule, props):
-        """ Generator for all ICUVariant tuples from a single variant rule.
-        """
-        parts = re.split(r'(\|)?([=-])>', rule)
-        if len(parts) != 4:
-            raise UsageError("Syntax error in variant rule: " + rule)
-
-        decompose = parts[1] is None
-        src_terms = [self._parse_variant_word(t) for t in parts[0].split(',')]
-        repl_terms = (self.norm.transliterate(t.strip()) for t in parts[3].split(','))
-
-        # If the source should be kept, add a 1:1 replacement
-        if parts[2] == '-':
-            for src in src_terms:
-                if src:
-                    for froms, tos in _create_variants(*src, src[0], decompose):
-                        yield icu_variants.ICUVariant(froms, tos, props)
-
-        for src, repl in itertools.product(src_terms, repl_terms):
-            if src and repl:
-                for froms, tos in _create_variants(*src, repl, decompose):
-                    yield icu_variants.ICUVariant(froms, tos, props)
-
-
-    def _parse_variant_word(self, name):
-        name = name.strip()
-        match = re.fullmatch(r'([~^]?)([^~$^]*)([~$]?)', name)
-        if match is None or (match.group(1) == '~' and match.group(3) == '~'):
-            raise UsageError("Invalid variant word descriptor '{}'".format(name))
-        norm_name = self.norm.transliterate(match.group(2))
-        if not norm_name:
-            return None
-
-        return norm_name, match.group(1), match.group(3)
-
-
-_FLAG_MATCH = {'^': '^ ',
-               '$': ' ^',
-               '': ' '}
-
-
-def _create_variants(src, preflag, postflag, repl, decompose):
-    if preflag == '~':
-        postfix = _FLAG_MATCH[postflag]
-        # suffix decomposition
-        src = src + postfix
-        repl = repl + postfix
-
-        yield src, repl
-        yield ' ' + src, ' ' + repl
-
-        if decompose:
-            yield src, ' ' + repl
-            yield ' ' + src, repl
-    elif postflag == '~':
-        # prefix decomposition
-        prefix = _FLAG_MATCH[preflag]
-        src = prefix + src
-        repl = prefix + repl
-
-        yield src, repl
-        yield src + ' ', repl + ' '
-
-        if decompose:
-            yield src, repl + ' '
-            yield src + ' ', repl
-    else:
-        prefix = _FLAG_MATCH[preflag]
-        postfix = _FLAG_MATCH[postflag]
-
-        yield prefix + src + postfix, prefix + repl + postfix
+        self.config = analysis_mod.load_config(rules, normalization_rules)
