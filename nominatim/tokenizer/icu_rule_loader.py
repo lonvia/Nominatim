@@ -2,6 +2,7 @@
 Helper class to create ICU rules from a configuration file.
 """
 import importlib
+import json
 import logging
 
 from nominatim.config import flatten_config_list
@@ -14,6 +15,7 @@ LOG = logging.getLogger()
 
 DBCFG_IMPORT_NORM_RULES = "tokenizer_import_normalisation"
 DBCFG_IMPORT_TRANS_RULES = "tokenizer_import_transliteration"
+DBCFG_IMPORT_ANALYSIS_RULES = "tokenizer_token_analysis"
 
 
 def _get_section(rules, section):
@@ -44,8 +46,13 @@ class ICURuleLoader:
         self.normalization_rules = self._cfg_to_icu_rules(rules, 'normalization')
         self.transliteration_rules = self._cfg_to_icu_rules(rules, 'transliteration')
 
+        self.analysis_rules = _get_section(rules, 'token-analysis')
+        self._setup_analysis()
+
+
+    def _setup_analysis(self):
         self.analysis = {}
-        for section in _get_section(rules, 'token-analysis'):
+        for section in self.analysis_rules:
             name = section.get('id', None)
             if name in self.analysis:
                 if name is None:
@@ -63,7 +70,8 @@ class ICURuleLoader:
         """
         self.normalization_rules = get_property(conn, DBCFG_IMPORT_NORM_RULES)
         self.transliteration_rules = get_property(conn, DBCFG_IMPORT_TRANS_RULES)
-        # XXX should we also load/save the token-analysis section?
+        self.analysis_rules = json.loads(get_property(conn, DBCFG_IMPORT_ANALYSIS_RULES))
+        self._setup_analysis()
 
 
     def save_config_to_db(self, conn):
@@ -72,6 +80,7 @@ class ICURuleLoader:
         """
         set_property(conn, DBCFG_IMPORT_NORM_RULES, self.normalization_rules)
         set_property(conn, DBCFG_IMPORT_TRANS_RULES, self.transliteration_rules)
+        set_property(conn, DBCFG_IMPORT_ANALYSIS_RULES, json.dumps(self.analysis_rules))
 
 
     def make_place_preprocessor(self):
