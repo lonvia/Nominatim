@@ -13,17 +13,32 @@ class _CountryInfo:
     def __init__(self):
         self._info = {}
 
+
     def load(self, config):
         """ Load the country properties from the configuration files,
             if they are not loaded yet.
         """
         if not self._info:
             self._info = config.load_sub_configuration('country_settings.yaml')
+            for prop in self._info.values():
+                prop['languages'] = [x.strip()
+                                     for x in prop.get('languages', '').split(',')]
+
 
     def items(self):
         """ Return tuples of (country_code, property dict) as iterable.
         """
         return self._info.items()
+
+
+    def get(self, country, prop, default):
+        """ Return the given property for the given country or the default
+            value if either the country or the property was not found.
+        """
+        if country in self._info:
+            return self._info[country].get(prop, default)
+
+        return default
 
 
 _COUNTRY_INFO = _CountryInfo()
@@ -34,6 +49,13 @@ def setup_country_config(config):
         file.
     """
     _COUNTRY_INFO.load(config)
+
+
+def get_property(country, prop, default=None):
+    """ Return the given property for the given country or the default
+        value if either the country or the property was not found.
+    """
+    return _COUNTRY_INFO.get(country, prop, default)
 
 
 def setup_country_tables(dsn, sql_dir, ignore_partitions=False):
@@ -50,11 +72,8 @@ def setup_country_tables(dsn, sql_dir, ignore_partitions=False):
                 partition = 0
             else:
                 partition = props.get('partition')
-            if ',' in (props.get('languages', ',') or ','):
-                lang = None
-            else:
-                lang = props['languages']
-            params.append((ccode, partition, lang))
+            lang = props['languages']
+            params.append((ccode, partition, lang[0] if len(lang) == 1 else None))
 
     with connect(dsn) as conn:
         with conn.cursor() as cur:

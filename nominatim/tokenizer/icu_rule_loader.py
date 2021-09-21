@@ -9,6 +9,7 @@ from nominatim.config import flatten_config_list
 from nominatim.errors import UsageError
 from nominatim.tokenizer.place_preprocessing import PlaceProcessor
 from nominatim.tokenizer.icu_token_analysis import ICUTokenAnalysis
+from nominatim.tools import country_info
 from nominatim.db.properties import set_property, get_property
 
 LOG = logging.getLogger()
@@ -36,6 +37,9 @@ class ICURuleLoader:
     def __init__(self, config):
         rules = config.load_sub_configuration('icu_tokenizer.yaml',
                                               config='TOKENIZER_CONFIG')
+
+        # Make sure that country information is available for processors.
+        country_info.setup_country_config(config)
 
         # Preprocessing rule section and all its subsections are optional.
         self.preprocessing_rules = rules.get('preprocessing', {})
