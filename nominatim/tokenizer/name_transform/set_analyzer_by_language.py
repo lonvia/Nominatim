@@ -16,27 +16,41 @@ def create(func):
         with the 'kinds' property. It expects a list of regular expressions
         that need to match against the tag.
     """
-    kind_set = func.get('kinds')
-    regexes = [re.compile(regex) for regex in func.get('kinds', [])]
+    if 'kinds' in func:
+        regexes = [re.compile(regex) for regex in func['kinds']]
+    else:
+        regexes = None
+    use_defaults = func.get('use-defaults', 'monolingual')
+    if use_defaults == 'monolingual':
+        use_defaults = True
+    elif not isinstance(use_defaults, bool):
+        UsageError("Illegal value for 'use-defaults'.")
+
+    whitelist = func.get('whitelist', [])
 
     def _process(place, names):
         ccode = place.country_code
 
         for name in names:
-            for regex in regexes:
-                if regex.search(name.kind) is not None:
-                    break
-            else:
-                continue
+            if regexes is not None:
+                for regex in regexes:
+                    if regex.search(name.kind) is not None:
+                        break
+                else:
+                    continue
 
             if not name.suffix:
-                if ccode:
+                if ccode and use_defaults:
                     deflangs = country_info.get_property(ccode, 'languages')
-                    if deflangs:
-                        name.set_attr('lang', deflangs)
+                    lang = deflangs[0] if len(deflangs) == 1 else None
             else:
                 if len(name.suffix) in (2, 3) and name.suffix.islower():
-                    name.set_attr('lang', [name.suffix])
+                    lang = name.suffix
+                else:
+                    lang = None
+
+            if lang and (not whitelist or lang in whitelist):
+                name.set_attr('analyzer', lang)
 
         return names
 

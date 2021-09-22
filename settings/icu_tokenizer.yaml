@@ -31,8 +31,10 @@ preprocessing:
       - step: set-analyzer-by-tag
         analyzer: ref
         kinds: [ref, int_ref, nat_ref, reg_ref, loc_ref, old_ref, iata, icao, pcode]
-      - step: tag-language
+      - step: set-analyzer-by-language
         kinds: [".*name.*"]
+        whitelist: [en, de, es]
+        use-defaults: monolingual
 token-analysis:
     - analyzer: generic
       variants:
@@ -66,5 +68,17 @@ token-analysis:
           - !include icu-rules/variants-tr.yaml
           - !include icu-rules/variants-uk.yaml
           - !include icu-rules/variants-vi.yaml
+    - id: en
+      analyzer: generic
+      variants:
+          - !include icu-rules/variants-en.yaml
+    - id: de
+      analyzer: generic
+      variants:
+          - !include icu-rules/variants-de.yaml
+    - id: es
+      analyzer: generic
+      variants:
+          - !include icu-rules/variants-es.yaml
     - id: ref
       analyzer: generic
