@@ -459,11 +459,12 @@ class ICUNameAnalyzer(AbstractAnalyzer):
         if addr_terms:
             token_info.add_address_terms(addr_terms)
 
+
     def _compute_partial_tokens(self, name):
         """ Normalize the given term, split it into partial words and return
             then token list for them.
         """
-        norm_name = self.name_processor.get_search_normalized(name)
+        norm_name = self._search_normalized(name)
 
         tokens = []
         need_lookup = []
