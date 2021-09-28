@@ -8,12 +8,11 @@ def create(_):
         when a name has an addendum in brackets (e.g. "Halle (Saale)"). The
         additional variant only contains the main name without the bracket part.
     """
-    def _process(_, names):
+    def _process(obj):
         """ Add variants for names that have a bracket extension.
         """
-        names.extend(PlaceName(n.name.split('(')[0].strip(), n.kind, n.suffix)
-                     for n in names if '(' in n.name)
-
-        return names
+        if obj.names:
+            obj.names.extend(PlaceName(n.name.split('(')[0].strip(), n.kind, n.suffix)
+                             for n in obj.names if '(' in n.name)
 
     return _process

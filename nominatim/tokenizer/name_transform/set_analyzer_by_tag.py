@@ -20,11 +20,10 @@ def create(func):
     if not isinstance(analyzer, str):
         raise UsageError("set-analyzer-by-tag' processor's 'analyzer' property must be a string.")
 
-    def _process(_, names):
-        for name in names:
-            if name.kind in kind_set:
-                name.set_attr('analyzer', analyzer)
-
-        return names
+    def _process(obj):
+        if obj.names:
+            for name in obj.names:
+                if name.kind in kind_set:
+                    name.set_attr('analyzer', analyzer)
 
     return _process

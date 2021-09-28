@@ -379,7 +379,7 @@ class ICUNameAnalyzer(AbstractAnalyzer):
                           'rank_address': 4, 'class': 'boundary',
                           'type': 'administrative'})
         self._add_country_full_names(country_code,
-                                     self.place_processor.get_searchable_names(info))
+                                     self.place_processor.process_names(info)[0])
 
 
     def _add_country_full_names(self, country_code, names):
@@ -419,7 +419,7 @@ class ICUNameAnalyzer(AbstractAnalyzer):
         """
         token_info = _TokenInfo(self._cache)
 
-        names = self.place_processor.get_searchable_names(place)
+        names, address = self.place_processor.process_names(place)
 
         if names:
             fulls, partials = self._compute_name_tokens(names)
@@ -429,7 +429,6 @@ class ICUNameAnalyzer(AbstractAnalyzer):
             if place.is_country():
                 self._add_country_full_names(place.country_code, names)
 
-        address = place.address
         if address:
             self._process_place_address(token_info, address)
 
@@ -439,18 +438,18 @@ class ICUNameAnalyzer(AbstractAnalyzer):
     def _process_place_address(self, token_info, address):
         hnrs = []
         addr_terms = []
-        for key, value in address.items():
-            if key == 'postcode':
-                self._add_postcode(value)
-            elif key in ('housenumber', 'streetnumber', 'conscriptionnumber'):
-                hnrs.append(value)
-            elif key == 'street':
-                token_info.add_street(self._compute_partial_tokens(value))
-            elif key == 'place':
-                token_info.add_place(self._compute_partial_tokens(value))
-            elif not key.startswith('_') and \
-                 key not in ('country', 'full'):
-                addr_terms.append((key, self._compute_partial_tokens(value)))
+        for item in address:
+            if item.kind == 'postcode':
+                self._add_postcode(item.name)
+            elif item.kind in ('housenumber', 'streetnumber', 'conscriptionnumber'):
+                hnrs.append(item.name)
+            elif item.kind == 'street':
+                token_info.add_street(self._compute_partial_tokens(item.name))
+            elif item.kind == 'place':
+                token_info.add_place(self._compute_partial_tokens(item.name))
+            elif not item.kind.startswith('_') and \
+                 item.kind not in ('country', 'full'):
+                addr_terms.append((item.kind, self._compute_partial_tokens(item.name)))
 
         if hnrs:
             hnrs = self._split_housenumbers(hnrs)

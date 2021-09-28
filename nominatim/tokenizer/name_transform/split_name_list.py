@@ -13,15 +13,18 @@ def create(func):
     """
     regexp = '[{}]'.format(func.get('delimiters', ',;'))
 
-    def _process(_, names):
+    def _process(obj):
+        if not obj.names:
+            return
+
         new_names = []
-        for name in names:
+        for name in obj.names:
             split_names = re.split(regexp, name.name)
             if len(split_names) == 1:
                 new_names.append(name)
             else:
                 new_names.extend(PlaceName(n, name.kind, name.suffix) for n in split_names)
 
-        return new_names
+        obj.names = new_names
 
     return _process

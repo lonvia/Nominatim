@@ -28,10 +28,13 @@ def create(func):
 
     whitelist = func.get('whitelist', [])
 
-    def _process(place, names):
-        ccode = place.country_code
+    def _process(obj):
+        if not obj.names:
+            return
 
-        for name in names:
+        ccode = obj.place.country_code
+
+        for name in obj.names:
             if regexes is not None:
                 for regex in regexes:
                     if regex.search(name.kind) is not None:
@@ -51,7 +54,5 @@ def create(func):
 
             if lang and (not whitelist or lang in whitelist):
                 name.set_attr('analyzer', lang)
-
-        return names
 
     return _process

@@ -35,6 +35,34 @@ class PlaceName:
         return self.attr.get(key, default)
 
 
+class _ProcessInfo:
+    """ Container class for information handed through to handler functions.
+    """
+
+    def __init__(self, place):
+        self.place = place
+        self.names = self._convert_name_dict(place.name)
+        self.address = self._convert_name_dict(place.address)
+
+
+    @staticmethod
+    def _convert_name_dict(names):
+        """ Convert a dictionary of names into a list of PlaceNames.
+            The dictionary key is split into the primary part of the key
+            and the suffix (the part after an optional colon).
+        """
+        out = []
+
+        if names:
+            for key, value in names.items():
+                parts = key.split(':', 1)
+                out.append(PlaceName(value.strip(),
+                                     parts[0].strip(),
+                                     parts[1].strip() if len(parts) > 1 else None))
+
+        return out
+
+
 class PlaceProcessor:
     """ Pre-processor for place data processed by the indexer.
 
@@ -50,11 +78,9 @@ class PlaceProcessor:
         """ Set up the pre-processing functions for names from the
             'name' section of the given rules.
         """
-        assert 'name' in rules
-
         funcs = []
 
-        for func in rules['name']:
+        for func in rules:
             if 'step' not in func:
                 raise UsageError("Name processing step is missing the 'step' attribute.")
             module_name = 'nominatim.tokenizer.name_transform.' + func['step'].replace('-', '_')
@@ -64,27 +90,16 @@ class PlaceProcessor:
         return funcs
 
 
-
-    def get_searchable_names(self, place):
+    def process_names(self, place):
         """ Convert the list of names for the given place into a list of
             searchable names. A name is considered 'searchable' when its full
             version may be used for finding the place. The function also adds
             properties to each name describing its nature.
         """
-        if not place.name:
-            return None
+        obj = _ProcessInfo(place)
 
-        names = []
-
-        # Convert the dictionary into a list of PlaceNames:
-        for key, value in place.name.items():
-            parts = key.split(':', 1)
-            names.append(PlaceName(value.strip(),
-                                   parts[0].strip(),
-                                   parts[1].strip() if len(parts) > 1 else None))
-
-        # Apply the configured transforms.
         for func in self.name_proc_functions:
-            names = func(place, names)
+            func(obj)
 
-        return names
+        return obj.names, obj.address
+

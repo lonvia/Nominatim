@@ -41,11 +41,8 @@ class ICURuleLoader:
         # Make sure that country information is available for processors.
         country_info.setup_country_config(config)
 
-        # Preprocessing rule section and all its subsections are optional.
-        self.preprocessing_rules = rules.get('preprocessing', {})
-
-        if 'name' not in self.preprocessing_rules:
-            self.preprocessing_rules['name']  = []
+        # Preprocessing rule section is optional.
+        self.preprocessing_rules = rules.get('preprocessing', [])
 
         self.normalization_rules = self._cfg_to_icu_rules(rules, 'normalization')
         self.transliteration_rules = self._cfg_to_icu_rules(rules, 'transliteration')
