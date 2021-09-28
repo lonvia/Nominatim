@@ -51,6 +51,11 @@ def setup_country_config(config):
     _COUNTRY_INFO.load(config)
 
 
+def iterate():
+    """ Iterate over country code and properties.
+    """
+    return _COUNTRY_INFO.items()
+
 def get_property(country, prop, default=None):
     """ Return the given property for the given country or the default
         value if either the country or the property was not found.

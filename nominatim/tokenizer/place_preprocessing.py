@@ -21,6 +21,18 @@ class PlaceName:
         self.attr = {}
 
 
+    def clone(self, name=None, kind=None, suffix=None, attr=None):
+        newobj = PlaceName(name or self.name,
+                           kind or self.kind,
+                           suffix or self.suffix)
+
+        newobj.attr.update(self.attr)
+        if attr:
+            newobj.attr.update(attr)
+
+        return newobj
+
+
     def set_attr(self, key, value):
         """ Add the given property to the name. If the property was already
             set, then the value is overwritten.
@@ -33,6 +45,12 @@ class PlaceName:
             is not set.
         """
         return self.attr.get(key, default)
+
+
+    def has_attr(self, key):
+        """ Check if the given attribute is set.
+        """
+        return key in self.attr
 
 
 class _ProcessInfo:

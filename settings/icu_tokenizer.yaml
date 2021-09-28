@@ -27,13 +27,11 @@ transliteration:
 preprocessing:
     - step: split-name-list
     - step: strip-brace-terms
-    - step: set-analyzer-by-tag
-      analyzer: ref
-      kinds: [ref, int_ref, nat_ref, reg_ref, loc_ref, old_ref, iata, icao, pcode]
     - step: set-analyzer-by-language
       kinds: [".*name.*"]
       whitelist: [en, de, es]
-      use-defaults: monolingual
+      use-defaults: all
+      mode: append
 token-analysis:
     - analyzer: generic
     - id: all
@@ -71,15 +69,16 @@ token-analysis:
           - !include icu-rules/variants-vi.yaml
     - id: en
       analyzer: generic
+      mode: variant-only
       variants:
           - !include icu-rules/variants-en.yaml
     - id: de
       analyzer: generic
+      mode: variant-only
       variants:
           - !include icu-rules/variants-de.yaml
     - id: es
       analyzer: generic
+      mode: variant-only
       variants:
           - !include icu-rules/variants-es.yaml
-    - id: ref
-      analyzer: generic
