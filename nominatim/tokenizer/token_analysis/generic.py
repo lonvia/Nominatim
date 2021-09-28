@@ -22,7 +22,8 @@ def load_config(rules, normalization_rules):
         The generic analyser understands exactly one section 'variants'.
     """
     return {'variants': _get_variant_config(rules.get('variants'),
-                                            normalization_rules)}
+                                            normalization_rules),
+            'mode': rules.get('mode', '')}
 
 
 def _get_variant_config(rules, normalization_rules):
@@ -162,7 +163,7 @@ def create(name, normalizer, transliterator, config):
     """ Create a new analysis instance for this module.
     """
     return GenericTokenAnalysis(name, normalizer, transliterator,
-                                config['variants'])
+                                config['variants'], config['mode'])
 
 
 class GenericTokenAnalysis:
@@ -170,10 +171,11 @@ class GenericTokenAnalysis:
         and provides the functions to aply the transformations.
     """
 
-    def __init__(self, name, normalizer, transliterator, variants):
+    def __init__(self, name, normalizer, transliterator, variants, mode):
         self.variant_type = name
         self.normalizer = normalizer
         self.to_ascii = transliterator
+        self.variants_only = mode == 'variant-only'
 
         if variants:
             # Create a datrie from replacements.
@@ -219,10 +221,18 @@ class GenericTokenAnalysis:
 
         # No variants detected? Fast return.
         if startpos == 0:
+            if self.variants_only:
+                return []
+
             trans_name = self.to_ascii.transliterate(norm_name).strip()
             return [trans_name] if trans_name else []
 
-        return self._compute_result_set(partials, baseform[startpos:])
+        if self.variants_only:
+            exclude = self.to_ascii.transliterate(norm_name).strip()
+        else:
+            exclude = ''
+
+        return self._compute_result_set(partials, baseform[startpos:], exclude)
 
 
     def get_full_terms(self, name):
@@ -240,13 +250,13 @@ class GenericTokenAnalysis:
         return norm_name, self.variant_type, terms
 
 
-    def _compute_result_set(self, partials, prefix):
+    def _compute_result_set(self, partials, prefix, exclude):
         results = set()
 
         for variant in partials:
             vname = variant + prefix
             trans_name = self.to_ascii.transliterate(vname[1:-1]).strip()
-            if trans_name:
+            if trans_name and trans_name != exclude:
                 results.add(trans_name)
 
         return list(results)
