@@ -164,6 +164,7 @@ BEGIN
         SELECT place_id FROM placex
          WHERE bbox && geometry AND _ST_Covers(geometry, ST_Centroid(bbox))
                AND rank_address between 5 and 25
+               and ST_GeometryType(geometry) in ('ST_Polygon','ST_MultiPolygon')
          ORDER BY rank_address desc
       LOOP
         RETURN location.place_id;
@@ -179,6 +180,7 @@ BEGIN
         SELECT place_id FROM placex
          WHERE bbox && geometry AND _ST_Covers(geometry, ST_Centroid(bbox))
                AND rank_address between 5 and 25
+               and ST_GeometryType(geometry) in ('ST_Polygon','ST_MultiPolygon')
         ORDER BY rank_address desc
       LOOP
         RETURN location.place_id;
@@ -213,7 +215,7 @@ BEGIN
     SELECT members FROM planet_osm_rels WHERE id = bnd.osm_id INTO relation_members;
     {% if debug %}RAISE WARNING 'Got relation members';{% endif %}
 
-    -- Search for relation members with role 'lable'.
+    -- Search for relation members with role 'label'.
     IF relation_members IS NOT NULL THEN
       FOR rel_member IN
         SELECT get_rel_node_members(relation_members, ARRAY['label']) as member
@@ -832,6 +834,7 @@ BEGIN
           SELECT rank_address FROM placex
           WHERE class = 'place' and rank_address < 24
                 and rank_address > NEW.rank_address
+                AND ST_GeometryType(geometry) in ('ST_Polygon','ST_MultiPolygon')
                 and geometry && NEW.geometry
                 and geometry ~ NEW.geometry -- needed because ST_Relate does not do bbox cover test
                 and ST_Relate(geometry, NEW.geometry, 'T*T***FF*') -- contains but not equal

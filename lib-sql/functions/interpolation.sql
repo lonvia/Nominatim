@@ -56,7 +56,9 @@ BEGIN
 
   IF parent_place_id is null THEN
     FOR location IN SELECT place_id FROM placex
-        WHERE ST_DWithin(geom, placex.geometry, 0.001) and placex.rank_search = 26
+        WHERE ST_DWithin(geom, placex.geometry, 0.001)
+              and placex.rank_search = 26
+              and placex.osm_type = 'W' -- needed for index selection (idx_placex_geometry_lower_rank_ways)
         ORDER BY (ST_distance(placex.geometry, ST_LineInterpolatePoint(geom,0))+
                   ST_distance(placex.geometry, ST_LineInterpolatePoint(geom,0.5))+
                   ST_distance(placex.geometry, ST_LineInterpolatePoint(geom,1))) ASC limit 1

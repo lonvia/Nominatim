@@ -82,6 +82,7 @@ def _get_indexes(conn):
                'idx_placex_rank_search',
                'idx_placex_rank_address',
                'idx_placex_parent_place_id',
+               'idx_placex_geometry',
                'idx_placex_geometry_reverse_lookuppolygon',
                'idx_placex_geometry_placenode',
                'idx_osmline_parent_place_id',
@@ -97,7 +98,8 @@ def _get_indexes(conn):
             indexes.extend(('idx_placex_housenumber',
                             'idx_osmline_parent_osm_id_with_hnr'))
     if conn.table_exists('place'):
-        indexes.extend(('idx_placex_pendingsector',
+        indexes.extend(('idx_placex_rank_address_pending',
+                        'idx_placex_rank_boundaries_pending',
                         'idx_location_area_country_place_id',
                         'idx_place_osm_unique'))
 
