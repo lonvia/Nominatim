@@ -90,7 +90,7 @@ class SetupAll:
                 database_import.truncate_data_tables(conn)
 
             LOG.warning('Load data into placex table')
-            database_import.load_data(args.config.get_libpq_dsn(),
+            database_import.load_data(args.config,
                                       args.threads or psutil.cpu_count() or 1)
 
         LOG.warning("Setting up tokenizer")

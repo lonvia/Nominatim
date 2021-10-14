@@ -141,8 +141,8 @@ def test_truncate_database_tables(temp_db_conn, temp_db_cursor, table_factory):
 
 
 @pytest.mark.parametrize("threads", (1, 5))
-def test_load_data(dsn, place_row, placex_table, osmline_table,
-                   word_table, temp_db_cursor, threads):
+def test_load_data(def_config, place_row, placex_table, osmline_table,
+                   word_table, temp_db_cursor, threads, sql_preprocessor):
     for func in ('precompute_words', 'getorcreate_housenumber_id', 'make_standard_name'):
         temp_db_cursor.execute("""CREATE FUNCTION {} (src TEXT)
                                   RETURNS TEXT AS $$ SELECT 'a'::TEXT $$ LANGUAGE SQL
@@ -152,7 +152,7 @@ def test_load_data(dsn, place_row, placex_table, osmline_table,
     place_row(osm_type='W', osm_id=342, cls='place', typ='houses',
               geom='SRID=4326;LINESTRING(0 0, 10 10)')
 
-    database_import.load_data(dsn, threads)
+    database_import.load_data(def_config, threads)
 
     assert temp_db_cursor.table_rows('placex') == 30
     assert temp_db_cursor.table_rows('location_property_osmline') == 1

@@ -168,14 +168,14 @@ _COPY_COLUMNS = pysql.SQL(',').join(map(pysql.Identifier,
                                          'extratags', 'geometry')))
 
 
-def load_data(dsn, threads):
+def load_data(config, threads):
     """ Copy data into the word and placex table.
     """
     sel = selectors.DefaultSelector()
     # Then copy data from place to placex in <threads - 1> chunks.
     place_threads = max(1, threads - 1)
     for imod in range(place_threads):
-        conn = DBConnection(dsn)
+        conn = DBConnection(config.get_libpq_dsn())
         conn.connect()
         conn.perform(
             pysql.SQL("""INSERT INTO placex ({columns})
@@ -189,7 +189,7 @@ def load_data(dsn, threads):
         sel.register(conn, selectors.EVENT_READ, conn)
 
     # Address interpolations go into another table.
-    conn = DBConnection(dsn)
+    conn = DBConnection(config.get_libpq_dsn())
     conn.connect()
     conn.perform("""INSERT INTO location_property_osmline (osm_id, address, linegeo)
                       SELECT osm_id, address, geometry FROM place
@@ -208,11 +208,15 @@ def load_data(dsn, threads):
             conn.close()
             todo -= 1
         print('.', end='', flush=True)
-    print('\n')
+    print('', flush=True)
 
-    with connect(dsn) as conn:
+    with connect(config.get_libpq_dsn()) as conn:
+        LOG.info('Creating indexes on placex')
+        sql = SQLPreprocessor(conn, config)
+        sql.run_sql_file(conn, 'placex_indices.sql')
+        LOG.info('Reanalysing placex table')
         with conn.cursor() as cur:
-            cur.execute('ANALYSE')
+            cur.execute('ANALYSE placex')
 
 
 def create_search_indices(conn, config, drop=False):
