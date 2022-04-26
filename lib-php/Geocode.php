@@ -405,28 +405,7 @@ class Geocode
                 $aNewPhraseSearches = array_slice($aNewPhraseSearches, 0, 50);
             }
 
-            // Re-group the searches by their score, junk anything over 20 as just not worth trying
-            $aGroupedSearches = array();
-            foreach ($aNewPhraseSearches as $aSearch) {
-                $iRank = $aSearch->getRank();
-                if ($iRank < $this->iMaxRank) {
-                    if (!isset($aGroupedSearches[$iRank])) {
-                        $aGroupedSearches[$iRank] = array();
-                    }
-                    $aGroupedSearches[$iRank][] = $aSearch;
-                }
-            }
-            ksort($aGroupedSearches);
-
-            $iSearchCount = 0;
-            $aSearches = array();
-            foreach ($aGroupedSearches as $aNewSearches) {
-                $iSearchCount += count($aNewSearches);
-                $aSearches = array_merge($aSearches, $aNewSearches);
-                if ($iSearchCount > 50) {
-                    break;
-                }
-            }
+            $aSearches = $aNewPhraseSearches;
         }
 
         // Revisit searches, drop bad searches and give penalty to unlikely combinations.
