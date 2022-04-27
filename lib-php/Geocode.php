@@ -339,7 +339,7 @@ class Geocode
         return false;
     }
 
-    public function getGroupedSearches($aSearches, $aPhrases, $oValidTokens)
+    public function getSearches($aSearches, $aPhrases, $oValidTokens)
     {
         /*
              Calculate all searches using oValidTokens i.e.
@@ -409,21 +409,13 @@ class Geocode
         }
 
         // Revisit searches, drop bad searches and give penalty to unlikely combinations.
-        $aGroupedSearches = array();
-        foreach ($aSearches as $oSearch) {
+        foreach ($aSearches as $iSearch => $oSearch) {
             if (!$oSearch->isValidSearch()) {
-                continue;
+                unset($aSearches[$iSearch]);
             }
-
-            $iRank = $oSearch->getRank();
-            if (!isset($aGroupedSearches[$iRank])) {
-                $aGroupedSearches[$iRank] = array();
-            }
-            $aGroupedSearches[$iRank][] = $oSearch;
         }
-        ksort($aGroupedSearches);
 
-        return $aGroupedSearches;
+        return $aSearches;
     }
 
     /* Perform the actual query lookup.
@@ -583,7 +575,7 @@ class Geocode
 
                 Debug::newSection('Search candidates');
 
-                $aGroupedSearches = $this->getGroupedSearches($aSearches, $aPhrases, $oValidTokens);
+                $aFinalSearches = $this->getSearches($aSearches, $aPhrases, $oValidTokens);
 
                 if (!$this->aStructuredQuery) {
                     // Reverse phrase array and also reverse the order of the wordsets in
@@ -594,67 +586,47 @@ class Geocode
                     if (count($aPhrases) > 1) {
                         $aPhrases[count($aPhrases)-1]->invertWordSets();
                     }
-                    $aReverseGroupedSearches = $this->getGroupedSearches($aSearches, $aPhrases, $oValidTokens);
+                    $aReverseSearches = $this->getSearches($aSearches, $aPhrases, $oValidTokens);
 
-                    foreach ($aReverseGroupedSearches as $aSearches) {
-                        foreach ($aSearches as $aSearch) {
-                            if (!isset($aGroupedSearches[$aSearch->getRank()])) {
-                                $aGroupedSearches[$aSearch->getRank()] = array();
-                            }
-                            $aGroupedSearches[$aSearch->getRank()][] = $aSearch;
-                        }
-                    }
-
-                    ksort($aGroupedSearches);
+                    $aFinalSearches = array_merge($aFinalSearches, $aReverseSearches);
+                    usort($aFinalSearches, array('Nominatim\SearchDescription', 'bySearchRank'));
                 }
             } else {
-                // Re-group the searches by their score, junk anything over 20 as just not worth trying
-                $aGroupedSearches = array();
-                foreach ($aSearches as $aSearch) {
-                    if ($aSearch->getRank() < $this->iMaxRank) {
-                        if (!isset($aGroupedSearches[$aSearch->getRank()])) {
-                            $aGroupedSearches[$aSearch->getRank()] = array();
-                        }
-                        $aGroupedSearches[$aSearch->getRank()][] = $aSearch;
-                    }
-                }
-                ksort($aGroupedSearches);
+                $aFinalSearches = $aSearches;
+                usort($aFinalSearches, array('Nominatim\SearchDescription', 'bySearchRank'));
             }
 
             // Filter out duplicate searches
             $aSearchHash = array();
-            foreach ($aGroupedSearches as $iGroup => $aSearches) {
-                foreach ($aSearches as $iSearch => $aSearch) {
-                    $sHash = serialize($aSearch);
-                    if (isset($aSearchHash[$sHash])) {
-                        unset($aGroupedSearches[$iGroup][$iSearch]);
-                        if (empty($aGroupedSearches[$iGroup])) {
-                            unset($aGroupedSearches[$iGroup]);
-                        }
-                    } else {
-                        $aSearchHash[$sHash] = 1;
-                    }
+            foreach ($aFinalSearches as $iSearch => $aSearch) {
+                $sHash = serialize($aSearch);
+                if (isset($aSearchHash[$sHash])) {
+                    unset($aFinalSearches[$iSearch]);
+                } else {
+                    $aSearchHash[$sHash] = 1;
                 }
             }
 
-            Debug::printGroupedSearch(
-                $aGroupedSearches,
+            Debug::printSearches(
+                $aFinalSearches,
                 $oValidTokens->debugTokenByWordIdList()
             );
 
             // Start the search process
-            $iGroupLoop = 0;
-            $iQueryLoop = 0;
-            $aNextResults = array();
-            foreach ($aGroupedSearches as $iGroupedRank => $aSearches) {
-                $iGroupLoop++;
-                $aResults = $aNextResults;
-                foreach ($aSearches as $oSearch) {
-                    $iQueryLoop++;
+            $aResults = array();
+            if (!empty($aFinalSearches)) {
+                $fMinRank = 1000;
+                foreach ($aFinalSearches as $iSearchLoop => $oSearch) {
+                    $fCurrentRank = $oSearch->getRank();
+                    Debug::newSection("Search Loop $iSearchLoop, rank $fCurrentRank");
 
-                    Debug::newSection("Search Loop, group $iGroupLoop, loop $iQueryLoop");
-                    Debug::printGroupedSearch(
-                        array($iGroupedRank => array($oSearch)),
+                    if (!empty($aResults) && $fCurrentRank >= $fMinRank + 2) {
+                        Debug::printVar("Minimum rank reached", $fMinRank);
+                        break;
+                    }
+
+                    Debug::printSearches(
+                        array($oSearch),
                         $oValidTokens->debugTokenByWordIdList()
                     );
 
@@ -668,36 +640,14 @@ class Geocode
                     // The same result may appear in different rounds, only
                     // use the one with minimal rank.
                     foreach ($aNewResults as $iPlace => $oRes) {
+                        $oRes->iResultRank += $fCurrentRank;
                         if (!isset($aResults[$iPlace])
                             || $aResults[$iPlace]->iResultRank > $oRes->iResultRank) {
                             $aResults[$iPlace] = $oRes;
+                            if ($oRes->iResultRank < $fMinRank) {
+                                $fMinRank = $oRes->iResultRank;
+                            }
                         }
-                    }
-
-                    if ($iQueryLoop > 20) {
-                        break;
-                    }
-                }
-
-                if (!empty($aResults)) {
-                    $aSplitResults = Result::splitResults($aResults);
-                    Debug::printVar('Split results', $aSplitResults);
-                    if ($iGroupLoop <= 4
-                        && reset($aSplitResults['head'])->iResultRank > 0
-                        && $iGroupedRank !== array_key_last($aGroupedSearches)) {
-                        // Haven't found an exact match for the query yet.
-                        // Therefore add result from the next group level.
-                        $aNextResults = $aSplitResults['head'];
-                        foreach ($aNextResults as $oRes) {
-                            $oRes->iResultRank--;
-                        }
-                        foreach ($aSplitResults['tail'] as $oRes) {
-                            $oRes->iResultRank--;
-                            $aNextResults[$oRes->iId] = $oRes;
-                        }
-                        $aResults = array();
-                    } else {
-                        $aResults = $aSplitResults['head'];
                     }
                 }
 
@@ -750,10 +700,6 @@ class Geocode
                     }
                     $aResults = $tempIDs;
                 }
-
-                if (!empty($aResults) || $iGroupLoop > 4 || $iQueryLoop > 30) {
-                    break;
-                }
             }
         } else {
             // Just interpret as a reverse geocode
@@ -764,10 +710,22 @@ class Geocode
 
             Debug::printVar('Reverse search', $oLookup);
 
+            $fMinRank = 1000;
             if ($oLookup) {
                 $aResults = array($oLookup->iId => $oLookup);
+            } else {
+                $aResults = array();
             }
         }
+
+        // Filter again all results too far from the minimum result.
+        foreach ($aResults as $iResult => $oResult) {
+            if ($oResult->iResultRank >= $fMinRank + 1) {
+                unset($aResults[$iResult]);
+            }
+        }
+
+        Debug::printDebugTable('Final Result IDs', $aResults);
 
         // No results? Done
         if (empty($aResults)) {
