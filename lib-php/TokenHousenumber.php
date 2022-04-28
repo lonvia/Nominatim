@@ -64,23 +64,23 @@ class HouseNumber
 
         // sanity check: if the housenumber is not mainly made
         // up of numbers, add a penalty
-        $iSearchCost = 1;
+        $fSearchCost = 1.0;
         if (preg_match('/\\d/', $this->sToken) === 0
             || preg_match_all('/[^0-9 ]/', $this->sToken, $aMatches) > 3) {
-            $iSearchCost += strlen($this->sToken) - 1;
+            $fSearchCost += float(strlen($this->sToken)) - 1.0;
         }
         if (!$oSearch->hasOperator(\Nominatim\Operator::NONE)) {
-            $iSearchCost++;
+            $fSearchCost += 1.0;
         }
         if (empty($this->iId)) {
-            $iSearchCost++;
+            $fSearchCost += 1.0;
         }
         // also must not appear in the middle of the address
         if ($oSearch->hasAddress() || $oSearch->hasPostcode()) {
-            $iSearchCost++;
+            $fSearchCost += 1.0;
         }
 
-        $oNewSearch = $oSearch->clone($iSearchCost);
+        $oNewSearch = $oSearch->clone($fSearchCost);
         $oNewSearch->setHousenumber($this->sToken);
         $aNewSearches[] = $oNewSearch;
 
@@ -90,7 +90,7 @@ class HouseNumber
             && ($oSearch->getNamePhrase() >= 0 || !$oSearch->hasName())
             && !$oSearch->hasAddress()
         ) {
-            $oNewSearch = $oSearch->clone($iSearchCost);
+            $oNewSearch = $oSearch->clone($fSearchCost);
             $oNewSearch->setHousenumberAsName($this->iId);
 
             $aNewSearches[] = $oNewSearch;

@@ -71,13 +71,13 @@ class Word
             if ($this->iTermCount > 1
                 && ($oPosition->isPhrase('') || !$oPosition->isFirstPhrase())
             ) {
-                $oNewSearch = $oSearch->clone(1);
+                $oNewSearch = $oSearch->clone(1.0);
                 $oNewSearch->addAddressToken($this->iId);
 
                 return array($oNewSearch);
             }
         } elseif (!$oSearch->hasName(true)) {
-            $oNewSearch = $oSearch->clone(1);
+            $oNewSearch = $oSearch->clone(1.0);
             $oNewSearch->addNameToken(
                 $this->iId,
                 CONST_Search_NameOnlySearchFrequencyThreshold

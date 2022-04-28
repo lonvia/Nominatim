@@ -20,7 +20,7 @@ require_once(CONST_LibDir.'/Result.php');
 class SearchDescription
 {
     /// Ranking how well the description fits the query.
-    private $iSearchRank = 0;
+    private $fSearchRank = 0.0;
     /// Country code of country the result must belong to.
     private $sCountryCode = '';
     /// List of word ids making up the name of the object.
@@ -74,7 +74,7 @@ class SearchDescription
      */
     public function getRank()
     {
-        return $this->iSearchRank;
+        return $this->fSearchRank;
     }
 
     /**
@@ -135,14 +135,14 @@ class SearchDescription
     /**
      * Create a copy of this search description adding to search rank.
      *
-     * @param integer $iTermCost  Cost to add to the current search rank.
+     * @param float $fTermCost  Cost to add to the current search rank.
      *
      * @return object Cloned search description.
      */
-    public function clone($iTermCost)
+    public function clone($fTermCost)
     {
         $oSearch = clone $this;
-        $oSearch->iSearchRank += $iTermCost;
+        $oSearch->fSearchRank += $fTermCost;
 
         return $oSearch;
     }
@@ -440,7 +440,7 @@ class SearchDescription
                 $aFilteredPlaceIDs = $oDB->getCol($sSQL);
                 if ($aFilteredPlaceIDs) {
                     foreach ($aFilteredPlaceIDs as $iPlaceId) {
-                        $aResults[$iPlaceId]->iResultRank++;
+                        $aResults[$iPlaceId]->fResultRank += 1.0;
                     }
                 }
             }
@@ -748,9 +748,9 @@ class SearchDescription
                 }
 
                 if ($aResult['address_rank'] < 26) {
-                    $oResult->iResultRank += 2;
+                    $oResult->fResultRank += 2.0;
                 } else {
-                    $oResult->iResultRank++;
+                    $oResult->fResultRank += 1.0;
                 }
             }
 
@@ -932,12 +932,12 @@ class SearchDescription
 
     public static function bySearchRank($a, $b)
     {
-        if ($a->iSearchRank == $b->iSearchRank) {
+        if ($a->fSearchRank == $b->fSearchRank) {
             return $a->iOperator + strlen($a->sHouseNumber)
                      - $b->iOperator - strlen($b->sHouseNumber);
         }
 
-        return $a->iSearchRank < $b->iSearchRank ? -1 : 1;
+        return $a->fSearchRank < $b->fSearchRank ? -1 : 1;
     }
 
     //////////// Debugging functions
@@ -946,7 +946,7 @@ class SearchDescription
     public function debugInfo()
     {
         return array(
-                'Search rank' => $this->iSearchRank,
+                'Search rank' => $this->fSearchRank,
                 'Country code' => $this->sCountryCode,
                 'Name terms' => $this->aName,
                 'Name terms (stop words)' => $this->aNameNonSearch,
@@ -968,7 +968,7 @@ class SearchDescription
         };
 
         echo '<tr>';
-        echo "<td>$this->iSearchRank</td>";
+        echo "<td>$this->fSearchRank</td>";
         echo '<td>'.join(', ', array_map($kf, $this->aName)).'</td>';
         echo '<td>'.join(', ', array_map($kf, $this->aNameNonSearch)).'</td>';
         echo '<td>'.join(', ', array_map($kf, $this->aAddress)).'</td>';

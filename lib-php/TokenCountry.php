@@ -60,7 +60,7 @@ class Country
      */
     public function extendSearch($oSearch, $oPosition)
     {
-        $oNewSearch = $oSearch->clone($oPosition->isLastToken() ? 1 : 6);
+        $oNewSearch = $oSearch->clone($oPosition->isLastToken() ? 1.0 : 6.0);
         $oNewSearch->setCountry($this->sCountryCode);
 
         return array($oNewSearch);

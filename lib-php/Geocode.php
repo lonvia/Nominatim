@@ -615,7 +615,7 @@ class Geocode
             // Start the search process
             $aResults = array();
             if (!empty($aFinalSearches)) {
-                $fMinRank = 1000;
+                $fMinRank = 1000.0;
                 foreach ($aFinalSearches as $iSearchLoop => $oSearch) {
                     $fCurrentRank = $oSearch->getRank();
                     Debug::newSection("Search Loop $iSearchLoop, rank $fCurrentRank");
@@ -640,12 +640,12 @@ class Geocode
                     // The same result may appear in different rounds, only
                     // use the one with minimal rank.
                     foreach ($aNewResults as $iPlace => $oRes) {
-                        $oRes->iResultRank += $fCurrentRank;
+                        $oRes->fResultRank += $fCurrentRank;
                         if (!isset($aResults[$iPlace])
-                            || $aResults[$iPlace]->iResultRank > $oRes->iResultRank) {
+                            || $aResults[$iPlace]->fResultRank > $oRes->fResultRank) {
                             $aResults[$iPlace] = $oRes;
-                            if ($oRes->iResultRank < $fMinRank) {
-                                $fMinRank = $oRes->iResultRank;
+                            if ($oRes->fResultRank < $fMinRank) {
+                                $fMinRank = $oRes->fResultRank;
                             }
                         }
                     }
@@ -720,7 +720,7 @@ class Geocode
 
         // Filter again all results too far from the minimum result.
         foreach ($aResults as $iResult => $oResult) {
-            if ($oResult->iResultRank >= $fMinRank + 1) {
+            if ($oResult->fResultRank >= $fMinRank + 1) {
                 unset($aResults[$iResult]);
             }
         }

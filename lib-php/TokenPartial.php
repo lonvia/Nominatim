@@ -67,12 +67,12 @@ class Partial
         if (($oPosition->isPhrase('') || !$oPosition->isFirstPhrase())
             && $oSearch->hasName()
         ) {
-            $iSearchCost = $this->bNumberToken ? 2 : 1;
+            $fSearchCost = $this->bNumberToken ? 2.0 : 1.0;
             if ($this->iSearchNameCount >= CONST_Max_Word_Frequency) {
-                $iSearchCost += 1;
+                $fSearchCost += 1.0;
             }
 
-            $oNewSearch = $oSearch->clone($iSearchCost);
+            $oNewSearch = $oSearch->clone($fSearchCost);
             $oNewSearch->addAddressToken(
                 $this->iId,
                 $this->iSearchNameCount < CONST_Max_Word_Frequency
@@ -86,15 +86,15 @@ class Partial
             && (!$oSearch->hasName(true)
                 || $oSearch->getNamePhrase() == $oPosition->getPhrase())
         ) {
-            $iSearchCost = 1;
+            $fSearchCost = 1.0;
             if (!$oSearch->hasName(true)) {
-                $iSearchCost += 1;
+                $fSearchCost += 1.0;
             }
             if ($this->bNumberToken) {
-                $iSearchCost += 1;
+                $fSearchCost += 1.0;
             }
 
-            $oNewSearch = $oSearch->clone($iSearchCost);
+            $oNewSearch = $oSearch->clone($fSearchCost);
             $oNewSearch->addPartialNameToken(
                 $this->iId,
                 $this->iSearchNameCount < CONST_Max_Word_Frequency,
