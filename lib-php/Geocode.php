@@ -42,7 +42,7 @@ class Geocode
     protected $aRoutePoints = false;
     protected $aRouteWidth = false;
 
-    protected $iMaxRank = 200;
+    protected $iMaxRank = 20;
     protected $iMinAddressRank = 0;
     protected $iMaxAddressRank = 30;
     protected $aAddressRankList = array();
@@ -359,6 +359,7 @@ class Geocode
                 $iPhrase,
                 count($aPhrases)
             );
+            $iPhraseMinRank = false;
 
             foreach ($oPhrase->getWordSets() as $aWordset) {
                 $aWordsetSearches = $aSearches;
@@ -376,36 +377,60 @@ class Geocode
                                     $oPosition
                                 );
 
-                                foreach ($aNewSearches as $oSearch) {
-                                    if ($oSearch->getRank() < $this->iMaxRank) {
-                                        $aNewWordsetSearches[] = $oSearch;
-                                    }
-                                }
+                                $aNewWordsetSearches = array_merge($aNewWordsetSearches, $aNewSearches);
                             }
                         }
                     }
-                    // Sort and cut
-                    usort($aNewWordsetSearches, array('Nominatim\SearchDescription', 'bySearchRank'));
-                    $aWordsetSearches = array_slice($aNewWordsetSearches, 0, 50);
+
+                    // Drop searches that would never make it into the final list.
+                    if ($iPhraseMinRank !== false) {
+                        $aWordsetSearches = array();
+                        foreach ($aNewWordsetSearches as $oSearch) {
+                            if ($oSearch->getRank() <= $iPhraseMinRank + $this->iMaxRank) {
+                                $aWordsetSearches[] = $oSearch;
+                            }
+                        }
+                    } else {
+                        $aWordsetSearches = $aNewWordsetSearches;
+                    }
                 }
 
-                $aNewPhraseSearches = array_merge($aNewPhraseSearches, $aNewWordsetSearches);
-                usort($aNewPhraseSearches, array('Nominatim\SearchDescription', 'bySearchRank'));
+                // Compute the minimum rank for the phrase. This is the base
+                // for early cutting results in further rounds.
+                if (!empty($aWordsetSearches)) {
+                    usort($aWordsetSearches, array('Nominatim\SearchDescription', 'bySearchRank'));
 
-                $aSearchHash = array();
-                foreach ($aNewPhraseSearches as $iSearch => $aSearch) {
-                    $sHash = serialize($aSearch);
+                    if ($iPhraseMinRank === false
+                        || $aWordsetSearches[0]->getRank() < $iPhraseMinRank
+                    ) {
+                        $iPhraseMinRank = $aWordsetSearches[0]->getRank();
+                    }
+                }
+
+                // Then add the searches to the list of searches for this phrase.
+                $aNewPhraseSearches = array_merge($aNewPhraseSearches, $aWordsetSearches);
+            }
+
+            // Remove duplicate searches and drop searches with too high rank.
+            $aSearchHash = array();
+            foreach ($aNewPhraseSearches as $iSearch => $oSearch) {
+                if ($iPhraseMinRank !== false
+                    && $oSearch->getRank() > $iPhraseMinRank + $this->iMaxRank
+                ) {
+                    unset($aNewPhraseSearches[$iSearch]);
+                } else {
+                    $sHash = serialize($oSearch);
                     if (isset($aSearchHash[$sHash])) {
                         unset($aNewPhraseSearches[$iSearch]);
                     } else {
                         $aSearchHash[$sHash] = 1;
                     }
-                }
-
-                $aNewPhraseSearches = array_slice($aNewPhraseSearches, 0, 50);
+               }
             }
 
-            $aSearches = $aNewPhraseSearches;
+            usort($aNewPhraseSearches, array('Nominatim\SearchDescription', 'bySearchRank'));
+
+            $aSearches = array_slice($aNewPhraseSearches, 0, 50);
         }
 
         // Revisit searches, drop bad searches and give penalty to unlikely combinations.
@@ -595,7 +620,25 @@ class Geocode
 
                     $aReverseSearches = $this->getSearches($aReverseSearchBase, $aPhrases, $oValidTokens);
 
+                    $iBaseMinRank = 10000;
+                    if (!empty($aFinalSearches)) {
+                        $iBaseMinRank = $aFinalSearches[0]->getRank();
+                    }
+                    if (!empty($aReverseSearches)
+                        && $aReverseSearches[0]->getRank() < $iBaseMinRank
+                    ) {
+                        $iBaseMinRank = $aReverseSearches[0]->getRank();
+                    }
+
                     $aFinalSearches = array_merge($aFinalSearches, $aReverseSearches);
+
+                    foreach ($aFinalSearches as $iSearch => $oSearch) {
+                        if ($oSearch->getRank() > $iBaseMinRank + $this->iMaxRank
+                        ) {
+                            unset($aFinalSearches[$iSearch]);
+                        }
+                    }
+
                     usort($aFinalSearches, array('Nominatim\SearchDescription', 'bySearchRank'));
                 }
             } else {
@@ -627,7 +670,7 @@ class Geocode
                     $fCurrentRank = $oSearch->getRank();
                     Debug::newSection("Search Loop $iSearchLoop, rank $fCurrentRank");
 
-                    if (!empty($aResults) && $fCurrentRank >= $fMinRank + 2) {
+                    if (!empty($aResults) && $fCurrentRank >= $fMinRank + 5) {
                         Debug::printVar("Minimum rank reached", $fMinRank);
                         break;
                     }
@@ -727,7 +770,7 @@ class Geocode
 
         // Filter again all results too far from the minimum result.
         foreach ($aResults as $iResult => $oResult) {
-            if ($oResult->iResultRank >= $fMinRank + 1) {
+            if ($oResult->iResultRank >= $fMinRank + 3) {
                 unset($aResults[$iResult]);
             }
         }

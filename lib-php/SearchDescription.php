@@ -443,7 +443,7 @@ class SearchDescription
                 $aFilteredPlaceIDs = $oDB->getCol($sSQL);
                 if ($aFilteredPlaceIDs) {
                     foreach ($aFilteredPlaceIDs as $iPlaceId) {
-                        $aResults[$iPlaceId]->iResultRank++;
+                        $aResults[$iPlaceId]->iResultRank += 3;
                     }
                 }
             }
@@ -750,9 +750,9 @@ class SearchDescription
                 }
 
                 if ($aResult['address_rank'] < 26) {
-                    $oResult->iResultRank += 2;
+                    $oResult->iResultRank += 4;
                 } else {
-                    $oResult->iResultRank++;
+                    $oResult->iResultRank += 3;
                 }
             }
 
