@@ -21,12 +21,19 @@ class Postcode
     private $sPostcode;
     // Optional country code the postcode belongs to (currently unused).
     private $sCountryCode;
+    /// Match factor.
+    private $iMatchRank;
 
-    public function __construct($iId, $sPostcode, $sCountryCode = '')
+    public function __construct($iId, $sPostcode, $sCountryCode = '', $iPenalty = 0)
     {
         $this->iId = $iId;
         $this->sPostcode = $sPostcode;
         $this->sCountryCode = empty($sCountryCode) ? '' : $sCountryCode;
+        $this->iMatchRank = 5 + $iPenalty;
+
+        if (strlen($sPostcode) < 4) {
+            $this->iMatchRank += 4 - strlen($this->sPostcode);
+        }
     }
 
     public function getId()
@@ -66,7 +73,7 @@ class Postcode
         // If we have structured search or this is the first term,
         // make the postcode the primary search element.
         if ($oSearch->hasOperator(\Nominatim\Operator::NONE) && $oPosition->isFirstToken()) {
-            $oNewSearch = $oSearch->clone(1);
+            $oNewSearch = $oSearch->clone($this->iMatchRank, 5);
             $oNewSearch->setPostcodeAsName($this->iId, $this->sPostcode);
 
             $aNewSearches[] = $oNewSearch;
@@ -77,11 +84,7 @@ class Postcode
         if (!$oSearch->hasOperator(\Nominatim\Operator::POSTCODE)
             && ($oPosition->isPhrase('postalcode') || $oSearch->hasName())
         ) {
-            $iPenalty = 1;
-            if (strlen($this->sPostcode) < 4) {
-                $iPenalty += 4 - strlen($this->sPostcode);
-            }
-            $oNewSearch = $oSearch->clone($iPenalty);
+            $oNewSearch = $oSearch->clone($this->iMatchRank, 5);
             $oNewSearch->setPostcode($this->sPostcode);
 
             $aNewSearches[] = $oNewSearch;
@@ -95,6 +98,7 @@ class Postcode
         return array(
                 'ID' => $this->iId,
                 'Type' => 'postcode',
+                'Rank' => $this->iMatchRank,
                 'Info' => $this->sPostcode.'('.$this->sCountryCode.')'
                );
     }

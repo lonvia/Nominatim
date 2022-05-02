@@ -68,7 +68,7 @@ class Tokenizer
     {
         $aResults = array();
 
-        $sSQL = 'SELECT word_id, class, type FROM word ';
+        $sSQL = 'SELECT word_id, work_token, class, type FROM word ';
         $sSQL .= '   WHERE word_token = \' \' || make_standard_name(:term)';
         $sSQL .= '   AND class is not null AND class not in (\'place\')';
 
@@ -81,6 +81,7 @@ class Tokenizer
         foreach ($aSearchWords as $aSearchTerm) {
             $aResults[] = new \Nominatim\Token\SpecialTerm(
                 $aSearchTerm['word_id'],
+                substr($aSearchTerm['word_token'], 1),
                 $aSearchTerm['class'],
                 $aSearchTerm['type'],
                 \Nominatim\Operator::TYPE
@@ -229,6 +230,7 @@ class Tokenizer
                     // near and in operator the same at the moment
                     $oToken = new Token\SpecialTerm(
                         $iId,
+                        substr($aWord['word_token'], 1),
                         $aWord['class'],
                         $aWord['type'],
                         $aWord['operator'] ? Operator::NEAR : Operator::NONE

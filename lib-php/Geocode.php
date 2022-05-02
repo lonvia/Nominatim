@@ -42,7 +42,7 @@ class Geocode
     protected $aRoutePoints = false;
     protected $aRouteWidth = false;
 
-    protected $iMaxRank = 20;
+    protected $iMaxRank = 200;
     protected $iMinAddressRank = 0;
     protected $iMaxAddressRank = 30;
     protected $aAddressRankList = array();
@@ -586,7 +586,14 @@ class Geocode
                     if (count($aPhrases) > 1) {
                         $aPhrases[count($aPhrases)-1]->invertWordSets();
                     }
-                    $aReverseSearches = $this->getSearches($aSearches, $aPhrases, $oValidTokens);
+
+                    // Give reverse searches a mild penalty to start with.
+                    $aReverseSearchBase = array();
+                    foreach ($aSearches as $oSearch) {
+                        $aReverseSearchBase[] = $oSearch->clone(0, 1);
+                    }
+
+                    $aReverseSearches = $this->getSearches($aReverseSearchBase, $aPhrases, $oValidTokens);
 
                     $aFinalSearches = array_merge($aFinalSearches, $aReverseSearches);
                     usort($aFinalSearches, array('Nominatim\SearchDescription', 'bySearchRank'));

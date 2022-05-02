@@ -67,7 +67,7 @@ class Tokenizer
     {
         $aResults = array();
 
-        $sSQL = "SELECT word_id, info->>'class' as class, info->>'type' as type ";
+        $sSQL = "SELECT word_id, word_token, info->>'class' as class, info->>'type' as type ";
         $sSQL .= '   FROM word WHERE word_token = :term and type = \'S\'';
 
         Debug::printVar('Term', $sTerm);
@@ -79,6 +79,7 @@ class Tokenizer
         foreach ($aSearchWords as $aSearchTerm) {
             $aResults[] = new \Nominatim\Token\SpecialTerm(
                 $aSearchTerm['word_id'],
+                $aSearchTerm['word_token'],
                 $aSearchTerm['class'],
                 $aSearchTerm['type'],
                 \Nominatim\Operator::TYPE
@@ -203,6 +204,7 @@ class Tokenizer
                     if ($aWord['class'] !== null && $aWord['ctype'] !== null) {
                         $oValidTokens->addToken($sTok, new Token\SpecialTerm(
                             $iId,
+                            $sTok,
                             $aWord['class'],
                             $aWord['ctype'],
                             (isset($aWord['operator'])) ? Operator::NEAR : Operator::NONE

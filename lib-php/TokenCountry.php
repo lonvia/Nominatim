@@ -19,11 +19,14 @@ class Country
     private $iId;
     /// Two-letter country code (lower-cased).
     private $sCountryCode;
+    /// Match factor.
+    private $iMatchRank;
 
-    public function __construct($iId, $sCountryCode)
+    public function __construct($iId, $sCountryCode, $iPenalty = 0)
     {
         $this->iId = $iId;
         $this->sCountryCode = $sCountryCode;
+        $this->iMatchRank = 5 + $iPenalty;
     }
 
     public function getId()
@@ -60,7 +63,7 @@ class Country
      */
     public function extendSearch($oSearch, $oPosition)
     {
-        $oNewSearch = $oSearch->clone($oPosition->isLastToken() ? 1 : 6);
+        $oNewSearch = $oSearch->clone($this->iMatchRank, $oPosition->isLastToken() ? 1 : 8);
         $oNewSearch->setCountry($this->sCountryCode);
 
         return array($oNewSearch);
@@ -71,6 +74,7 @@ class Country
         return array(
                 'ID' => $this->iId,
                 'Type' => 'country',
+                'Rank' => $this->iMatchRank,
                 'Info' => $this->sCountryCode
                );
     }

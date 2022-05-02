@@ -139,10 +139,10 @@ class SearchDescription
      *
      * @return object Cloned search description.
      */
-    public function clone($iTermCost)
+    public function clone($iTermCost, $iTransitionCost = 5)
     {
         $oSearch = clone $this;
-        $oSearch->iSearchRank += $iTermCost;
+        $oSearch->iSearchRank += $iTermCost + $iTransitionCost;
 
         return $oSearch;
     }
@@ -170,6 +170,11 @@ class SearchDescription
     public function hasAddress()
     {
         return !empty($this->aAddress) || !empty($this->aAddressNonSearch);
+    }
+
+    public function addressLength()
+    {
+        return count($this->aAddress);
     }
 
     /**

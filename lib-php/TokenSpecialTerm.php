@@ -25,13 +25,19 @@ class SpecialTerm
     private $sType;
     /// Relationship of the operator to the object (see Operator class).
     private $iOperator;
+    /// Number of words in the special term (neded for computing penalties).
+    private $iNumTerms;
+    /// Match factor.
+    private $iMatchRank;
 
-    public function __construct($iID, $sClass, $sType, $iOperator)
+    public function __construct($iID, $sToken, $sClass, $sType, $iOperator, $iPenalty = 0)
     {
         $this->iId = $iID;
         $this->sClass = $sClass;
         $this->sType = $sType;
         $this->iOperator = $iOperator;
+        $this->iNumTerms = substr_count($sToken, ' ') + 1;
+        $this->iMatchRank = 5 * $this->iNumTerms + $iPenalty;
     }
 
     public function getId()
@@ -69,7 +75,7 @@ class SpecialTerm
      */
     public function extendSearch($oSearch, $oPosition)
     {
-        $iSearchCost = 2;
+        $iSearchCost = 5 * $this->iNumTerms;
 
         $iOp = $this->iOperator;
         if ($iOp == \Nominatim\Operator::NONE) {
@@ -77,16 +83,16 @@ class SpecialTerm
                 $iOp = \Nominatim\Operator::NAME;
             } else {
                 $iOp = \Nominatim\Operator::NEAR;
-                $iSearchCost += 2;
+                $iSearchCost += 4;
             }
         } elseif (!$oPosition->isFirstToken() && !$oPosition->isLastToken()) {
-            $iSearchCost += 2;
+            $iSearchCost += 4;
         }
         if ($oSearch->hasHousenumber()) {
-            $iSearchCost ++;
+            $iSearchCost += 2;
         }
 
-        $oNewSearch = $oSearch->clone($iSearchCost);
+        $oNewSearch = $oSearch->clone($this->iMatchRank, $iSearchCost);
         $oNewSearch->setPoiSearch($iOp, $this->sClass, $this->sType);
 
         return array($oNewSearch);

@@ -19,14 +19,22 @@ class Partial
     private $iId;
     /// Number of appearances in the database.
     private $iSearchNameCount;
-    /// True, if the token consists exclusively of digits and spaces.
-    private $bNumberToken;
+    /// Match factor.
+    private $iMatchRank;
 
-    public function __construct($iId, $sToken, $iSearchNameCount)
+    public function __construct($iId, $sToken, $iSearchNameCount, $iPenalty = 0)
     {
         $this->iId = $iId;
-        $this->bNumberToken = (bool) preg_match('#^[0-9 ]+$#', $sToken);
         $this->iSearchNameCount = $iSearchNameCount;
+        $this->iMatchRank = 5 + $iPenalty;
+
+        if (preg_match('#^[0-9 ]+$#', $sToken)) {
+            $this->iMatchRank += 2;
+        }
+
+        if ($iSearchNameCount >= CONST_Max_Word_Frequency) {
+            $this->iMatchRank += 1;
+        }
     }
 
     public function getId()
@@ -67,12 +75,7 @@ class Partial
         if (($oPosition->isPhrase('') || !$oPosition->isFirstPhrase())
             && $oSearch->hasName()
         ) {
-            $iSearchCost = $this->bNumberToken ? 2 : 1;
-            if ($this->iSearchNameCount >= CONST_Max_Word_Frequency) {
-                $iSearchCost += 1;
-            }
-
-            $oNewSearch = $oSearch->clone($iSearchCost);
+            $oNewSearch = $oSearch->clone($this->iMatchRank, 5);
             $oNewSearch->addAddressToken(
                 $this->iId,
                 $this->iSearchNameCount < CONST_Max_Word_Frequency
@@ -86,15 +89,12 @@ class Partial
             && (!$oSearch->hasName(true)
                 || $oSearch->getNamePhrase() == $oPosition->getPhrase())
         ) {
-            $iSearchCost = 1;
+            $iSearchCost = 5;
             if (!$oSearch->hasName(true)) {
                 $iSearchCost += 1;
             }
-            if ($this->bNumberToken) {
-                $iSearchCost += 1;
-            }
 
-            $oNewSearch = $oSearch->clone($iSearchCost);
+            $oNewSearch = $oSearch->clone($this->iMatchRank, $iSearchCost);
             $oNewSearch->addPartialNameToken(
                 $this->iId,
                 $this->iSearchNameCount < CONST_Max_Word_Frequency,
@@ -114,6 +114,7 @@ class Partial
         return array(
                 'ID' => $this->iId,
                 'Type' => 'partial',
+                'Rank' => $this->iMatchRank,
                 'Info' => array(
                            'count' => $this->iSearchNameCount
                           )

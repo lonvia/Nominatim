@@ -19,11 +19,24 @@ class HouseNumber
     private $iId;
     /// Normalized house number.
     private $sToken;
+    /// Match factor.
+    private $iMatchRank;
 
-    public function __construct($iId, $sToken)
+    public function __construct($iId, $sToken, $iPenalty = 0)
     {
         $this->iId = $iId;
         $this->sToken = $sToken;
+        $this->iMatchRank = 5 + $iPenalty;
+
+        if (preg_match('/\\d/', $this->sToken) === 0
+            || preg_match_all('/[^0-9 ]/', $this->sToken, $aMatches) > 3) {
+            $this->iMatchRank += strlen($this->sToken) - 1;
+        }
+
+        if (empty($this->iId)) {
+            $this->iMatchRank++;
+        }
+
     }
 
     public function getId()
@@ -62,25 +75,18 @@ class HouseNumber
     {
         $aNewSearches = array();
 
-        // sanity check: if the housenumber is not mainly made
-        // up of numbers, add a penalty
-        $iSearchCost = 1;
-        if (preg_match('/\\d/', $this->sToken) === 0
-            || preg_match_all('/[^0-9 ]/', $this->sToken, $aMatches) > 3) {
-            $iSearchCost += strlen($this->sToken) - 1;
-        }
+        // Should appear towards the beginning of the term.
+        $iSearchCost = $oSearch->addressLength() + 4;
+
         if (!$oSearch->hasOperator(\Nominatim\Operator::NONE)) {
             $iSearchCost++;
         }
-        if (empty($this->iId)) {
-            $iSearchCost++;
-        }
-        // also must not appear in the middle of the address
-        if ($oSearch->hasAddress() || $oSearch->hasPostcode()) {
-            $iSearchCost++;
+
+        if ($oSearch->hasPostcode()) {
+            $iSearchCost += 2;
         }
 
-        $oNewSearch = $oSearch->clone($iSearchCost);
+        $oNewSearch = $oSearch->clone($this->iMatchRank, $iSearchCost);
         $oNewSearch->setHousenumber($this->sToken);
         $aNewSearches[] = $oNewSearch;
 
@@ -90,7 +96,7 @@ class HouseNumber
             && ($oSearch->getNamePhrase() >= 0 || !$oSearch->hasName())
             && !$oSearch->hasAddress()
         ) {
-            $oNewSearch = $oSearch->clone($iSearchCost);
+            $oNewSearch = $oSearch->clone($this->iMatchRank, $iSearchCost + 1);
             $oNewSearch->setHousenumberAsName($this->iId);
 
             $aNewSearches[] = $oNewSearch;
@@ -105,6 +111,7 @@ class HouseNumber
         return array(
                 'ID' => $this->iId,
                 'Type' => 'house number',
+                'Rank' => $this->iMatchRank,
                 'Info' => array('nr' => $this->sToken)
                );
     }
