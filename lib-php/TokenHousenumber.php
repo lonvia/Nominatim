@@ -31,6 +31,8 @@ class HouseNumber
         if (preg_match('/\\d/', $this->sToken) === 0
             || preg_match_all('/[^0-9 ]/', $this->sToken, $aMatches) > 3) {
             $this->iMatchRank += strlen($this->sToken) - 1;
+        } elseif (preg_match('/^\\d{1,4}.?[a-z]{0,3}$/', $this->sToken) ==! 0) {
+            $this->iMatchRank -= 1;
         }
 
         if (empty($this->iId)) {
