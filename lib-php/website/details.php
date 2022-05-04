@@ -136,7 +136,7 @@ $sSQL .= '    ST_y(centroid) AS lat, ';
 $sSQL .= '    ST_x(centroid) AS lon, ';
 $sSQL .= '    CASE ';
 $sSQL .= '       WHEN importance = 0 OR importance IS NULL ';
-$sSQL .= '       THEN 0.75-(rank_search::float/40) ';
+$sSQL .= '       THEN 0.60001-(rank_search::float/50) ';
 $sSQL .= '       ELSE importance ';
 $sSQL .= '       END as calculated_importance, ';
 if ($bIncludePolygonAsGeoJSON) {

@@ -227,7 +227,7 @@ class PlaceLookup
             }
             $sSQL .= '    avg(ST_X(centroid)) AS lon, ';
             $sSQL .= '    avg(ST_Y(centroid)) AS lat, ';
-            $sSQL .= '    COALESCE(importance,0.75-(rank_search::float/40)) AS importance, ';
+            $sSQL .= '    COALESCE(importance,0.60001-(rank_search::float/50)) AS importance, ';
             $sSQL .= $this->addressImportanceSql(
                 'ST_Collect(centroid)',
                 'min(CASE WHEN placex.rank_search < 28 THEN placex.place_id ELSE placex.parent_place_id END)'
@@ -300,7 +300,7 @@ class PlaceLookup
                 $sSQL .= 'null::text AS names,';
             }
             $sSQL .= '  ST_x(geometry) AS lon, ST_y(geometry) AS lat,';
-            $sSQL .= '  (0.75-(rank_search::float/40)) AS importance, ';
+            $sSQL .= '  (0.6-(rank_search::float/50)) AS importance, ';
             $sSQL .= $this->addressImportanceSql('geometry', 'lp.parent_place_id');
             $sSQL .= '  null::text AS extra_place ';
             $sSQL .= 'FROM location_postcode lp';

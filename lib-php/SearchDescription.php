@@ -618,7 +618,7 @@ class SearchDescription
         if ($this->sHouseNumber) {
             $sImportanceSQL = '- abs(26 - address_rank) + 3';
         } else {
-            $sImportanceSQL = '(CASE WHEN importance = 0 OR importance IS NULL THEN 0.75001-(search_rank::float/40) ELSE importance END)';
+            $sImportanceSQL = '(CASE WHEN importance = 0 OR importance IS NULL THEN 0.60001-(search_rank::float/50) ELSE importance END)';
         }
         $sImportanceSQL .= $this->oContext->viewboxImportanceSQL('centroid');
         $aOrder[] = "$sImportanceSQL DESC";
@@ -682,7 +682,7 @@ class SearchDescription
             $sSQL .= ' FROM (';
             $sSQL .= '    SELECT place_id, address_rank, country_code,'.$sExactMatchSQL.',';
             $sSQL .= '            CASE WHEN importance = 0 OR importance IS NULL';
-            $sSQL .= '               THEN 0.75001-(search_rank::float/40) ELSE importance END as importance';
+            $sSQL .= '               THEN 0.60001-(search_rank::float/50) ELSE importance END as importance';
             $sSQL .= '     FROM search_name';
             $sSQL .= '     WHERE '.join(' and ', $aTerms);
             $sSQL .= '     ORDER BY '.join(', ', $aOrder);
