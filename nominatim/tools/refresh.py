@@ -140,11 +140,17 @@ def import_wikipedia_articles(dsn: str, data_path: Path, ignore_errors: bool = F
 
     with connect(dsn) as conn:
         with gzip.open(str(datafile), 'rt') as fd, CopyBuffer() as buf:
+            # Only import the first occurance of a wikidata ID.
+            # This keeps indexes and table small.
+            wd_done = set()
+
             for row in csv.DictReader(fd, delimiter=','):
+                wd_id = int(row['wd_page_title'][1:])
                 buf.add(row['language'],
                         row['title'],
                         row['importance'],
-                        row['wd_page_title'])
+                        None if wd_id in wd_done else row['wd_page_title'])
+                wd_done.add(wd_id)
 
                 if buf.size() > 10000000:
                     with conn.cursor() as cur:
@@ -161,7 +167,8 @@ def import_wikipedia_articles(dsn: str, data_path: Path, ignore_errors: bool = F
             cur.execute("""CREATE INDEX IF NOT EXISTS idx_wikimedia_importance_pkey
                            ON wikimedia_importance (language, title)""")
             cur.execute("""CREATE INDEX IF NOT EXISTS idx_wikimedia_importance_wikidata
-                           ON wikimedia_importance (wikidata)""")
+                           ON wikimedia_importance (wikidata)
+                           WHERE wikidata is not null""")
 
         conn.commit()
 
