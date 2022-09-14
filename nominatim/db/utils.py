@@ -113,9 +113,14 @@ class CopyBuffer:
         self.buffer.write('\n')
 
 
+    def size(self):
+        return self.buffer.tell()
+
+
     def copy_out(self, cur: Cursor, table: str, columns: Optional[Iterable[str]] = None) -> None:
         """ Copy all collected data into the given table.
         """
         if self.buffer.tell() > 0:
             self.buffer.seek(0)
             cur.copy_from(self.buffer, table, columns=columns) # type: ignore[no-untyped-call]
+            self.buffer = io.StringIO()

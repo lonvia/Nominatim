@@ -8,6 +8,8 @@
 Functions for bringing auxiliary data in the database up-to-date.
 """
 from typing import MutableSequence, Tuple, Any, Type, Mapping, Sequence, List, cast
+import csv
+import gzip
 import logging
 from textwrap import dedent
 from pathlib import Path
@@ -15,8 +17,8 @@ from pathlib import Path
 from psycopg2 import sql as pysql
 
 from nominatim.config import Configuration
-from nominatim.db.connection import Connection
-from nominatim.db.utils import execute_file
+from nominatim.db.connection import connect, Connection
+from nominatim.db.utils import CopyBuffer
 from nominatim.db.sql_preprocessor import SQLPreprocessor
 from nominatim.version import version_str
 
@@ -131,18 +133,37 @@ def import_wikipedia_articles(dsn: str, data_path: Path, ignore_errors: bool = F
         Returns 0 if all was well and 1 if the importance file could not
         be found. Throws an exception if there was an error reading the file.
     """
-    datafile = data_path / 'wikimedia-importance.sql.gz'
+    datafile = data_path / 'wikimedia-importance.csv.gz'
 
     if not datafile.exists():
         return 1
 
-    pre_code = """BEGIN;
-                  DROP TABLE IF EXISTS "wikipedia_article";
-                  DROP TABLE IF EXISTS "wikipedia_redirect"
-               """
-    post_code = "COMMIT"
-    execute_file(dsn, datafile, ignore_errors=ignore_errors,
-                 pre_code=pre_code, post_code=post_code)
+    with connect(dsn) as conn:
+        with gzip.open(str(datafile), 'rt') as fd, CopyBuffer() as buf:
+            for row in csv.DictReader(fd, delimiter=','):
+                buf.add(row['language'],
+                        row['title'],
+                        row['importance'],
+                        row['wd_page_title'])
+
+                if buf.size() > 10000000:
+                    with conn.cursor() as cur:
+                        buf.copy_out(cur, 'wikimedia_importance',
+                                     columns=['language', 'title', 'importance',
+                                              'wikidata'])
+
+            with conn.cursor() as cur:
+                buf.copy_out(cur, 'wikimedia_importance',
+                             columns=['language', 'title', 'importance',
+                                      'wikidata'])
+
+        with conn.cursor() as cur:
+            cur.execute("""CREATE INDEX IF NOT EXISTS idx_wikimedia_importance_pkey
+                           ON wikimedia_importance (language, title)""")
+            cur.execute("""CREATE INDEX IF NOT EXISTS idx_wikimedia_importance_wikidata
+                           ON wikimedia_importance (wikidata)""")
+
+        conn.commit()
 
     return 0
 

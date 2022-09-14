@@ -226,31 +226,14 @@ GRANT SELECT ON import_polygon_delete TO "{{config.DATABASE_WEBUSER}}";
 DROP SEQUENCE IF EXISTS file;
 CREATE SEQUENCE file start 1;
 
--- null table so it won't error
--- deliberately no drop - importing the table is expensive and static, if it is already there better to avoid removing it
-CREATE TABLE wikipedia_article (
+DROP TABLE IF EXISTS wikimedia_importance;
+CREATE TABLE wikimedia_importance (
     language text NOT NULL,
     title text NOT NULL,
-    langcount integer,
-    othercount integer,
-    totalcount integer,
-    lat double precision,
-    lon double precision,
     importance double precision,
-    osm_type character(1),
-    osm_id bigint,
-    wd_page_title text,
-    instance_of text
+    wikidata text
 );
-ALTER TABLE ONLY wikipedia_article ADD CONSTRAINT wikipedia_article_pkey PRIMARY KEY (language, title);
-CREATE INDEX idx_wikipedia_article_osm_id ON wikipedia_article USING btree (osm_type, osm_id);
 
-CREATE TABLE wikipedia_redirect (
-    language text,
-    from_title text,
-    to_title text
-);
-ALTER TABLE ONLY wikipedia_redirect ADD CONSTRAINT wikipedia_redirect_pkey PRIMARY KEY (language, from_title);
 
 -- osm2pgsql does not create indexes on the middle tables for Nominatim
 -- Add one for lookup of associated street relations.
