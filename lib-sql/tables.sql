@@ -133,7 +133,8 @@ CREATE TABLE place_addressline (
   distance FLOAT,
   cached_rank_address SMALLINT,
   fromarea boolean,
-  isaddress boolean
+  isaddress boolean,
+  partial boolean
   ) {{db.tablespace.search_data}};
 CREATE INDEX idx_place_addressline_place_id on place_addressline USING BTREE (place_id) {{db.tablespace.search_index}};
 
