@@ -470,6 +470,7 @@ DECLARE
   address_havelevel BOOLEAN[];
 
   location_isaddress BOOLEAN;
+  partial_address BOOLEAN;
   current_boundary GEOMETRY := NULL;
   current_node_area GEOMETRY := NULL;
 
@@ -513,10 +514,20 @@ BEGIN
         END IF;
       END IF;
 
+      IF location.isguess or ST_GeometryType(geometry) != 'ST_LineString' THEN
+        partial_address := false;
+      ELSE
+        SELECT not ST_ContainsProperly(p.geometry, insert_addresslines.geometry)
+          INTO partial_address
+          FROM placex p WHERE p.place_id = location.place_id;
+      END IF;
+
       INSERT INTO place_addressline (place_id, address_place_id, fromarea,
-                                     isaddress, distance, cached_rank_address)
+                                     isaddress, distance, cached_rank_address,
+                                     partial)
         VALUES (obj_place_id, location.place_id, not location.isguess,
-                true, location.distance, location.rank_address);
+                true, location.distance, location.rank_address,
+                coalesce(partial_address, false));
 
       addr_place_ids := addr_place_ids || location.place_id;
     END IF;
@@ -551,6 +562,8 @@ BEGIN
       END IF;
     END IF;
 
+    partial_address := false;
+
     IF location_isaddress THEN
       address_havelevel[location.rank_address] := true;
       parent_place_id := location.place_id;
@@ -570,8 +583,16 @@ BEGIN
           current_node_area := NULL;
           SELECT p.geometry FROM placex p
               WHERE p.place_id = location.place_id INTO current_boundary;
+
+          IF ST_GeometryType(geometry) = 'ST_LineString' THEN
+            partial_address := not ST_ContainsProperly(current_boundary, geometry);
+          END IF;
         END IF;
       END IF;
+    ELSEIF not location.isguess AND ST_GeometryType(geometry) = 'ST_LineString' THEN
+      SELECT not ST_ContainsProperly(p.geometry, insert_addresslines.geometry)
+          INTO partial_address
+          FROM placex p WHERE p.place_id = location.place_id;
     END IF;
 
     -- Add it to the list of search terms
@@ -581,9 +602,11 @@ BEGIN
     {% endif %}
 
     INSERT INTO place_addressline (place_id, address_place_id, fromarea,
-                                     isaddress, distance, cached_rank_address)
+                                     isaddress, distance, cached_rank_address,
+                                     partial)
         VALUES (obj_place_id, location.place_id, not location.isguess,
-                location_isaddress, location.distance, location.rank_address);
+                location_isaddress, location.distance, location.rank_address,
+                partial_address);
   END LOOP;
 END;
 $$
