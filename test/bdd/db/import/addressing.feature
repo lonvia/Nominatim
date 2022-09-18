@@ -542,3 +542,37 @@ Feature: Address computation
             | object | address |
             | W1     | R2      |
 
+    Scenario: POI can correct address parts on the fly (only one area on address level)
+        Given the grid
+            | 1 |   |   |   |  2 |   | 5 |
+            |   |   |   | 9 |    | 8 |   |
+            |   | 10| 11|   |    | 12|   |
+            | 4 |   |   |   |  3 |   | 6 |
+        And the places
+            | osm | class    | type           | admin | name  | geometry    |
+            | R1  | boundary | administrative | 8     | Left  | (1,2,3,4,1) |
+        And the places
+            | osm | class   | type    | name      | geometry |
+            | W1  | highway | primary | Wonderway | 10,11,12 |
+        And the places
+            | osm | class   | type    | name     | geometry |
+            | N1  | amenity | cafe    | Bolder   | 9        |
+            | N2  | amenity | cafe    | Outside  | 8        |
+        When importing
+        Then place_addressline contains
+           | object | address | isaddress |
+           | W1     | R1      | True      |
+        And place_addressline doesn't contain
+           | object | address |
+           | N1     | R1      |
+           | N2     | R2      |
+        When sending search query "Bolder"
+        Then results contain
+           | osm | display_name            |
+           | N1  | Bolder, Wonderway, Left |
+        When sending search query "Outside"
+        Then results contain
+           | osm | display_name       |
+           | N2  | Outside, Wonderway |
+
+
