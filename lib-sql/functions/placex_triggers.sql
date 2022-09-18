@@ -459,7 +459,7 @@ CREATE OR REPLACE FUNCTION insert_addresslines(obj_place_id BIGINT,
                                                partition SMALLINT,
                                                maxrank SMALLINT,
                                                token_info JSONB,
-                                               place_geometry GEOMETRY,
+                                               geometry GEOMETRY,
                                                centroid GEOMETRY,
                                                country TEXT,
                                                OUT parent_place_id BIGINT,
@@ -490,7 +490,7 @@ BEGIN
       FROM (SELECT extra.*, key
               FROM token_get_address_keys(token_info) as key,
                    LATERAL get_addr_tag_rank(key, country) as extra) x,
-           LATERAL get_address_place(partition, place_geometry, from_rank, to_rank,
+           LATERAL get_address_place(partition, geometry, from_rank, to_rank,
                               extent, token_info, key) as apl
       ORDER BY rank_address, distance, isguess desc
   LOOP
@@ -514,10 +514,11 @@ BEGIN
         END IF;
       END IF;
 
-      IF location.isguess or ST_GeometryType(place_geometry) != 'ST_LineString' THEN
+      IF location.isguess or ST_GeometryType(geometry) != 'ST_LineString' THEN
         partial_address := false;
       ELSE
-        SELECT not ST_ContainsProperly(p.geometry, place_geometry) INTO partial_address
+        SELECT not ST_ContainsProperly(p.geometry, insert_addresslines.geometry)
+          INTO partial_address
           FROM placex p WHERE p.place_id = location.place_id;
       END IF;
 
@@ -533,7 +534,7 @@ BEGIN
   END LOOP;
 
   FOR location IN
-    SELECT * FROM getNearFeatures(partition, place_geometry, centroid, maxrank)
+    SELECT * FROM getNearFeatures(partition, geometry, centroid, maxrank)
     WHERE not addr_place_ids @> ARRAY[place_id]
     ORDER BY rank_address, isguess asc,
              distance *
@@ -583,13 +584,14 @@ BEGIN
           SELECT p.geometry FROM placex p
               WHERE p.place_id = location.place_id INTO current_boundary;
 
-          IF ST_GeometryType(place_geometry) = 'ST_LineString' THEN
-            partial_address := not ST_ContainsProperly(current_boundary, place_geometry);
+          IF ST_GeometryType(geometry) = 'ST_LineString' THEN
+            partial_address := not ST_ContainsProperly(current_boundary, geometry);
           END IF;
         END IF;
       END IF;
-    ELSEIF not location.isguess AND ST_GeometryType(place_geometry) = 'ST_LineString' THEN
-      SELECT not ST_ContainsProperly(p.geometry, place_geometry) INTO partial_address
+    ELSEIF not location.isguess AND ST_GeometryType(geometry) = 'ST_LineString' THEN
+      SELECT not ST_ContainsProperly(p.geometry, insert_addresslines.geometry)
+          INTO partial_address
           FROM placex p WHERE p.place_id = location.place_id;
     END IF;
 
