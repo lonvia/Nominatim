@@ -35,6 +35,19 @@ def _get_tables(conn: Connection) -> Set[str]:
 
         return set((row[0] for row in list(cur)))
 
+def _get_features(conn: Connection) -> Dict[str, bool]:
+    """ Return a dictionary with features that may not yet be enabled
+        in the database because it was imported with an older version.
+        This is needed where schema adaptions cannot be migrated because
+        they would be too expensive.
+    """
+    features = {}
+
+    # Added after 4.1.
+    features['partial_addrobj'] = conn.table_has_column('place_addressline',
+                                                        'partial')
+
+    return features
 
 def _setup_tablespace_sql(config: Configuration) -> Dict[str, str]:
     """ Returns a dict with tablespace expressions for the different tablespace
@@ -86,6 +99,7 @@ class SQLPreprocessor:
         self.env.globals['config'] = config
         self.env.globals['db'] = db_info
         self.env.globals['postgres'] = _setup_postgresql_features(conn)
+        self.env.globals['feature'] = _get_features(conn)
 
 
     def run_sql_file(self, conn: Connection, name: str, **kwargs: Any) -> None:

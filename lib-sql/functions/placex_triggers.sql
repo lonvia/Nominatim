@@ -523,11 +523,13 @@ BEGIN
       END IF;
 
       INSERT INTO place_addressline (place_id, address_place_id, fromarea,
-                                     isaddress, distance, cached_rank_address,
-                                     partial)
+                                     isaddress, distance, cached_rank_address
+                                     {% if feature.partial_addrobj %}, partial{% endif %})
         VALUES (obj_place_id, location.place_id, not location.isguess,
-                true, location.distance, location.rank_address,
-                coalesce(partial_address, false));
+                true, location.distance, location.rank_address
+                {% if feature.partial_addrobj %}
+                  , coalesce(partial_address, false)
+                {% endif %});
 
       addr_place_ids := addr_place_ids || location.place_id;
     END IF;
@@ -602,11 +604,14 @@ BEGIN
     {% endif %}
 
     INSERT INTO place_addressline (place_id, address_place_id, fromarea,
-                                     isaddress, distance, cached_rank_address,
-                                     partial)
+                                     isaddress, distance, cached_rank_address
+                                     {% if feature.partial_addrobj %}, partial{% endif %})
         VALUES (obj_place_id, location.place_id, not location.isguess,
-                location_isaddress, location.distance, location.rank_address,
-                partial_address);
+                location_isaddress, location.distance, location.rank_address
+                {% if feature.partial_addrobj %}
+                  ,partial_address
+                {% endif %}
+                );
   END LOOP;
 END;
 $$

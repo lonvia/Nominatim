@@ -239,13 +239,24 @@ BEGIN
             AND linked_place_id is null
             AND (placex.country_code IS NULL OR place.country_code IS NULL
                  OR placex.country_code = place.country_code)
+{% if feature.partial_addrobj %}
             AND (place.centroid is null or not partial
                  OR coalesce((avals(name) && avals(place.address)), False)
                  OR ST_Covers(geometry, place.centroid))
+{% endif %}
       ORDER BY rank_address desc,
                (place_addressline.place_id = in_place_id) desc,
+{% if feature.partial_addrobj %}
+               (CASE WHEN coalesce((avals(name) && avals(place.address)), False) THEN 2
+                     WHEN isaddress THEN 0
+                     WHEN fromarea
+                          and place.centroid is not null
+                          and ST_Contains(geometry, place.centroid) THEN 1
+                     ELSE -1 END) desc,
+{% else %}
                place.centroid is not null and partial desc,
                isaddress desc,
+{% endif %}
                fromarea desc, distance asc, rank_search desc
   LOOP
     -- RAISE WARNING '%',location;
