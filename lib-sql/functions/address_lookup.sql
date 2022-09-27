@@ -239,12 +239,20 @@ BEGIN
             AND linked_place_id is null
             AND (placex.country_code IS NULL OR place.country_code IS NULL
                  OR placex.country_code = place.country_code)
-            AND (place.centroid is null or not partial
+            AND (partial is null  -- for backwards-compatibility
+                 OR place.centroid is null or not partial
                  OR coalesce((avals(name) && avals(place.address)), False)
                  OR ST_Covers(geometry, place.centroid))
       ORDER BY rank_address desc,
-               (place_addressline.place_id = in_place_id) desc,
-               place.centroid is not null and partial desc,
+               (CASE WHEN partial is not null THEN 0
+                     WHEN coalesce((avals(name) && avals(place.address)), False) THEN 2
+                     WHEN isaddress THEN 0
+                     WHEN fromarea
+                          and place.centroid is not null
+                          and ST_Contains(geometry, place.centroid) THEN 1
+                     ELSE -1 END) desc,
+               partial is not null and (place_addressline.place_id = in_place_id) desc,
+               partial is not null and place.centroid is not null and partial desc,
                isaddress desc,
                fromarea desc, distance asc, rank_search desc
   LOOP

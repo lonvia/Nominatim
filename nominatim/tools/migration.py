@@ -323,15 +323,9 @@ def add_partival_column_to_place_addressline(conn: Connection, **_: Any) -> None
 
         This column marks address parts that do not cover a street completely
         so that a dependent place may not have this address part.
-        Fill only 'true' values. The code interprets missing values as
-        a 'false'.
+        The new column will not be filled. A NULL value will be
+        interpreted as 'use old way to determine partial address parts'.
     """
     if not conn.table_has_column('place_addressline', 'partial'):
         with conn.cursor() as cur:
             cur.execute("ALTER TABLE place_addressline ADD COLUMN partial BOOLEAN")
-            cur.execute("""UPDATE place_addressline pa
-                           SET partial = true FROM placex p, placex a
-                           WHERE pa.fromarea and p.place_id = pa.place_id
-                                 and a.place_id = pa.address_place_id
-                                 and p.rank_address between 26 and 27
-                                 and not ST_ContainsProperly(a.geometry, p.geometry)""")
