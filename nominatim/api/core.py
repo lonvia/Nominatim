@@ -64,7 +64,8 @@ class NominatimAPIAsync:
                        host=dsn.get('host'), port=int(dsn['port']) if 'port' in dsn else None,
                        query=query)
             engine = sa_asyncio.create_async_engine(
-                             dburl, future=True,
+                             dburl, future=True, echo=self.config.get_bool('DEBUG_SQL'),
+                             max_overflow=0,
                              connect_args={'server_settings': {
                                 'DateStyle': 'sql,european',
                                 'max_parallel_workers_per_gather': '0'
@@ -159,9 +160,9 @@ class NominatimAPIAsync:
         max_rank = max(0, min(max_rank or 30, 30))
 
         async with self.begin() as conn:
-            geocoder = ReverseGeocoder(conn, max_rank, layer,
+            geocoder = ReverseGeocoder(conn, coord, max_rank, layer,
                                        details or LookupDetails())
-            return await geocoder.lookup(coord)
+            return await geocoder.lookup()
 
 
 class NominatimAPI:

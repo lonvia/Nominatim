@@ -7,11 +7,12 @@
 """
 Implementation of reverse geocoding.
 """
-from typing import Optional, List, Callable, Type, Tuple
+from typing import Optional, List, Callable, Type, Tuple, Any
 
 import sqlalchemy as sa
 from geoalchemy2 import WKTElement
 
+from nominatim.db.sqlalchemy_schema import NominatimGeometry
 from nominatim.typing import SaColumn, SaSelect, SaFromClause, SaLabel, SaRow
 from nominatim.api.connection import SearchConnection
 import nominatim.api.results as nres
@@ -24,14 +25,15 @@ from nominatim.api.types import AnyPoint, DataLayer, LookupDetails, GeometryForm
 
 RowFunc = Callable[[Optional[SaRow], Type[nres.ReverseResult]], Optional[nres.ReverseResult]]
 
-def _select_from_placex(t: SaFromClause, wkt: Optional[str] = None) -> SaSelect:
+def _select_from_placex(t: SaFromClause, use_wkt: bool = False) -> SaSelect:
     """ Create a select statement with the columns relevant for reverse
         results.
     """
-    if wkt is None:
+    if not use_wkt:
         distance = t.c.distance
         centroid = t.c.centroid
     else:
+        wkt = sa.bindparam('wkt', type_=NominatimGeometry)
         distance = t.c.geometry.ST_Distance(wkt)
         centroid = sa.case(
                        (t.c.geometry.ST_GeometryType().in_(('ST_LineString',
@@ -40,7 +42,7 @@ def _select_from_placex(t: SaFromClause, wkt: Optional[str] = None) -> SaSelect:
                        else_=t.c.centroid).label('centroid')
 
 
-    return sa.select(t.c.place_id, t.c.osm_type, t.c.osm_id, t.c.name,
+    sql = sa.select(t.c.place_id, t.c.osm_type, t.c.osm_id, t.c.name,
                      t.c.class_, t.c.type,
                      t.c.address, t.c.extratags,
                      t.c.housenumber, t.c.postcode, t.c.country_code,
@@ -50,6 +52,7 @@ def _select_from_placex(t: SaFromClause, wkt: Optional[str] = None) -> SaSelect:
                      distance.label('distance'),
                      t.c.geometry.ST_Expand(0).label('bbox'))
 
+    return sql
 
 def _interpolated_housenumber(table: SaFromClause) -> SaLabel:
     return sa.cast(table.c.startnumber
@@ -66,11 +69,11 @@ def _interpolated_position(table: SaFromClause) -> SaLabel:
               else_=table.c.linegeo.ST_LineInterpolatePoint(rounded_pos)).label('centroid')
 
 
-def _locate_interpolation(table: SaFromClause, wkt: WKTElement) -> SaLabel:
+def _locate_interpolation(table: SaFromClause) -> SaLabel:
     """ Given a position, locate the closest point on the line.
     """
     return sa.case((table.c.linegeo.ST_GeometryType() == 'ST_LineString',
-                    sa.func.ST_LineLocatePoint(table.c.linegeo, wkt)),
+                    sa.func.ST_LineLocatePoint(table.c.linegeo, sa.bindparam('wkt', type_=NominatimGeometry))),
                    else_=0).label('position')
 
 
@@ -87,12 +90,23 @@ class ReverseGeocoder:
         coordinate.
     """
 
-    def __init__(self, conn: SearchConnection, max_rank: int, layer: DataLayer,
+    def __init__(self, conn: SearchConnection, coord: AnyPoint,
+                 max_rank: int, layer: DataLayer,
                  details: LookupDetails) -> None:
         self.conn = conn
         self.max_rank = max_rank
         self.layer = layer
         self.details = details
+        self.coord = coord
+
+        self.params = {'wkt': WKTElement(f'POINT({coord[0]} {coord[1]})', srid=4326),
+                       'max_rank': max_rank}
+        self.bound_wkt = sa.bindparam('wkt', type_=NominatimGeometry)
+
+
+    async def run_sql(self, sql: Any) -> Optional[SaRow]:
+        return (await self.conn.execute(sql, self.params)).one_or_none()
+
 
     def layer_enabled(self, *layer: DataLayer) -> bool:
         """ Return true when any of the given layer types are requested.
@@ -149,20 +163,19 @@ class ReverseGeocoder:
         return table.c.class_.in_(tuple(include))
 
 
-    async def _find_closest_street_or_poi(self, wkt: WKTElement,
-                                          distance: float) -> Optional[SaRow]:
+    async def _find_closest_street_or_poi(self, distance: float) -> Optional[SaRow]:
         """ Look up the closest rank 26+ place in the database, which
             is closer than the given distance.
         """
         t = self.conn.t.placex
 
-        sql = _select_from_placex(t, wkt)\
-                .where(t.c.geometry.ST_DWithin(wkt, distance))\
+        sql = _select_from_placex(t, True)\
+                .where(t.c.geometry.ST_DWithin(self.bound_wkt, distance))\
                 .where(t.c.indexed_status == 0)\
                 .where(t.c.linked_place_id == None)\
                 .where(sa.or_(t.c.geometry.ST_GeometryType()
                                           .not_in(('ST_Polygon', 'ST_MultiPolygon')),
-                              t.c.centroid.ST_Distance(wkt) < distance))\
+                              t.c.centroid.ST_Distance(self.bound_wkt) < distance))\
                 .order_by('distance')\
                 .limit(1)
 
@@ -180,22 +193,21 @@ class ReverseGeocoder:
                                     t.c.class_.not_in(('place', 'building')),
                                     t.c.geometry.ST_GeometryType() != 'ST_LineString'))
         if self.has_feature_layers():
-            restrict.append(sa.and_(t.c.rank_search.between(26, self.max_rank),
+            restrict.append(sa.and_(t.c.rank_search.between(26, sa.bindparam('max_rank')),
                                     t.c.rank_address == 0,
                                     self._filter_by_layer(t)))
 
         if not restrict:
             return None
 
-        return (await self.conn.execute(sql.where(sa.or_(*restrict)))).one_or_none()
+        return await self.run_sql(sql.where(sa.or_(*restrict)))
 
 
-    async def _find_housenumber_for_street(self, parent_place_id: int,
-                                           wkt: WKTElement) -> Optional[SaRow]:
+    async def _find_housenumber_for_street(self, parent_place_id: int) -> Optional[SaRow]:
         t = self.conn.t.placex
 
-        sql = _select_from_placex(t, wkt)\
-                .where(t.c.geometry.ST_DWithin(wkt, 0.001))\
+        sql = _select_from_placex(t, True)\
+                .where(t.c.geometry.ST_DWithin(self.bound_wkt, 0.001))\
                 .where(t.c.parent_place_id == parent_place_id)\
                 .where(_is_address_point(t))\
                 .where(t.c.indexed_status == 0)\
@@ -205,18 +217,17 @@ class ReverseGeocoder:
 
         sql = self._add_geometry_columns(sql, t.c.geometry)
 
-        return (await self.conn.execute(sql)).one_or_none()
+        return await self.run_sql(sql)
 
 
     async def _find_interpolation_for_street(self, parent_place_id: Optional[int],
-                                             wkt: WKTElement,
                                              distance: float) -> Optional[SaRow]:
         t = self.conn.t.osmline
 
         sql = sa.select(t,
-                        t.c.linegeo.ST_Distance(wkt).label('distance'),
-                        _locate_interpolation(t, wkt))\
-                .where(t.c.linegeo.ST_DWithin(wkt, distance))\
+                        t.c.linegeo.ST_Distance(self.bound_wkt).label('distance'),
+                        _locate_interpolation(t))\
+                .where(t.c.linegeo.ST_DWithin(self.bound_wkt, distance))\
                 .where(t.c.startnumber != None)\
                 .order_by('distance')\
                 .limit(1)
@@ -237,18 +248,18 @@ class ReverseGeocoder:
             sub = sql.subquery()
             sql = self._add_geometry_columns(sql, sub.c.centroid)
 
-        return (await self.conn.execute(sql)).one_or_none()
+        return await self.run_sql(sql)
 
 
     async def _find_tiger_number_for_street(self, parent_place_id: int,
-                                            parent_type: str, parent_id: int,
-                                            wkt: WKTElement) -> Optional[SaRow]:
+                                            parent_type: str, parent_id: int
+                                            ) -> Optional[SaRow]:
         t = self.conn.t.tiger
 
         inner = sa.select(t,
-                          t.c.linegeo.ST_Distance(wkt).label('distance'),
-                          _locate_interpolation(t, wkt))\
-                  .where(t.c.linegeo.ST_DWithin(wkt, 0.001))\
+                          t.c.linegeo.ST_Distance(self.bound_wkt).label('distance'),
+                          _locate_interpolation(t))\
+                  .where(t.c.linegeo.ST_DWithin(self.bound_wkt, 0.001))\
                   .where(t.c.parent_place_id == parent_place_id)\
                   .order_by('distance')\
                   .limit(1)\
@@ -267,18 +278,17 @@ class ReverseGeocoder:
             sub = sql.subquery()
             sql = self._add_geometry_columns(sql, sub.c.centroid)
 
-        return (await self.conn.execute(sql)).one_or_none()
+        return await self.run_sql(sql)
 
 
-    async def lookup_street_poi(self,
-                                wkt: WKTElement) -> Tuple[Optional[SaRow], RowFunc]:
+    async def lookup_street_poi(self) -> Tuple[Optional[SaRow], RowFunc]:
         """ Find a street or POI/address for the given WKT point.
         """
         log().section('Reverse lookup on street/address level')
         distance = 0.006
         parent_place_id = None
 
-        row = await self._find_closest_street_or_poi(wkt, distance)
+        row = await self._find_closest_street_or_poi(distance)
         row_func: RowFunc = nres.create_from_placex_row
         log().var_dump('Result (street/building)', row)
 
@@ -291,7 +301,7 @@ class ReverseGeocoder:
                 distance = 0.001
                 parent_place_id = row.place_id
                 log().comment('Find housenumber for street')
-                addr_row = await self._find_housenumber_for_street(parent_place_id, wkt)
+                addr_row = await self._find_housenumber_for_street(parent_place_id)
                 log().var_dump('Result (street housenumber)', addr_row)
 
                 if addr_row is not None:
@@ -302,8 +312,7 @@ class ReverseGeocoder:
                     log().comment('Find TIGER housenumber for street')
                     addr_row = await self._find_tiger_number_for_street(parent_place_id,
                                                                         row.osm_type,
-                                                                        row.osm_id,
-                                                                        wkt)
+                                                                        row.osm_id)
                     log().var_dump('Result (street Tiger housenumber)', addr_row)
 
                     if addr_row is not None:
@@ -317,7 +326,7 @@ class ReverseGeocoder:
         if self.max_rank > 27 and self.layer_enabled(DataLayer.ADDRESS):
             log().comment('Find interpolation for street')
             addr_row = await self._find_interpolation_for_street(parent_place_id,
-                                                                 wkt, distance)
+                                                                 distance)
             log().var_dump('Result (street interpolation)', addr_row)
             if addr_row is not None:
                 row = addr_row
@@ -326,7 +335,7 @@ class ReverseGeocoder:
         return row, row_func
 
 
-    async def _lookup_area_address(self, wkt: WKTElement) -> Optional[SaRow]:
+    async def _lookup_area_address(self) -> Optional[SaRow]:
         """ Lookup large addressable areas for the given WKT point.
         """
         log().comment('Reverse lookup by larger address area features')
@@ -335,10 +344,10 @@ class ReverseGeocoder:
         # The inner SQL brings results in the right order, so that
         # later only a minimum of results needs to be checked with ST_Contains.
         inner = sa.select(t, sa.literal(0.0).label('distance'))\
-                  .where(t.c.rank_search.between(5, self.max_rank))\
+                  .where(t.c.rank_search.between(5, sa.bindparam('max_rank')))\
                   .where(t.c.rank_address.between(5, 25))\
                   .where(t.c.geometry.ST_GeometryType().in_(('ST_Polygon', 'ST_MultiPolygon')))\
-                  .where(t.c.geometry.intersects(wkt))\
+                  .where(t.c.geometry.intersects(self.bound_wkt))\
                   .where(t.c.name != None)\
                   .where(t.c.indexed_status == 0)\
                   .where(t.c.linked_place_id == None)\
@@ -348,22 +357,22 @@ class ReverseGeocoder:
                   .subquery()
 
         sql = _select_from_placex(inner)\
-                  .where(inner.c.geometry.ST_Contains(wkt))\
+                  .where(inner.c.geometry.ST_Contains(self.bound_wkt))\
                   .order_by(sa.desc(inner.c.rank_search))\
                   .limit(1)
 
         sql = self._add_geometry_columns(sql, inner.c.geometry)
 
-        address_row = (await self.conn.execute(sql)).one_or_none()
+        address_row = await self.run_sql(sql)
         log().var_dump('Result (area)', address_row)
 
         if address_row is not None and address_row.rank_search < self.max_rank:
             log().comment('Search for better matching place nodes inside the area')
             inner = sa.select(t,
-                              t.c.geometry.ST_Distance(wkt).label('distance'))\
+                              t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))\
                       .where(t.c.osm_type == 'N')\
                       .where(t.c.rank_search > address_row.rank_search)\
-                      .where(t.c.rank_search <= self.max_rank)\
+                      .where(t.c.rank_search <= sa.bindparam('max_rank'))\
                       .where(t.c.rank_address.between(5, 25))\
                       .where(t.c.name != None)\
                       .where(t.c.indexed_status == 0)\
@@ -371,7 +380,7 @@ class ReverseGeocoder:
                       .where(t.c.type != 'postcode')\
                       .where(t.c.geometry
                                 .ST_Buffer(sa.func.reverse_place_diameter(t.c.rank_search))
-                                .intersects(wkt))\
+                                .intersects(self.bound_wkt))\
                       .order_by(sa.desc(t.c.rank_search))\
                       .limit(50)\
                       .subquery()
@@ -386,7 +395,7 @@ class ReverseGeocoder:
 
             sql = self._add_geometry_columns(sql, inner.c.geometry)
 
-            place_address_row = (await self.conn.execute(sql)).one_or_none()
+            place_address_row = await self.run_sql(sql)
             log().var_dump('Result (place node)', place_address_row)
 
             if place_address_row is not None:
@@ -395,19 +404,19 @@ class ReverseGeocoder:
         return address_row
 
 
-    async def _lookup_area_others(self, wkt: WKTElement) -> Optional[SaRow]:
+    async def _lookup_area_others(self) -> Optional[SaRow]:
         t = self.conn.t.placex
 
-        inner = sa.select(t, t.c.geometry.ST_Distance(wkt).label('distance'))\
+        inner = sa.select(t, t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))\
                   .where(t.c.rank_address == 0)\
-                  .where(t.c.rank_search.between(5, self.max_rank))\
+                  .where(t.c.rank_search.between(5, sa.bindparam('max_rank')))\
                   .where(t.c.name != None)\
                   .where(t.c.indexed_status == 0)\
                   .where(t.c.linked_place_id == None)\
                   .where(self._filter_by_layer(t))\
                   .where(t.c.geometry
                                 .ST_Buffer(sa.func.reverse_place_diameter(t.c.rank_search))
-                                .intersects(wkt))\
+                                .intersects(self.bound_wkt))\
                   .order_by(sa.desc(t.c.rank_search))\
                   .limit(50)\
                   .subquery()
@@ -415,45 +424,45 @@ class ReverseGeocoder:
         sql = _select_from_placex(inner)\
                   .where(sa.or_(inner.c.geometry.ST_GeometryType()
                                                 .not_in(('ST_Polygon', 'ST_MultiPolygon')),
-                                inner.c.geometry.ST_Contains(wkt)))\
+                                inner.c.geometry.ST_Contains(self.bound_wkt)))\
                   .order_by(sa.desc(inner.c.rank_search), inner.c.distance)\
                   .limit(1)
 
         sql = self._add_geometry_columns(sql, inner.c.geometry)
 
-        row = (await self.conn.execute(sql)).one_or_none()
+        row = await self.run_sql(sql)
         log().var_dump('Result (non-address feature)', row)
 
         return row
 
 
-    async def lookup_area(self, wkt: WKTElement) -> Optional[SaRow]:
+    async def lookup_area(self) -> Optional[SaRow]:
         """ Lookup large areas for the given WKT point.
         """
         log().section('Reverse lookup by larger area features')
 
         if self.layer_enabled(DataLayer.ADDRESS):
-            address_row = await self._lookup_area_address(wkt)
+            address_row = await self._lookup_area_address()
         else:
             address_row = None
 
         if self.has_feature_layers():
-            other_row = await self._lookup_area_others(wkt)
+            other_row = await self._lookup_area_others()
         else:
             other_row = None
 
         return _get_closest(address_row, other_row)
 
 
-    async def lookup_country(self, wkt: WKTElement) -> Optional[SaRow]:
+    async def lookup_country(self) -> Optional[SaRow]:
         """ Lookup the country for the given WKT point.
         """
         log().section('Reverse lookup by country code')
         t = self.conn.t.country_grid
         sql = sa.select(t.c.country_code).distinct()\
-                .where(t.c.geometry.ST_Contains(wkt))
+                .where(t.c.geometry.ST_Contains(self.bound_wkt))
 
-        ccodes = tuple((r[0] for r in await self.conn.execute(sql)))
+        ccodes = tuple((r[0] for r in await self.conn.execute(sql, self.params)))
         log().var_dump('Country codes', ccodes)
 
         if not ccodes:
@@ -464,10 +473,10 @@ class ReverseGeocoder:
             log().comment('Search for place nodes in country')
 
             inner = sa.select(t,
-                              t.c.geometry.ST_Distance(wkt).label('distance'))\
+                              t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))\
                       .where(t.c.osm_type == 'N')\
                       .where(t.c.rank_search > 4)\
-                      .where(t.c.rank_search <= self.max_rank)\
+                      .where(t.c.rank_search <= sa.bindparam('max_rank'))\
                       .where(t.c.rank_address.between(5, 25))\
                       .where(t.c.name != None)\
                       .where(t.c.indexed_status == 0)\
@@ -476,7 +485,7 @@ class ReverseGeocoder:
                       .where(t.c.country_code.in_(ccodes))\
                       .where(t.c.geometry
                                 .ST_Buffer(sa.func.reverse_place_diameter(t.c.rank_search))
-                                .intersects(wkt))\
+                                .intersects(self.bound_wkt))\
                       .order_by(sa.desc(t.c.rank_search))\
                       .limit(50)\
                       .subquery()
@@ -488,14 +497,14 @@ class ReverseGeocoder:
 
             sql = self._add_geometry_columns(sql, inner.c.geometry)
 
-            address_row = (await self.conn.execute(sql)).one_or_none()
+            address_row = await self.run_sql(sql)
             log().var_dump('Result (addressable place node)', address_row)
         else:
             address_row = None
 
         if address_row is None:
             # Still nothing, then return a country with the appropriate country code.
-            sql = _select_from_placex(t, wkt)\
+            sql = _select_from_placex(t, True)\
                       .where(t.c.country_code.in_(ccodes))\
                       .where(t.c.rank_address == 4)\
                       .where(t.c.rank_search == 4)\
@@ -505,33 +514,30 @@ class ReverseGeocoder:
 
             sql = self._add_geometry_columns(sql, t.c.geometry)
 
-            address_row = (await self.conn.execute(sql)).one_or_none()
+            address_row = await self.run_sql(sql)
 
         return address_row
 
 
-    async def lookup(self, coord: AnyPoint) -> Optional[nres.ReverseResult]:
+    async def lookup(self) -> Optional[nres.ReverseResult]:
         """ Look up a single coordinate. Returns the place information,
             if a place was found near the coordinates or None otherwise.
         """
         log().function('reverse_lookup',
-                       coord=coord, max_rank=self.max_rank,
+                       coord=self.coord, max_rank=self.max_rank,
                        layer=self.layer, details=self.details)
-
-
-        wkt = WKTElement(f'POINT({coord[0]} {coord[1]})', srid=4326)
 
         row: Optional[SaRow] = None
         row_func: RowFunc = nres.create_from_placex_row
 
         if self.max_rank >= 26:
-            row, tmp_row_func = await self.lookup_street_poi(wkt)
+            row, tmp_row_func = await self.lookup_street_poi()
             if row is not None:
                 row_func = tmp_row_func
         if row is None and self.max_rank > 4:
-            row = await self.lookup_area(wkt)
+            row = await self.lookup_area()
         if row is None and self.layer_enabled(DataLayer.ADDRESS):
-            row = await self.lookup_country(wkt)
+            row = await self.lookup_country()
 
         result = row_func(row, nres.ReverseResult)
         if result is not None:
