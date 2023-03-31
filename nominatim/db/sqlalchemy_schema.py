@@ -158,3 +158,6 @@ class SearchTables:
             sa.Column('partition', sa.SmallInteger),
             sa.Column('linegeo', NominatimGeometry),
             sa.Column('postcode', sa.Text))
+
+
+        self.query_cache: Dict[str, Any] = {}

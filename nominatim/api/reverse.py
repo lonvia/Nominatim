@@ -10,9 +10,8 @@ Implementation of reverse geocoding.
 from typing import Optional, List, Callable, Type, Tuple, Any
 
 import sqlalchemy as sa
-from geoalchemy2 import WKTElement
+from geoalchemy2 import WKTElement, Geometry
 
-from nominatim.db.sqlalchemy_schema import NominatimGeometry
 from nominatim.typing import SaColumn, SaSelect, SaFromClause, SaLabel, SaRow
 from nominatim.api.connection import SearchConnection
 import nominatim.api.results as nres
@@ -33,7 +32,7 @@ def _select_from_placex(t: SaFromClause, use_wkt: bool = False) -> SaSelect:
         distance = t.c.distance
         centroid = t.c.centroid
     else:
-        wkt = sa.bindparam('wkt', type_=NominatimGeometry)
+        wkt = sa.bindparam('wkt', type_=Geometry)
         distance = t.c.geometry.ST_Distance(wkt)
         centroid = sa.case(
                        (t.c.geometry.ST_GeometryType().in_(('ST_LineString',
@@ -73,7 +72,7 @@ def _locate_interpolation(table: SaFromClause) -> SaLabel:
     """ Given a position, locate the closest point on the line.
     """
     return sa.case((table.c.linegeo.ST_GeometryType() == 'ST_LineString',
-                    sa.func.ST_LineLocatePoint(table.c.linegeo, sa.bindparam('wkt', type_=NominatimGeometry))),
+                    sa.func.ST_LineLocatePoint(table.c.linegeo, sa.bindparam('wkt', type_=Geometry))),
                    else_=0).label('position')
 
 
@@ -101,7 +100,7 @@ class ReverseGeocoder:
 
         self.params = {'wkt': WKTElement(f'POINT({coord[0]} {coord[1]})', srid=4326),
                        'max_rank': max_rank}
-        self.bound_wkt = sa.bindparam('wkt', type_=NominatimGeometry)
+        self.bound_wkt = sa.bindparam('wkt', type_=Geometry)
 
 
     async def run_sql(self, sql: Any) -> Optional[SaRow]:
@@ -163,21 +162,24 @@ class ReverseGeocoder:
         return table.c.class_.in_(tuple(include))
 
 
-    async def _find_closest_street_or_poi(self, distance: float) -> Optional[SaRow]:
+    async def _find_closest_street_or_poi(self) -> Optional[SaRow]:
         """ Look up the closest rank 26+ place in the database, which
             is closer than the given distance.
         """
         t = self.conn.t.placex
 
-        sql = _select_from_placex(t, True)\
-                .where(t.c.geometry.ST_DWithin(self.bound_wkt, distance))\
-                .where(t.c.indexed_status == 0)\
-                .where(t.c.linked_place_id == None)\
-                .where(sa.or_(t.c.geometry.ST_GeometryType()
-                                          .not_in(('ST_Polygon', 'ST_MultiPolygon')),
-                              t.c.centroid.ST_Distance(self.bound_wkt) < distance))\
-                .order_by('distance')\
-                .limit(1)
+        sql = self.conn.t.query_cache.get('reverse_closest_street_or_poi', None)
+        if sql is None:
+            sql = _select_from_placex(t, True)\
+                    .where(t.c.geometry.ST_DWithin(self.bound_wkt, 0.006))\
+                    .where(t.c.indexed_status == 0)\
+                    .where(t.c.linked_place_id == None)\
+                    .where(sa.or_(t.c.geometry.ST_GeometryType()
+                                              .not_in(('ST_Polygon', 'ST_MultiPolygon')),
+                                  t.c.centroid.ST_Distance(self.bound_wkt) < 0.006))\
+                    .order_by('distance')\
+                    .limit(1)
+            self.conn.t.query_cache['reverse_closest_street_or_poi'] = sql
 
         sql = self._add_geometry_columns(sql, t.c.geometry)
 
@@ -288,7 +290,7 @@ class ReverseGeocoder:
         distance = 0.006
         parent_place_id = None
 
-        row = await self._find_closest_street_or_poi(distance)
+        row = await self._find_closest_street_or_poi()
         row_func: RowFunc = nres.create_from_placex_row
         log().var_dump('Result (street/building)', row)
 
