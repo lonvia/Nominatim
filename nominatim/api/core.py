@@ -55,21 +55,23 @@ class NominatimAPIAsync:
 
             query = {k: v for k, v in dsn.items()
                       if k not in ('user', 'password', 'dbname', 'host', 'port')}
-            query['prepared_statement_cache_size'] = '0'
+
+            backend = 'psycopg'
+            backend = 'asyncpg'
+
+            if backend == 'asyncpg':
+                query['prepared_statement_cache_size'] = '0'
 
             dburl = sa.engine.URL.create(
-                       'postgresql+asyncpg',
+                       'postgresql+' + backend,
                        database=dsn.get('dbname'),
                        username=dsn.get('user'), password=dsn.get('password'),
                        host=dsn.get('host'), port=int(dsn['port']) if 'port' in dsn else None,
                        query=query)
             engine = sa_asyncio.create_async_engine(
-                             dburl, future=True, echo=self.config.get_bool('DEBUG_SQL'),
-                             max_overflow=0,
-                             connect_args={'server_settings': {
-                                'DateStyle': 'sql,european',
-                                'max_parallel_workers_per_gather': '0'
-                             }})
+                             dburl, future=True,
+                             echo=self.config.get_bool('DEBUG_SQL'),
+                             max_overflow=0)
 
             try:
                 async with engine.begin() as conn:
@@ -83,6 +85,7 @@ class NominatimAPIAsync:
                 def _on_connect(dbapi_con: Any, _: Any) -> None:
                     cursor = dbapi_con.cursor()
                     cursor.execute("SET jit_above_cost TO '-1'")
+                    cursor.execute("SET max_parallel_workers_per_gather TO '0'")
                 # Make sure that all connections get the new settings
                 await self.close()
 
