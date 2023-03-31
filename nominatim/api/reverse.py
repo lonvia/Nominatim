@@ -209,13 +209,13 @@ class ReverseGeocoder:
         sql = sa.lambda_stmt(
                 lambda: _select_from_placex(t, True)
                         .where(t.c.geometry.ST_DWithin(WKT_PARAM, 0.001))
+                        .where(t.c.parent_place_id == parent_place_id)
                         .where(_is_address_point(t))
                         .where(t.c.indexed_status == 0)
                         .where(t.c.linked_place_id == None)
                         .order_by('distance')
                         .limit(1))
 
-        sql = sql.where(t.c.parent_place_id == parent_place_id)
         sql = self._add_geometry_columns(sql, t.c.geometry)
 
         return await self.run_sql(sql)
@@ -225,16 +225,17 @@ class ReverseGeocoder:
                                              distance: float) -> Optional[SaRow]:
         t = self.conn.t.osmline
 
-        sql = sa.select(t,
+        sql = sa.lambda_stmt(lambda:
+                sa.select(t,
                         t.c.linegeo.ST_Distance(WKT_PARAM).label('distance'),
-                        _locate_interpolation(t))\
-                .where(t.c.linegeo.ST_DWithin(WKT_PARAM, distance))\
-                .where(t.c.startnumber != None)\
-                .order_by('distance')\
-                .limit(1)
+                        _locate_interpolation(t))
+                .where(t.c.linegeo.ST_DWithin(WKT_PARAM, distance))
+                .where(t.c.startnumber != None)
+                .order_by('distance')
+                .limit(1))
 
         if parent_place_id is not None:
-            sql = sql.where(t.c.parent_place_id == parent_place_id)
+            sql += lambda sql: sql.where(t.c.parent_place_id == parent_place_id)
 
         inner = sql.subquery()
 
@@ -257,14 +258,14 @@ class ReverseGeocoder:
                                             ) -> Optional[SaRow]:
         t = self.conn.t.tiger
 
-        inner = sa.select(t,
+        inner = sa.lambda_stmt(lambda:
+                  sa.select(t,
                           t.c.linegeo.ST_Distance(WKT_PARAM).label('distance'),
-                          _locate_interpolation(t))\
-                  .where(t.c.linegeo.ST_DWithin(WKT_PARAM, 0.001))\
-                  .where(t.c.parent_place_id == parent_place_id)\
-                  .order_by('distance')\
-                  .limit(1)\
-                  .subquery()
+                          _locate_interpolation(t))
+                  .where(t.c.linegeo.ST_DWithin(WKT_PARAM, 0.001))
+                  .where(t.c.parent_place_id == parent_place_id)
+                  .order_by('distance')
+                  .limit(1)).subquery()
 
         sql = sa.select(inner.c.place_id,
                         inner.c.parent_place_id,
