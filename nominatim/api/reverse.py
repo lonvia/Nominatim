@@ -24,6 +24,8 @@ from nominatim.api.types import AnyPoint, DataLayer, LookupDetails, GeometryForm
 
 RowFunc = Callable[[Optional[SaRow], Type[nres.ReverseResult]], Optional[nres.ReverseResult]]
 
+WKT_PARAM = sa.bindparam('wkt', type_=Geometry)
+
 def _select_from_placex(t: SaFromClause, use_wkt: bool = False) -> SaSelect:
     """ Create a select statement with the columns relevant for reverse
         results.
@@ -32,12 +34,11 @@ def _select_from_placex(t: SaFromClause, use_wkt: bool = False) -> SaSelect:
         distance = t.c.distance
         centroid = t.c.centroid
     else:
-        wkt = sa.bindparam('wkt', type_=Geometry)
-        distance = t.c.geometry.ST_Distance(wkt)
+        distance = t.c.geometry.ST_Distance(WKT_PARAM)
         centroid = sa.case(
                        (t.c.geometry.ST_GeometryType().in_(('ST_LineString',
                                                            'ST_MultiLineString')),
-                        t.c.geometry.ST_ClosestPoint(wkt)),
+                        t.c.geometry.ST_ClosestPoint(WKT_PARAM)),
                        else_=t.c.centroid).label('centroid')
 
 
@@ -72,7 +73,7 @@ def _locate_interpolation(table: SaFromClause) -> SaLabel:
     """ Given a position, locate the closest point on the line.
     """
     return sa.case((table.c.linegeo.ST_GeometryType() == 'ST_LineString',
-                    sa.func.ST_LineLocatePoint(table.c.linegeo, sa.bindparam('wkt', type_=Geometry))),
+                    sa.func.ST_LineLocatePoint(table.c.linegeo, WKT_PARAM)),
                    else_=0).label('position')
 
 
@@ -100,7 +101,6 @@ class ReverseGeocoder:
 
         self.params = {'wkt': WKTElement(f'POINT({coord[0]} {coord[1]})', srid=4326),
                        'max_rank': max_rank}
-        self.bound_wkt = sa.bindparam('wkt', type_=Geometry)
 
 
     async def run_sql(self, sql: Any) -> Optional[SaRow]:
@@ -168,14 +168,14 @@ class ReverseGeocoder:
         """
         t = self.conn.t.placex
 
-        sql = self.conn.t.get_cached_query('reverse_find_closest_street_or_poi',
+        sql = sa.lambda_stmt(
                 lambda: _select_from_placex(t, True)
-                           .where(t.c.geometry.ST_DWithin(self.bound_wkt, 0.006))
+                           .where(t.c.geometry.ST_DWithin(WKT_PARAM, 0.006))
                            .where(t.c.indexed_status == 0)
                            .where(t.c.linked_place_id == None)
                            .where(sa.or_(t.c.geometry.ST_GeometryType()
                                           .not_in(('ST_Polygon', 'ST_MultiPolygon')),
-                              t.c.centroid.ST_Distance(self.bound_wkt) < 0.006))
+                              t.c.centroid.ST_Distance(WKT_PARAM) < 0.006))
                            .order_by('distance')
                           .limit(1))
 
@@ -206,9 +206,9 @@ class ReverseGeocoder:
     async def _find_housenumber_for_street(self, parent_place_id: int) -> Optional[SaRow]:
         t = self.conn.t.placex
 
-        sql = self.conn.t.get_cached_query('reverse_find_housenumber_for_street',
+        sql = sa.lambda_stmt(
                 lambda: _select_from_placex(t, True)
-                        .where(t.c.geometry.ST_DWithin(self.bound_wkt, 0.001))
+                        .where(t.c.geometry.ST_DWithin(WKT_PARAM, 0.001))
                         .where(_is_address_point(t))
                         .where(t.c.indexed_status == 0)
                         .where(t.c.linked_place_id == None)
@@ -226,9 +226,9 @@ class ReverseGeocoder:
         t = self.conn.t.osmline
 
         sql = sa.select(t,
-                        t.c.linegeo.ST_Distance(self.bound_wkt).label('distance'),
+                        t.c.linegeo.ST_Distance(WKT_PARAM).label('distance'),
                         _locate_interpolation(t))\
-                .where(t.c.linegeo.ST_DWithin(self.bound_wkt, distance))\
+                .where(t.c.linegeo.ST_DWithin(WKT_PARAM, distance))\
                 .where(t.c.startnumber != None)\
                 .order_by('distance')\
                 .limit(1)
@@ -258,9 +258,9 @@ class ReverseGeocoder:
         t = self.conn.t.tiger
 
         inner = sa.select(t,
-                          t.c.linegeo.ST_Distance(self.bound_wkt).label('distance'),
+                          t.c.linegeo.ST_Distance(WKT_PARAM).label('distance'),
                           _locate_interpolation(t))\
-                  .where(t.c.linegeo.ST_DWithin(self.bound_wkt, 0.001))\
+                  .where(t.c.linegeo.ST_DWithin(WKT_PARAM, 0.001))\
                   .where(t.c.parent_place_id == parent_place_id)\
                   .order_by('distance')\
                   .limit(1)\
@@ -344,22 +344,21 @@ class ReverseGeocoder:
 
         # The inner SQL brings results in the right order, so that
         # later only a minimum of results needs to be checked with ST_Contains.
-        inner = self.conn.t.get_cached_query('reverse_lookup_area_address_area',
+        inner = sa.lambda_stmt(
                   lambda: sa.select(t, sa.literal(0.0).label('distance'))
                   .where(t.c.rank_search.between(5, sa.bindparam('max_rank')))
                   .where(t.c.rank_address.between(5, 25))
                   .where(t.c.geometry.ST_GeometryType().in_(('ST_Polygon', 'ST_MultiPolygon')))
-                  .where(t.c.geometry.intersects(self.bound_wkt))
+                  .where(t.c.geometry.intersects(WKT_PARAM))
                   .where(t.c.name != None)
                   .where(t.c.indexed_status == 0)
                   .where(t.c.linked_place_id == None)
                   .where(t.c.type != 'postcode')
                   .order_by(sa.desc(t.c.rank_search))
-                  .limit(50)
-                  .subquery())
+                  .limit(50)).subquery()
 
         sql = _select_from_placex(inner)\
-                  .where(inner.c.geometry.ST_Contains(self.bound_wkt))\
+                  .where(inner.c.geometry.ST_Contains(WKT_PARAM))\
                   .order_by(sa.desc(inner.c.rank_search))\
                   .limit(1)
 
@@ -370,9 +369,9 @@ class ReverseGeocoder:
 
         if address_row is not None and address_row.rank_search < self.max_rank:
             log().comment('Search for better matching place nodes inside the area')
-            inner = self.conn.t.get_cached_query('reverse_lookup_area_address_place',
+            inner = sa.lambda_stmt(
                       lambda: sa.select(t,
-                              t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))
+                              t.c.geometry.ST_Distance(WKT_PARAM).label('distance'))
                       .where(t.c.osm_type == 'N')
                       .where(t.c.rank_search <= sa.bindparam('max_rank'))
                       .where(t.c.rank_address.between(5, 25))
@@ -382,7 +381,7 @@ class ReverseGeocoder:
                       .where(t.c.type != 'postcode')
                       .where(t.c.geometry
                                 .ST_Buffer(sa.func.reverse_place_diameter(t.c.rank_search))
-                                .intersects(self.bound_wkt))
+                                .intersects(WKT_PARAM))
                       .order_by(sa.desc(t.c.rank_search))
                       .limit(50))
 
@@ -411,8 +410,8 @@ class ReverseGeocoder:
     async def _lookup_area_others(self) -> Optional[SaRow]:
         t = self.conn.t.placex
 
-        inner = self.conn.t.get_cached_query('reverse_lookup_area_others',
-                  lambda: sa.select(t, t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))\
+        inner = sa.lambda_stmt(
+                  lambda: sa.select(t, t.c.geometry.ST_Distance(WKT_PARAM).label('distance'))\
                   .where(t.c.rank_address == 0)\
                   .where(t.c.rank_search.between(5, sa.bindparam('max_rank')))\
                   .where(t.c.name != None)\
@@ -420,7 +419,7 @@ class ReverseGeocoder:
                   .where(t.c.linked_place_id == None)\
                   .where(t.c.geometry
                                 .ST_Buffer(sa.func.reverse_place_diameter(t.c.rank_search))
-                                .intersects(self.bound_wkt))\
+                                .intersects(WKT_PARAM))\
                   .order_by(sa.desc(t.c.rank_search))\
                   .limit(50))
 
@@ -430,7 +429,7 @@ class ReverseGeocoder:
         sql = _select_from_placex(inner)\
                   .where(sa.or_(inner.c.geometry.ST_GeometryType()
                                                 .not_in(('ST_Polygon', 'ST_MultiPolygon')),
-                                inner.c.geometry.ST_Contains(self.bound_wkt)))\
+                                inner.c.geometry.ST_Contains(WKT_PARAM)))\
                   .order_by(sa.desc(inner.c.rank_search), inner.c.distance)\
                   .limit(1)
 
@@ -466,7 +465,7 @@ class ReverseGeocoder:
         log().section('Reverse lookup by country code')
         t = self.conn.t.country_grid
         sql = sa.select(t.c.country_code).distinct()\
-                .where(t.c.geometry.ST_Contains(self.bound_wkt))
+                .where(t.c.geometry.ST_Contains(WKT_PARAM))
 
         ccodes = tuple((r[0] for r in await self.conn.execute(sql, self.params)))
         log().var_dump('Country codes', ccodes)
@@ -478,9 +477,9 @@ class ReverseGeocoder:
         if self.max_rank > 4:
             log().comment('Search for place nodes in country')
 
-            inner = self.conn.t.get_cached_query('reverse_lookup_country_place_inside',
+            inner = sa.lambda_stmt(
                       lambda: sa.select(t,
-                              t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))
+                              t.c.geometry.ST_Distance(WKT_PARAM).label('distance'))
                       .where(t.c.osm_type == 'N')
                       .where(t.c.rank_search > 4)
                       .where(t.c.rank_search <= sa.bindparam('max_rank'))
@@ -491,7 +490,7 @@ class ReverseGeocoder:
                       .where(t.c.type != 'postcode')
                       .where(t.c.geometry
                                 .ST_Buffer(sa.func.reverse_place_diameter(t.c.rank_search))
-                                .intersects(self.bound_wkt))
+                                .intersects(WKT_PARAM))
                       .order_by(sa.desc(t.c.rank_search))
                       .limit(50))
 
@@ -512,13 +511,13 @@ class ReverseGeocoder:
 
         if address_row is None:
             # Still nothing, then return a country with the appropriate country code.
-            sql = self.conn.t.get_cached_query('reverse_lookup_country_itself',
-                    lambda: _select_from_placex(t, True)
-                      .where(t.c.rank_address == 4)
-                      .where(t.c.rank_search == 4)
-                      .where(t.c.linked_place_id == None)
-                      .order_by('distance')
-                      .limit(1))
+            sql = sa.lambda_stmt(
+                     lambda: _select_from_placex(t, True)
+                                  .where(t.c.rank_address == 4)
+                                  .where(t.c.rank_search == 4)
+                                  .where(t.c.linked_place_id == None)
+                                  .order_by('distance')
+                                  .limit(1))
 
             sql = self._add_geometry_columns(sql, t.c.geometry)
 

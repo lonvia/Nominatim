@@ -159,15 +159,3 @@ class SearchTables:
             sa.Column('linegeo', NominatimGeometry),
             sa.Column('postcode', sa.Text))
 
-
-        self._query_cache: Dict[str, Any] = {}
-
-
-    def get_cached_query(self, name: str, factory):
-        sql = self._query_cache.get(name, None)
-
-        if sql is None:
-            sql = factory()
-            self._query_cache[name] = sql
-
-        return sql
