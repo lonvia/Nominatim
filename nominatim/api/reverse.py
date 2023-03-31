@@ -168,18 +168,16 @@ class ReverseGeocoder:
         """
         t = self.conn.t.placex
 
-        sql = self.conn.t.query_cache.get('reverse_closest_street_or_poi', None)
-        if sql is None:
-            sql = _select_from_placex(t, True)\
-                    .where(t.c.geometry.ST_DWithin(self.bound_wkt, 0.006))\
-                    .where(t.c.indexed_status == 0)\
-                    .where(t.c.linked_place_id == None)\
-                    .where(sa.or_(t.c.geometry.ST_GeometryType()
-                                              .not_in(('ST_Polygon', 'ST_MultiPolygon')),
-                                  t.c.centroid.ST_Distance(self.bound_wkt) < 0.006))\
-                    .order_by('distance')\
-                    .limit(1)
-            self.conn.t.query_cache['reverse_closest_street_or_poi'] = sql
+        sql = self.conn.t.get_cached_query('reverse_find_closest_street_or_poi',
+                lambda: _select_from_placex(t, True)
+                           .where(t.c.geometry.ST_DWithin(self.bound_wkt, 0.006))
+                           .where(t.c.indexed_status == 0)
+                           .where(t.c.linked_place_id == None)
+                           .where(sa.or_(t.c.geometry.ST_GeometryType()
+                                          .not_in(('ST_Polygon', 'ST_MultiPolygon')),
+                              t.c.centroid.ST_Distance(self.bound_wkt) < 0.006))
+                           .order_by('distance')
+                          .limit(1))
 
         sql = self._add_geometry_columns(sql, t.c.geometry)
 
@@ -208,15 +206,16 @@ class ReverseGeocoder:
     async def _find_housenumber_for_street(self, parent_place_id: int) -> Optional[SaRow]:
         t = self.conn.t.placex
 
-        sql = _select_from_placex(t, True)\
-                .where(t.c.geometry.ST_DWithin(self.bound_wkt, 0.001))\
-                .where(t.c.parent_place_id == parent_place_id)\
-                .where(_is_address_point(t))\
-                .where(t.c.indexed_status == 0)\
-                .where(t.c.linked_place_id == None)\
-                .order_by('distance')\
-                .limit(1)
+        sql = self.conn.t.get_cached_query('reverse_find_housenumber_for_street',
+                lambda: _select_from_placex(t, True)
+                        .where(t.c.geometry.ST_DWithin(self.bound_wkt, 0.001))
+                        .where(_is_address_point(t))
+                        .where(t.c.indexed_status == 0)
+                        .where(t.c.linked_place_id == None)
+                        .order_by('distance')
+                        .limit(1))
 
+        sql = sql.where(t.c.parent_place_id == parent_place_id)
         sql = self._add_geometry_columns(sql, t.c.geometry)
 
         return await self.run_sql(sql)
@@ -345,18 +344,19 @@ class ReverseGeocoder:
 
         # The inner SQL brings results in the right order, so that
         # later only a minimum of results needs to be checked with ST_Contains.
-        inner = sa.select(t, sa.literal(0.0).label('distance'))\
-                  .where(t.c.rank_search.between(5, sa.bindparam('max_rank')))\
-                  .where(t.c.rank_address.between(5, 25))\
-                  .where(t.c.geometry.ST_GeometryType().in_(('ST_Polygon', 'ST_MultiPolygon')))\
-                  .where(t.c.geometry.intersects(self.bound_wkt))\
-                  .where(t.c.name != None)\
-                  .where(t.c.indexed_status == 0)\
-                  .where(t.c.linked_place_id == None)\
-                  .where(t.c.type != 'postcode')\
-                  .order_by(sa.desc(t.c.rank_search))\
-                  .limit(50)\
-                  .subquery()
+        inner = self.conn.t.get_cached_query('reverse_lookup_area_address_area',
+                  lambda: sa.select(t, sa.literal(0.0).label('distance'))
+                  .where(t.c.rank_search.between(5, sa.bindparam('max_rank')))
+                  .where(t.c.rank_address.between(5, 25))
+                  .where(t.c.geometry.ST_GeometryType().in_(('ST_Polygon', 'ST_MultiPolygon')))
+                  .where(t.c.geometry.intersects(self.bound_wkt))
+                  .where(t.c.name != None)
+                  .where(t.c.indexed_status == 0)
+                  .where(t.c.linked_place_id == None)
+                  .where(t.c.type != 'postcode')
+                  .order_by(sa.desc(t.c.rank_search))
+                  .limit(50)
+                  .subquery())
 
         sql = _select_from_placex(inner)\
                   .where(inner.c.geometry.ST_Contains(self.bound_wkt))\
