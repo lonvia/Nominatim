@@ -56,8 +56,7 @@ class NominatimAPIAsync:
             query = {k: v for k, v in dsn.items()
                       if k not in ('user', 'password', 'dbname', 'host', 'port')}
 
-            backend = 'psycopg'
-            backend = 'asyncpg'
+            backend = self.config.POSTGRES_BACKEND
 
             if backend == 'asyncpg':
                 query['prepared_statement_cache_size'] = '0'
