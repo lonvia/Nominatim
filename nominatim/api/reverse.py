@@ -370,21 +370,23 @@ class ReverseGeocoder:
 
         if address_row is not None and address_row.rank_search < self.max_rank:
             log().comment('Search for better matching place nodes inside the area')
-            inner = sa.select(t,
-                              t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))\
-                      .where(t.c.osm_type == 'N')\
-                      .where(t.c.rank_search > address_row.rank_search)\
-                      .where(t.c.rank_search <= sa.bindparam('max_rank'))\
-                      .where(t.c.rank_address.between(5, 25))\
-                      .where(t.c.name != None)\
-                      .where(t.c.indexed_status == 0)\
-                      .where(t.c.linked_place_id == None)\
-                      .where(t.c.type != 'postcode')\
+            inner = self.conn.t.get_cached_query('reverse_lookup_area_address_place',
+                      lambda: sa.select(t,
+                              t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))
+                      .where(t.c.osm_type == 'N')
+                      .where(t.c.rank_search <= sa.bindparam('max_rank'))
+                      .where(t.c.rank_address.between(5, 25))
+                      .where(t.c.name != None)
+                      .where(t.c.indexed_status == 0)
+                      .where(t.c.linked_place_id == None)
+                      .where(t.c.type != 'postcode')
                       .where(t.c.geometry
                                 .ST_Buffer(sa.func.reverse_place_diameter(t.c.rank_search))
-                                .intersects(self.bound_wkt))\
-                      .order_by(sa.desc(t.c.rank_search))\
-                      .limit(50)\
+                                .intersects(self.bound_wkt))
+                      .order_by(sa.desc(t.c.rank_search))
+                      .limit(50))
+
+            inner = inner.where(t.c.rank_search > address_row.rank_search)\
                       .subquery()
 
             touter = self.conn.t.placex.alias('outer')
@@ -409,18 +411,20 @@ class ReverseGeocoder:
     async def _lookup_area_others(self) -> Optional[SaRow]:
         t = self.conn.t.placex
 
-        inner = sa.select(t, t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))\
+        inner = self.conn.t.get_cached_query('reverse_lookup_area_others',
+                  lambda: sa.select(t, t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))\
                   .where(t.c.rank_address == 0)\
                   .where(t.c.rank_search.between(5, sa.bindparam('max_rank')))\
                   .where(t.c.name != None)\
                   .where(t.c.indexed_status == 0)\
                   .where(t.c.linked_place_id == None)\
-                  .where(self._filter_by_layer(t))\
                   .where(t.c.geometry
                                 .ST_Buffer(sa.func.reverse_place_diameter(t.c.rank_search))
                                 .intersects(self.bound_wkt))\
                   .order_by(sa.desc(t.c.rank_search))\
-                  .limit(50)\
+                  .limit(50))
+
+        inner = inner.where(self._filter_by_layer(t))\
                   .subquery()
 
         sql = _select_from_placex(inner)\
@@ -474,22 +478,24 @@ class ReverseGeocoder:
         if self.max_rank > 4:
             log().comment('Search for place nodes in country')
 
-            inner = sa.select(t,
-                              t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))\
-                      .where(t.c.osm_type == 'N')\
-                      .where(t.c.rank_search > 4)\
-                      .where(t.c.rank_search <= sa.bindparam('max_rank'))\
-                      .where(t.c.rank_address.between(5, 25))\
-                      .where(t.c.name != None)\
-                      .where(t.c.indexed_status == 0)\
-                      .where(t.c.linked_place_id == None)\
-                      .where(t.c.type != 'postcode')\
-                      .where(t.c.country_code.in_(ccodes))\
+            inner = self.conn.t.get_cached_query('reverse_lookup_country_place_inside',
+                      lambda: sa.select(t,
+                              t.c.geometry.ST_Distance(self.bound_wkt).label('distance'))
+                      .where(t.c.osm_type == 'N')
+                      .where(t.c.rank_search > 4)
+                      .where(t.c.rank_search <= sa.bindparam('max_rank'))
+                      .where(t.c.rank_address.between(5, 25))
+                      .where(t.c.name != None)
+                      .where(t.c.indexed_status == 0)
+                      .where(t.c.linked_place_id == None)
+                      .where(t.c.type != 'postcode')
                       .where(t.c.geometry
                                 .ST_Buffer(sa.func.reverse_place_diameter(t.c.rank_search))
-                                .intersects(self.bound_wkt))\
-                      .order_by(sa.desc(t.c.rank_search))\
-                      .limit(50)\
+                                .intersects(self.bound_wkt))
+                      .order_by(sa.desc(t.c.rank_search))
+                      .limit(50))
+
+            inner = inner.where(t.c.country_code.in_(ccodes))\
                       .subquery()
 
             sql = _select_from_placex(inner)\
@@ -506,17 +512,17 @@ class ReverseGeocoder:
 
         if address_row is None:
             # Still nothing, then return a country with the appropriate country code.
-            sql = _select_from_placex(t, True)\
-                      .where(t.c.country_code.in_(ccodes))\
-                      .where(t.c.rank_address == 4)\
-                      .where(t.c.rank_search == 4)\
-                      .where(t.c.linked_place_id == None)\
-                      .order_by('distance')\
-                      .limit(1)
+            sql = self.conn.t.get_cached_query('reverse_lookup_country_itself',
+                    lambda: _select_from_placex(t, True)
+                      .where(t.c.rank_address == 4)
+                      .where(t.c.rank_search == 4)
+                      .where(t.c.linked_place_id == None)
+                      .order_by('distance')
+                      .limit(1))
 
             sql = self._add_geometry_columns(sql, t.c.geometry)
 
-            address_row = await self.run_sql(sql)
+            address_row = await self.run_sql(sql.where(t.c.country_code.in_(ccodes)))
 
         return address_row
 
