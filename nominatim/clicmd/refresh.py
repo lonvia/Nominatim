@@ -158,6 +158,7 @@ class UpdateRefresh:
 
         if args.country_names:
             LOG.warning('Update internal country names')
+            country_info.setup_country_config(args.config)
             country_info.setup_country_tables(args.config.get_libpq_dsn(),
                                               args.config.lib_dir.data,
                                               update_existing=True)
