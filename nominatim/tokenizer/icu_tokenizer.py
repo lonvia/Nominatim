@@ -13,6 +13,7 @@ from typing import Optional, Sequence, List, Tuple, Mapping, Any, cast, \
 import itertools
 import json
 import logging
+from collections import defaultdict
 from pathlib import Path
 from textwrap import dedent
 
@@ -564,27 +565,40 @@ class ICUNameAnalyzer(AbstractAnalyzer):
             name list.
         """
         assert self.conn is not None
-        word_tokens = set()
+        word_tokens = defaultdict(dict)
         for name in names:
             norm_name = self._search_normalized(name.name)
             if norm_name:
-                word_tokens.add(norm_name)
+                word_tokens[norm_name][name.suffix or ''] = self._normalized(name.name)
 
         with self.conn.cursor() as cur:
             # Get existing names
-            cur.execute("""SELECT word_token, coalesce(info ? 'internal', false) as is_internal
-                             FROM word
-                             WHERE type = 'C' and word = %s""",
+            cur.execute("""SELECT word_token,
+                                  coalesce(info ? 'internal', false) as is_internal,
+                                  info
+                           FROM word WHERE type = 'C' and word = %s""",
                         (country_code, ))
             # internal/external names
-            existing_tokens: Dict[bool, Set[str]] = {True: set(), False: set()}
+            internal_existing: Set[str] = set()
+            external_existing: Set[str] = set()
             for word in cur:
-                existing_tokens[word[1]].add(word[0])
+                if word[1]:
+                    if internal and word[0] in word_tokens\
+                       and word[2].get('norm') == word_tokens[word[0]]:
+                        del word_tokens[word[0]]
+                    else:
+                        internal_existing.add(word[0])
+                    if not internal:
+                        word_tokens.remove(word[0])
+                else:
+                    if not internal and word[0] in word_tokens\
+                       and word[2].get('norm') == word_tokens[word[0]]:
+                        del word_tokens[word[0]]
+                    else:
+                        external_existing.add(word[0])
 
             # Delete names that no longer exist.
-            gone_tokens = existing_tokens[internal] - word_tokens
-            if internal:
-                gone_tokens.update(existing_tokens[False] & word_tokens)
+            gone_tokens = internal_existing if internal else external_existing
             if gone_tokens:
                 cur.execute("""DELETE FROM word
                                USING unnest(%s) as token
@@ -593,21 +607,15 @@ class ICUNameAnalyzer(AbstractAnalyzer):
                             (list(gone_tokens), country_code))
 
             # Only add those names that are not yet in the list.
-            new_tokens = word_tokens - existing_tokens[True]
-            if not internal:
-                new_tokens -= existing_tokens[False]
-            if new_tokens:
-                if internal:
-                    sql = """INSERT INTO word (word_token, type, word, info)
-                               (SELECT token, 'C', %s, '{"internal": "yes"}'
-                                  FROM unnest(%s) as token)
-                           """
-                else:
-                    sql = """INSERT INTO word (word_token, type, word)
-                                   (SELECT token, 'C', %s
-                                    FROM unnest(%s) as token)
-                          """
-                cur.execute(sql, (country_code, list(new_tokens)))
+            if word_tokens:
+                new_tokens = list(word_tokens.keys())
+                new_info = [json.dumps({'norm': i, 'internal': True} if internal else {'norm': i})
+                            for i in word_tokens.values()]
+                sql = """INSERT INTO word (word_token, type, word, info)
+                               (SELECT token, 'C', %s, i::JSONB
+                                FROM unnest(%s, %s) as x(token, i))
+                      """
+                cur.execute(sql, (country_code, new_tokens, new_info))
 
 
     def process_place(self, place: PlaceInfo) -> Mapping[str, Any]:
