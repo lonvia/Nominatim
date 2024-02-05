@@ -14,6 +14,7 @@ from pathlib import Path
 
 from nominatim.config import Configuration
 from nominatim.db.connection import connect
+from nominatim.data import country_info
 from nominatim.tokenizer.base import AbstractTokenizer
 from nominatim.clicmd.args import NominatimArgs
 
@@ -67,6 +68,8 @@ class UpdateRefresh:
                            help='Update secondary importance raster data')
         group.add_argument('--importance', action='store_true',
                            help='Recompute place importances (expensive!)')
+        group.add_argument('--country-names', action='store_true',
+                           help='Update internal country names')
         group.add_argument('--website', action='store_true',
                            help='Refresh the directory that serves the scripts for the web API')
         group.add_argument('--data-object', action='append',
@@ -152,6 +155,16 @@ class UpdateRefresh:
             LOG.warning('Update importance values for database')
             with connect(args.config.get_libpq_dsn()) as conn:
                 refresh.recompute_importance(conn)
+
+        if args.country_names:
+            LOG.warning('Update internal country names')
+            country_info.setup_country_tables(args.config.get_libpq_dsn(),
+                                              args.config.lib_dir.data,
+                                              update_existing=True)
+            with connect(args.config.get_libpq_dsn()) as conn:
+                if conn.table_exists('search_name'):
+                    country_info.create_country_names(
+                        conn, self._get_tokenizer(args.config))
 
         if args.website:
             webdir = args.project_dir / 'website'

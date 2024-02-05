@@ -111,34 +111,49 @@ def iterate(prop: Optional[str] = None) -> Iterable[Tuple[str, Dict[str, Any]]]:
     return ((c, p[prop]) for c, p in _COUNTRY_INFO.items() if prop in p)
 
 
-def setup_country_tables(dsn: str, sql_dir: Path, ignore_partitions: bool = False) -> None:
+def setup_country_tables(dsn: str, sql_dir: Path, ignore_partitions: bool = False,
+                         update_existing: bool = False) -> None:
     """ Create and populate the tables with basic static data that provides
-        the background for geocoding. Data is assumed to not yet exist.
+        the background for geocoding.
+
+        When 'update_existing' is set to True, existing data is replaced.
+        'ignore_partitions' is ignored in this case and simply the setting
+        of the current table used.
     """
-    db_utils.execute_file(dsn, sql_dir / 'country_osm_grid.sql.gz')
+    if not update_existing:
+        db_utils.execute_file(dsn, sql_dir / 'country_osm_grid.sql.gz')
 
-    params = []
-    for ccode, props in _COUNTRY_INFO.items():
-        if ccode is not None and props is not None:
-            if ignore_partitions:
-                partition = 0
-            else:
-                partition = props.get('partition', 0)
-            lang = props['languages'][0] if len(
-                props['languages']) == 1 else None
-
-            params.append((ccode, props['names'], lang, partition))
     with connect(dsn) as conn:
+        if update_existing:
+            with conn.cursor() as cur:
+                max_part = cur.scalar("SELECT max(partition) FROM public.country_name")
+            ignore_partitions = max_part == 0
+
+        params = []
+        for ccode, props in _COUNTRY_INFO.items():
+            if ccode is not None and props is not None:
+                if ignore_partitions:
+                    partition = 0
+                else:
+                    partition = props.get('partition', 0)
+                lang = props['languages'][0] if len(
+                    props['languages']) == 1 else None
+
+                params.append((ccode, props['names'], lang, partition))
+
         with conn.cursor() as cur:
             psycopg2.extras.register_hstore(cur)
-            cur.execute(
-                """ CREATE TABLE public.country_name (
-                        country_code character varying(2),
-                        name public.hstore,
-                        derived_name public.hstore,
-                        country_default_language_code text,
-                        partition integer
-                    ); """)
+            if update_existing:
+                cur.execute("TRUNCATE TABLE public.country_name")
+            else:
+                cur.execute(
+                    """ CREATE TABLE public.country_name (
+                            country_code character varying(2),
+                            name public.hstore,
+                            derived_name public.hstore,
+                            country_default_language_code text,
+                            partition integer
+                        )""")
             cur.execute_values(
                 """ INSERT INTO public.country_name
                     (country_code, name, country_default_language_code, partition) VALUES %s
