@@ -25,6 +25,7 @@ from nominatim.data.place_info import PlaceInfo
 from nominatim.tokenizer.icu_rule_loader import ICURuleLoader
 from nominatim.tokenizer.place_sanitizer import PlaceSanitizer
 from nominatim.data.place_name import PlaceName
+from nominatim.data import country_info
 from nominatim.tokenizer.icu_token_analysis import ICUTokenAnalysis
 from nominatim.tokenizer.base import AbstractAnalyzer, AbstractTokenizer
 
@@ -70,6 +71,8 @@ class ICUTokenizer(AbstractTokenizer):
             self.update_sql_functions(config)
             self._setup_db_tables(config)
             self._create_base_indices(config, 'word')
+
+        country_info.setup_country_config(config)
 
 
     def init_from_project(self, config: Configuration) -> None:
@@ -547,7 +550,8 @@ class ICUNameAnalyzer(AbstractAnalyzer):
         return len(to_delete)
 
 
-    def add_country_names(self, country_code: str, names: Mapping[str, str]) -> None:
+    def add_country_names(self, country_code: str, names: Mapping[str, str],
+                          local_langs: List[str] = []) -> None:
         """ Add default names for the given country to the search index.
         """
         # Make sure any name preprocessing for country names applies.
@@ -556,11 +560,12 @@ class ICUNameAnalyzer(AbstractAnalyzer):
                           'type': 'administrative'})
         self._add_country_full_names(country_code,
                                      self.sanitizer.process_names(info)[0],
-                                     internal=True)
+                                     internal=True, local_langs=local_langs)
 
 
     def _add_country_full_names(self, country_code: str, names: Sequence[PlaceName],
-                                internal: bool = False) -> None:
+                                internal: bool = False,
+                                local_langs: List[str] = []) -> None:
         """ Add names for the given country from an already sanitized
             name list.
         """
@@ -569,7 +574,11 @@ class ICUNameAnalyzer(AbstractAnalyzer):
         for name in names:
             norm_name = self._search_normalized(name.name)
             if norm_name:
-                word_tokens[norm_name][name.suffix or ''] = self._normalized(name.name)
+                lookup_name = self._normalized(name.name)
+                lang = name.suffix or ''
+                penalty = 0.0 if (not lang or not local_langs or lang in local_langs) else 0.1
+                word_tokens[norm_name][lookup_name] = min(word_tokens[norm_name].get(lookup_name, 100.0),
+                                                        penalty)
 
         with self.conn.cursor() as cur:
             # Get existing names
@@ -633,7 +642,11 @@ class ICUNameAnalyzer(AbstractAnalyzer):
 
             if place.is_country():
                 assert place.country_code is not None
-                self._add_country_full_names(place.country_code, names)
+                langs = country_info.get_country_info(place.country_code).get('languages') or []
+                # Add English as lingua franca
+                langs.append('en')
+                self._add_country_full_names(place.country_code, names,
+                                             local_langs=langs)
 
         if address:
             self._process_place_address(token_info, address)

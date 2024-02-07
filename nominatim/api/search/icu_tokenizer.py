@@ -73,23 +73,30 @@ class ICUToken(qmod.Token):
         return self.info.get('class', ''), self.info.get('type', '')
 
 
-    def rematch(self, norm: str) -> None:
+    def rematch(self, norm: str, use_lookup_word: bool) -> None:
         """ Check how well the token matches the given normalized string
             and add a penalty, if necessary.
         """
-        if not self.lookup_word:
+        if self.info and 'norm' in self.info:
+            match_words = self.info['norm'].items()
+        elif use_lookup_word and self.lookup_word:
+            match_words = ((self.lookup_word, 0.0), )
+        else:
             return
 
-        seq = difflib.SequenceMatcher(a=self.lookup_word, b=norm)
-        distance = 0
-        for tag, afrom, ato, bfrom, bto in seq.get_opcodes():
-            if tag in ('delete', 'insert') and (afrom == 0 or ato == len(self.lookup_word)):
-                distance += 1
-            elif tag == 'replace':
-                distance += max((ato-afrom), (bto-bfrom))
-            elif tag != 'equal':
-                distance += abs((ato-afrom) - (bto-bfrom))
-        self.penalty += (distance/len(self.lookup_word))
+        min_penalty = 100.0
+        for lookup_word, extra_penalty in match_words:
+            seq = difflib.SequenceMatcher(a=lookup_word, b=norm)
+            distance = 0
+            for tag, afrom, ato, bfrom, bto in seq.get_opcodes():
+                if tag in ('delete', 'insert') and (afrom == 0 or ato == len(lookup_word)):
+                    distance += 1
+                elif tag == 'replace':
+                    distance += max((ato-afrom), (bto-bfrom))
+                elif tag != 'equal':
+                    distance += abs((ato-afrom) - (bto-bfrom))
+            min_penalty = min(min_penalty, distance/len(lookup_word) + extra_penalty)
+        self.penalty += min_penalty
 
 
     @staticmethod
@@ -276,13 +283,14 @@ class ICUQueryAnalyzer(AbstractQueryAnalyzer):
                     for repl in node.starting:
                         if repl.end == tlist.end and repl.ttype != qmod.TokenType.HOUSENUMBER:
                             repl.add_penalty(0.5 - tlist.tokens[0].penalty)
-            elif tlist.ttype not in (qmod.TokenType.COUNTRY, qmod.TokenType.PARTIAL):
+            elif tlist.ttype != qmod.TokenType.PARTIAL:
+                # done for normal words and country names
                 norm = parts[i].normalized
                 for j in range(i + 1, tlist.end):
                     if parts[j - 1].word_number != parts[j].word_number:
                         norm += '  ' + parts[j].normalized
                 for token in tlist.tokens:
-                    cast(ICUToken, token).rematch(norm)
+                    cast(ICUToken, token).rematch(norm, tlist.ttype != qmod.TokenType.COUNTRY)
 
 
 def _dump_transliterated(query: qmod.QueryStruct, parts: QueryParts) -> str:

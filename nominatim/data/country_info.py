@@ -79,6 +79,12 @@ class _CountryInfo:
 
 _COUNTRY_INFO = _CountryInfo()
 
+def get_country_info(country_code: str) -> Dict[str, Any]:
+    """ Return all available information on the country with the
+        given country code.
+    """
+    return _COUNTRY_INFO.get(country_code)
+
 
 def setup_country_config(config: Configuration) -> None:
     """ Load country properties from the configuration file.
@@ -185,6 +191,10 @@ def create_country_names(conn: Connection, tokenizer: AbstractTokenizer,
                 if name:
                     names.update({k : v for k, v in name.items() if _include_key(k)})
 
-                analyzer.add_country_names(code, names)
+                langs = _COUNTRY_INFO.get(code).get('languages') or []
+                # Add English as lingua franca
+                langs.append('en')
+
+                analyzer.add_country_names(code, names, local_langs=langs)
 
     conn.commit()
