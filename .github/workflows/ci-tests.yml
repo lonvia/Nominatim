@@ -154,7 +154,7 @@ jobs:
                   postgis-version: 3
 
             - name: Install Postgresql server dev
-              run: sudo apt-get install postgresql-server-dev-16
+              run: sudo apt-get install postgresql-server-dev-15
 
             - uses: ./Nominatim/.github/actions/build-nominatim
               with:
