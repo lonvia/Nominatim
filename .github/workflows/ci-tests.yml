@@ -150,11 +150,11 @@ jobs:
 
             - uses: ./Nominatim/.github/actions/setup-postgresql
               with:
-                  postgresql-version: 15
+                  postgresql-version: 16
                   postgis-version: 3
 
             - name: Install Postgresql server dev
-              run: sudo apt-get install postgresql-server-dev-15
+              run: sudo apt-get install postgresql-server-dev-16
 
             - uses: ./Nominatim/.github/actions/build-nominatim
               with:
