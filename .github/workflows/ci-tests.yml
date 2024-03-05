@@ -133,7 +133,7 @@ jobs:
 
     legacy-test:
         needs: create-archive
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-20.04
 
         steps:
             - uses: actions/download-artifact@v4
@@ -146,7 +146,7 @@ jobs:
             - name: Setup PHP
               uses: shivammathur/setup-php@v2
               with:
-                  php-version: '8.1'
+                  php-version: '7.4'
 
             - uses: ./Nominatim/.github/actions/setup-postgresql
               with:
