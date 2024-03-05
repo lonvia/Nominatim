@@ -150,7 +150,7 @@ jobs:
 
             - uses: ./Nominatim/.github/actions/setup-postgresql
               with:
-                  postgresql-version: 16
+                  postgresql-version: 15
                   postgis-version: 3
 
             - name: Install Postgresql server dev
