@@ -652,7 +652,12 @@ class PlaceSearch(AbstractSearch):
         """
         t = conn.t.search_name
 
-        sql = sa.select(t)
+        sql = sa.select(t.c.place_id, t.c.search_rank, t.c.address_rank,
+                        t.c.country_code, t.c.centroid,
+                        t.c.name_vector, t.c.nameaddress_vector,
+                        sa.case((t.c.importance > 0, t.c.importance),
+                                else_=0.40001-(sa.cast(t.c.search_rank, sa.Float())/75))
+                          .label('importance'))
 
         for lookup in self.lookups:
             sql = sql.where(lookup.sql_condition(t))
@@ -701,6 +706,24 @@ class PlaceSearch(AbstractSearch):
                 sql = sql.where(sa.or_(t.c.address_rank <= MAX_RANK_PARAM,
                                        t.c.search_rank <= MAX_RANK_PARAM))
 
+            if details.min_rank < 26:
+                sql = sql.add_columns(sa.func.first_value(t.c.importance)
+                                       .over(order_by=sa.desc(t.c.importance))
+                                       .label('max_importance'))
+
+        inner = sql.limit(10000).order_by(sa.desc(sa.text('importance'))).subquery()
+
+        penalty: SaExpression = sa.literal(self.penalty)
+        for ranking in self.rankings:
+            penalty += ranking.sql_penalty(inner)
+
+        sql = sa.select(inner.c.place_id, inner.c.search_rank, inner.c.address_rank,
+                        inner.c.country_code, inner.c.centroid, inner.c.importance,
+                        penalty.label('penalty'))
+
+        if not self.housenumbers and details.min_rank < 26:
+            sql = sql.where(inner.c.importance > inner.c.max_importance - 0.2)
+
         return sql.cte('searches')
 
 
@@ -716,9 +739,7 @@ class PlaceSearch(AbstractSearch):
         if details.geometry_output:
             sql = _add_geometry_columns(sql, t.c.geometry, details)
 
-        penalty: SaExpression = sa.literal(self.penalty)
-        for ranking in self.rankings:
-            penalty += ranking.sql_penalty(tsearch)
+        penalty: SaExpression = tsearch.c.penalty
 
         if self.postcodes:
             tpc = conn.t.postcode
@@ -742,10 +763,8 @@ class PlaceSearch(AbstractSearch):
         else:
             if self.expected_count < 10000\
                or (details.viewbox is not None and details.viewbox.area < 0.5):
-                sql = sql.order_by(
-                        penalty - sa.case((t.c.importance > 0, t.c.importance),
-                                    else_=0.40001-(sa.cast(t.c.rank_search, sa.Float())/75)))
-            sql = sql.add_columns(t.c.importance)
+                sql = sql.order_by(penalty - tsearch.c.importance)
+            sql = sql.add_columns(tsearch.c.importance)
 
 
         sql = sql.add_columns(penalty.label('accuracy'))
