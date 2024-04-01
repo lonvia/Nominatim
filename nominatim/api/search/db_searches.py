@@ -652,12 +652,17 @@ class PlaceSearch(AbstractSearch):
         """
         t = conn.t.search_name
 
+        penalty: SaExpression = sa.literal(self.penalty)
+        for ranking in self.rankings:
+            penalty += ranking.sql_penalty(t)
+
         sql = sa.select(t.c.place_id, t.c.search_rank, t.c.address_rank,
                         t.c.country_code, t.c.centroid,
                         t.c.name_vector, t.c.nameaddress_vector,
                         sa.case((t.c.importance > 0, t.c.importance),
                                 else_=0.40001-(sa.cast(t.c.search_rank, sa.Float())/75))
-                          .label('importance'))
+                          .label('importance'),
+                        penalty.label('penalty'))
 
         for lookup in self.lookups:
             sql = sql.where(lookup.sql_condition(t))
@@ -706,23 +711,28 @@ class PlaceSearch(AbstractSearch):
                 sql = sql.where(sa.or_(t.c.address_rank <= MAX_RANK_PARAM,
                                        t.c.search_rank <= MAX_RANK_PARAM))
 
-            if details.min_rank < 26:
-                sql = sql.add_columns(sa.func.first_value(t.c.importance)
-                                       .over(order_by=sa.desc(t.c.importance))
-                                       .label('max_importance'))
-
         inner = sql.limit(10000).order_by(sa.desc(sa.text('importance'))).subquery()
-
-        penalty: SaExpression = sa.literal(self.penalty)
-        for ranking in self.rankings:
-            penalty += ranking.sql_penalty(inner)
 
         sql = sa.select(inner.c.place_id, inner.c.search_rank, inner.c.address_rank,
                         inner.c.country_code, inner.c.centroid, inner.c.importance,
-                        penalty.label('penalty'))
+                        inner.c.penalty)
 
-        if not self.housenumbers and details.min_rank < 26:
-            sql = sql.where(inner.c.importance > inner.c.max_importance - 0.2)
+        # If the query is not an address search or has a geographic preference,
+        # preselect most important items to restrict the number of places
+        # that need to be looked up in placex.
+        if not self.housenumbers\
+           and (details.viewbox is None or details.bounded_viewbox)\
+           and (details.near is None or details.near_radius is not None):
+            sql = sql.add_columns(sa.func.first_value(inner.c.penalty - inner.c.importance)
+                                       .over(order_by=inner.c.penalty - inner.c.importance)
+                                       .label('min_penalty'))
+
+            inner = sql.subquery()
+
+            sql = sa.select(inner.c.place_id, inner.c.search_rank, inner.c.address_rank,
+                            inner.c.country_code, inner.c.centroid, inner.c.importance,
+                            inner.c.penalty)\
+                    .where(inner.c.penalty - inner.c.importance < inner.c.min_penalty + 0.6)
 
         return sql.cte('searches')
 
