@@ -722,7 +722,8 @@ class PlaceSearch(AbstractSearch):
         # that need to be looked up in placex.
         if not self.housenumbers\
            and (details.viewbox is None or details.bounded_viewbox)\
-           and (details.near is None or details.near_radius is not None):
+           and (details.near is None or details.near_radius is not None)\
+           and not self.qualifiers:
             sql = sql.add_columns(sa.func.first_value(inner.c.penalty - inner.c.importance)
                                        .over(order_by=inner.c.penalty - inner.c.importance)
                                        .label('min_penalty'))
@@ -732,7 +733,7 @@ class PlaceSearch(AbstractSearch):
             sql = sa.select(inner.c.place_id, inner.c.search_rank, inner.c.address_rank,
                             inner.c.country_code, inner.c.centroid, inner.c.importance,
                             inner.c.penalty)\
-                    .where(inner.c.penalty - inner.c.importance < inner.c.min_penalty + 0.6)
+                    .where(inner.c.penalty - inner.c.importance < inner.c.min_penalty + 0.5)
 
         return sql.cte('searches')
 
