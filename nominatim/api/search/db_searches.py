@@ -772,25 +772,18 @@ class PlaceSearch(AbstractSearch):
                                       .label('importance'))
             sql = sql.order_by(sa.desc(sa.text('importance')))
         else:
-            if self.expected_count < 10000\
-               or (details.viewbox is not None and details.viewbox.area < 0.5):
-                sql = sql.order_by(penalty - tsearch.c.importance)
+            sql = sql.order_by(penalty - tsearch.c.importance)
             sql = sql.add_columns(tsearch.c.importance)
 
 
-        sql = sql.add_columns(penalty.label('accuracy'))
-
-        if self.expected_count < 10000:
-            sql = sql.order_by(sa.text('accuracy'))
+        sql = sql.add_columns(penalty.label('accuracy'))\
+                 .order_by(sa.text('accuracy'))
 
         if self.housenumbers:
             hnr_list = '|'.join(self.housenumbers.values)
-            sql = sql.where(sa.or_(tsearch.c.address_rank < 30,
-                                   sa.func.RegexpWord(hnr_list, t.c.housenumber)))
-
-            # Cross check for housenumbers, need to do that on a rather large
-            # set. Worst case there are 40.000 main streets in OSM.
-            inner = sql.limit(10000).subquery()
+            inner = sql.where(sa.or_(tsearch.c.address_rank < 30,
+                                     sa.func.RegexpWord(hnr_list, t.c.housenumber)))\
+                       .subquery()
 
             # Housenumbers from placex
             thnr = conn.t.placex.alias('hnr')
