@@ -346,17 +346,16 @@ DECLARE
   ymin FLOAT;
   xmax FLOAT;
   ymax FLOAT;
-  xmid FLOAT;
-  ymid FLOAT;
+  mid FLOAT;
   secgeo GEOMETRY;
   secbox GEOMETRY;
+  box1 GEOMETRY;
+  box2 GEOMETRY;
   seg INTEGER;
   geo RECORD;
   area FLOAT;
   remainingdepth INTEGER;
-  added INTEGER;
 BEGIN
-
 --  RAISE WARNING 'quad_split_geometry: maxarea=%, depth=%',maxarea,maxdepth;
 
   IF (ST_GeometryType(geometry) not in ('ST_Polygon','ST_MultiPolygon') OR NOT ST_IsValid(geometry)) THEN
@@ -366,7 +365,7 @@ BEGIN
 
   remainingdepth := maxdepth - 1;
   area := ST_AREA(geometry);
-  IF remainingdepth < 1 OR area < maxarea THEN
+  IF remainingdepth < 1 OR area < maxarea OR ST_NPoints(geometry) < 10 THEN
     RETURN NEXT geometry;
     RETURN;
   END IF;
@@ -383,23 +382,24 @@ BEGIN
     RETURN;
   END IF;
 
-  xmid := (xmin+xmax)/2;
-  ymid := (ymin+ymax)/2;
+  IF (xmax - xmin) > (ymax - ymin) THEN
+    -- split vertically
+    mid := (xmin+xmax)/2;
+    box1 := ST_SetSRID(ST_MakeBox2D(ST_Point(xmin,ymin),ST_Point(mid,ymax)),4326);
+    box2 := ST_SetSRID(ST_MakeBox2D(ST_Point(mid,ymin),ST_Point(xmax,ymax)),4326);
+  ELSE
+    -- split horizontally
+    mid := (ymin+ymax)/2;
+    box1 := ST_SetSRID(ST_MakeBox2D(ST_Point(xmin,ymin),ST_Point(xmax,mid)),4326);
+    box2 := ST_SetSRID(ST_MakeBox2D(ST_Point(xmin,mid),ST_Point(xmax,ymax)),4326);
+  END IF;
 
-  added := 0;
-  FOR seg IN 1..4 LOOP
-
+  FOR seg IN 1..2 LOOP
     IF seg = 1 THEN
-      secbox := ST_SetSRID(ST_MakeBox2D(ST_Point(xmin,ymin),ST_Point(xmid,ymid)),4326);
+      secbox := box1;
     END IF;
     IF seg = 2 THEN
-      secbox := ST_SetSRID(ST_MakeBox2D(ST_Point(xmin,ymid),ST_Point(xmid,ymax)),4326);
-    END IF;
-    IF seg = 3 THEN
-      secbox := ST_SetSRID(ST_MakeBox2D(ST_Point(xmid,ymin),ST_Point(xmax,ymid)),4326);
-    END IF;
-    IF seg = 4 THEN
-      secbox := ST_SetSRID(ST_MakeBox2D(ST_Point(xmid,ymid),ST_Point(xmax,ymax)),4326);
+      secbox := box2;
     END IF;
 
     IF st_intersects(geometry, secbox) THEN
@@ -407,7 +407,6 @@ BEGIN
       IF NOT ST_IsEmpty(secgeo) AND ST_GeometryType(secgeo) in ('ST_Polygon','ST_MultiPolygon') THEN
         FOR geo IN select quad_split_geometry(secgeo, maxarea, remainingdepth) as geom LOOP
           IF NOT ST_IsEmpty(geo.geom) AND ST_GeometryType(geo.geom) in ('ST_Polygon','ST_MultiPolygon') THEN
-            added := added + 1;
             RETURN NEXT geo.geom;
           END IF;
         END LOOP;
@@ -428,7 +427,7 @@ DECLARE
   geo RECORD;
 BEGIN
   -- 10000000000 is ~~ 1x1 degree
-  FOR geo IN select quad_split_geometry(geometry, 0.25, 20) as geom LOOP
+  FOR geo IN select quad_split_geometry(geometry, 0.4, 10) as geom LOOP
     RETURN NEXT geo.geom;
   END LOOP;
   RETURN;
