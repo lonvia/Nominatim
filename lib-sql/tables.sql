@@ -91,7 +91,6 @@ CREATE TABLE location_property_osmline (
     place_id BIGINT NOT NULL,
     osm_id BIGINT,
     parent_place_id BIGINT,
-    geometry_sector INTEGER,
     indexed_date TIMESTAMP,
     startnumber INTEGER,
     endnumber INTEGER,
@@ -105,7 +104,8 @@ CREATE TABLE location_property_osmline (
     country_code VARCHAR(2)
   ){{db.tablespace.search_data}};
 CREATE UNIQUE INDEX idx_osmline_place_id ON location_property_osmline USING BTREE (place_id) {{db.tablespace.search_index}};
-CREATE INDEX idx_osmline_geometry_sector ON location_property_osmline USING BTREE (geometry_sector) {{db.tablespace.address_index}};
+CREATE INDEX idx_osmline_geohash ON location_property_osmline
+  USING BTREE (partition, ST_GeoHash(linegeo, 6)) {{db.tablespace.address_index}};
 CREATE INDEX idx_osmline_linegeo ON location_property_osmline USING GIST (linegeo) {{db.tablespace.search_index}}
   WHERE startnumber is not null;
 GRANT SELECT ON location_property_osmline TO "{{config.DATABASE_WEBUSER}}";
@@ -146,7 +146,6 @@ CREATE TABLE placex (
   linked_place_id BIGINT,
   importance FLOAT,
   indexed_date TIMESTAMP,
-  geometry_sector INTEGER,
   rank_address SMALLINT,
   rank_search SMALLINT,
   partition SMALLINT,
@@ -209,12 +208,12 @@ CREATE INDEX idx_placex_wikidata on placex
 
 -- The following two indexes function as a todo list for indexing.
 
-CREATE INDEX idx_placex_rank_address_sector ON placex
-  USING BTREE (rank_address, geometry_sector) {{db.tablespace.address_index}}
+CREATE INDEX idx_placex_rank_address_geohash ON placex
+  USING BTREE (rank_address, partition, ST_GeoHash(geometry, 6)) {{db.tablespace.address_index}}
   WHERE indexed_status > 0;
 
-CREATE INDEX idx_placex_rank_boundaries_sector ON placex
-  USING BTREE (rank_search, geometry_sector) {{db.tablespace.address_index}}
+CREATE INDEX idx_placex_rank_boundaries_geohash ON placex
+  USING BTREE (rank_search, partition, ST_GeoHash(geometry, 6)) {{db.tablespace.address_index}}
   WHERE class = 'boundary' and type = 'administrative'
         and indexed_status > 0;
 

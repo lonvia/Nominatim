@@ -672,7 +672,6 @@ BEGIN
   NEW.country_code := lower(get_country_code(NEW.centroid));
 
   NEW.partition := get_partition(NEW.country_code);
-  NEW.geometry_sector := geometry_sector(NEW.partition, NEW.centroid);
 
   IF NEW.osm_type = 'X' THEN
     -- E'X'ternal records should already be in the right format so do nothing

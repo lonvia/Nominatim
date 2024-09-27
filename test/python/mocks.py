@@ -27,7 +27,6 @@ class MockPlacexTable:
                                linked_place_id BIGINT,
                                importance FLOAT,
                                indexed_date TIMESTAMP,
-                               geometry_sector INTEGER,
                                rank_address SMALLINT,
                                rank_search SMALLINT,
                                partition SMALLINT,

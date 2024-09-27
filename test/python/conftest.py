@@ -191,7 +191,6 @@ def osmline_table(temp_db_with_extensions, table_factory):
                   """place_id BIGINT,
                      osm_id BIGINT,
                      parent_place_id BIGINT,
-                     geometry_sector INTEGER,
                      indexed_date TIMESTAMP,
                      startnumber INTEGER,
                      endnumber INTEGER,

@@ -83,7 +83,7 @@ class RankRunner(AbstractPlacexRunner):
     def sql_get_objects(self) -> pysql.Composed:
         return SELECT_SQL.format(pysql.SQL(
                 """WHERE placex.indexed_status > 0 and placex.rank_address = {}
-                   ORDER BY placex.geometry_sector
+                   ORDER BY placex.partition, ST_GeoHash(placex.geometry, 6)
                 """).format(pysql.Literal(self.rank)))
 
 
@@ -131,7 +131,7 @@ class InterpolationRunner:
         return """SELECT place_id, get_interpolation_address(address, osm_id) as address
                   FROM location_property_osmline
                   WHERE indexed_status > 0
-                  ORDER BY geometry_sector"""
+                  ORDER BY partition, ST_GeoHash(linegeo, 6)"""
 
 
     def index_places_query(self, batch_size: int) -> Query:

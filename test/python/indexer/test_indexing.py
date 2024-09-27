@@ -24,6 +24,7 @@ class IndexerTestDB:
         self.conn = conn
         self.conn.autocimmit = True
         with self.conn.cursor() as cur:
+            cur.execute('CREATE EXTENSION postgis')
             cur.execute("""CREATE TABLE placex (place_id BIGINT,
                                                 name HSTORE,
                                                 class TEXT,
@@ -38,7 +39,7 @@ class IndexerTestDB:
                                                 country_code TEXT,
                                                 address HSTORE,
                                                 token_info JSONB,
-                                                geometry_sector INTEGER)""")
+                                                geometry GEOMETRY(Geometry, 4326))""")
             cur.execute("""CREATE TABLE location_property_osmline (
                                place_id BIGINT,
                                osm_id BIGINT,
@@ -46,7 +47,8 @@ class IndexerTestDB:
                                token_info JSONB,
                                indexed_status SMALLINT,
                                indexed_date TIMESTAMP,
-                               geometry_sector INTEGER)""")
+                               partition SMALLINT,
+                               linegeo GEOMETRY(Geometry, 4326))""")
             cur.execute("""CREATE TABLE location_postcode (
                                place_id BIGINT,
                                indexed_status SMALLINT,
@@ -104,14 +106,14 @@ class IndexerTestDB:
             return cur.fetchone()[0]
 
     def add_place(self, cls='place', typ='locality',
-                  rank_search=30, rank_address=30, sector=20):
+                  rank_search=30, rank_address=30):
         next_id = next(self.placex_id)
         with self.conn.cursor() as cur:
             cur.execute("""INSERT INTO placex
                               (place_id, class, type, rank_search, rank_address,
-                               indexed_status, geometry_sector)
-                              VALUES (%s, %s, %s, %s, %s, 1, %s)""",
-                        (next_id, cls, typ, rank_search, rank_address, sector))
+                               indexed_status)
+                              VALUES (%s, %s, %s, %s, %s, 1)""",
+                        (next_id, cls, typ, rank_search, rank_address))
         return next_id
 
     def add_admin(self, **kwargs):
@@ -119,13 +121,13 @@ class IndexerTestDB:
         kwargs['typ'] = 'administrative'
         return self.add_place(**kwargs)
 
-    def add_osmline(self, sector=20):
+    def add_osmline(self):
         next_id = next(self.osmline_id)
         with self.conn.cursor() as cur:
             cur.execute("""INSERT INTO location_property_osmline
-                              (place_id, osm_id, indexed_status, geometry_sector)
-                              VALUES (%s, %s, 1, %s)""",
-                        (next_id, next_id, sector))
+                              (place_id, osm_id, indexed_status)
+                              VALUES (%s, %s, 1)""",
+                        (next_id, next_id))
         return next_id
 
     def add_postcode(self, country, postcode):

@@ -138,7 +138,6 @@ BEGIN
       NEW.country_code := lower(get_country_code(NEW.linegeo));
 
       NEW.partition := get_partition(NEW.country_code);
-      NEW.geometry_sector := geometry_sector(NEW.partition, NEW.linegeo);
   END IF;
 
   RETURN NEW;
@@ -313,11 +312,11 @@ BEGIN
                  (linegeo, partition, osm_id, parent_place_id,
                   startnumber, endnumber, step,
                   address, postcode, country_code,
-                  geometry_sector, indexed_status)
+                  indexed_status)
           VALUES (sectiongeo, NEW.partition, NEW.osm_id, NEW.parent_place_id,
                   startnumber, endnumber, NEW.step,
                   NEW.address, postcode,
-                  NEW.country_code, NEW.geometry_sector, 0);
+                  NEW.country_code, 0);
         END IF;
       END IF;
 

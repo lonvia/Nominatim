@@ -7,20 +7,6 @@
 
 -- Assorted helper functions for the triggers.
 
-CREATE OR REPLACE FUNCTION geometry_sector(partition INTEGER, place geometry)
-  RETURNS INTEGER
-  AS $$
-DECLARE
-  NEWgeometry geometry;
-BEGIN
---  RAISE WARNING '%',place;
-  NEWgeometry := ST_PointOnSurface(place);
-  RETURN (partition*1000000) + (500-ST_X(NEWgeometry)::integer)*1000 + (500-ST_Y(NEWgeometry)::integer);
-END;
-$$
-LANGUAGE plpgsql IMMUTABLE;
-
-
 CREATE OR REPLACE FUNCTION array_merge(a INTEGER[], b INTEGER[])
   RETURNS INTEGER[]
   AS $$
