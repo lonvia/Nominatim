@@ -13,7 +13,7 @@ import logging
 from ..errors import UsageError
 from ..config import Configuration
 from ..db import properties
-from ..db.connection import connect, Connection,\
+from ..db.connection import connect, Connection, index_exists,\
                             table_exists, register_hstore
 from ..version import NominatimVersion, NOMINATIM_VERSION, parse_version
 from ..tokenizer import factory as tokenizer_factory
@@ -114,3 +114,29 @@ def create_postcode_parent_index(conn: Connection, **_: Any) -> None:
             cur.execute("""CREATE INDEX IF NOT EXISTS
                              idx_location_postcode_parent_place_id
                              ON location_postcode USING BTREE (parent_place_id)""")
+
+@_migration(4, 5, 99, 0)
+def create_geohash_index(conn: Connection, **_: Any) -> None:
+    """ Replace the index on geometry_sector with an index on GeoHash.
+    """
+    if index_exists(conn, 'idx_placex_rank_address_sector', 'placex'):
+        with conn.cursor() as cur:
+            cur.execute('DROP INDEX idx_placex_rank_address_sector')
+            cur.execute("""CREATE INDEX idx_placex_rank_address_geohash ON placex
+                           USING BTREE (rank_address, partition, ST_GeoHash(geometry, 6))
+                           WHERE indexed_status > 0
+                        """)
+    if index_exists(conn, 'idx_placex_rank_boundaries_sector', 'placex'):
+        with conn.cursor() as cur:
+            cur.execute('DROP INDEX idx_placex_rank_boundaries_sector')
+            cur.execute("""CREATE INDEX idx_placex_rank_boundaries_geohash ON placex
+                           USING BTREE (rank_search, partition, ST_GeoHash(geometry, 6))
+                           WHERE class = 'boundary' and type = 'administrative'
+                           and indexed_status > 0
+                        """)
+    if index_exists(conn, 'idx_osmline_geometry_sector', 'location_property_osmline'):
+        with conn.cursor() as cur:
+            cur.execute('DROP INDEX idx_osmline_geometry_sector')
+            cur.execute("""CREATE INDEX idx_osmline_geohash ON location_property_osmline
+                           USING BTREE (partition, ST_GeoHash(linegeo, 6))
+                        """)
