@@ -306,15 +306,18 @@ def test_reverse_country_lookup_no_objects(apiobj, frontend):
 
 @pytest.mark.parametrize('rank', [4, 30])
 @pytest.mark.parametrize('with_geom', [True, False])
-def test_reverse_country_lookup_country_only(apiobj, frontend, rank, with_geom):
+@pytest.mark.parametrize('admin_level', [2, 3, 4])
+def test_reverse_country_lookup_country_only(apiobj, frontend, rank, with_geom, admin_level):
     apiobj.add_country('xx', 'POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))')
     apiobj.add_country('yy', 'POLYGON((10 0, 10 1, 11 1, 11 0, 10 0))')
     apiobj.add_placex(place_id=225, class_='place', type='country',
                       name={'name': 'My Country'},
-                      rank_address=4,
-                      rank_search=4,
+                      rank_address=admin_level * 2,
+                      rank_search=admin_level * 2,
+                      admin_level=admin_level,
                       country_code='xx',
-                      centroid=(0.7, 0.7))
+                      centroid=(0.7, 0.7),
+                      extratags={'ISO3166-1:alpha2': 'XX'})
 
     params = {'max_rank': rank}
     if with_geom:
@@ -323,6 +326,23 @@ def test_reverse_country_lookup_country_only(apiobj, frontend, rank, with_geom):
     api = frontend(apiobj, options=API_OPTIONS)
     assert api.reverse((0.5, 0.5), **params).place_id == 225
     assert api.reverse((10.5, 0.5), **params) is None
+
+
+@pytest.mark.parametrize('admin_level', [3, 4])
+def test_reverse_country_lookup_ignore_without_country_code(apiobj, frontend, admin_level):
+    apiobj.add_country('xx', 'POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))')
+    apiobj.add_country('yy', 'POLYGON((10 0, 10 1, 11 1, 11 0, 10 0))')
+    apiobj.add_placex(place_id=225, class_='place', type='country',
+                      name={'name': 'My Country'},
+                      rank_address=admin_level * 2,
+                      rank_search=admin_level * 2,
+                      admin_level=admin_level,
+                      country_code='xx',
+                      centroid=(0.7, 0.7),
+                      extratags={'whatever': 'XX'})
+
+    api = frontend(apiobj, options=API_OPTIONS)
+    assert api.reverse((0.5, 0.5)) is None
 
 
 @pytest.mark.parametrize('with_geom', [True, False])

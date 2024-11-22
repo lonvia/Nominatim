@@ -524,8 +524,10 @@ class ReverseGeocoder:
             def _country_base_query() -> SaSelect:
                 return _select_from_placex(t)\
                          .where(t.c.country_code.in_(ccodes))\
-                         .where(t.c.rank_address == 4)\
-                         .where(t.c.rank_search == 4)\
+                         .where(t.c.rank_address.between(4, 8))\
+                         .where(sa.or_(t.c.admin_level == 2,
+                                       sa.func.lower(
+                                           t.c.extratags['ISO3166-1:alpha2']).in_(ccodes)))\
                          .where(t.c.linked_place_id == None)\
                          .order_by('distance')\
                          .limit(1)
