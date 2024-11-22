@@ -529,6 +529,7 @@ class ReverseGeocoder:
                                        sa.func.lower(
                                            t.c.extratags['ISO3166-1:alpha2']).in_(ccodes)))\
                          .where(t.c.linked_place_id == None)\
+                         .order_by(t.c.rank_address)\
                          .order_by('distance')\
                          .limit(1)
 
