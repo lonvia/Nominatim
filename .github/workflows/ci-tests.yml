@@ -86,7 +86,7 @@ jobs:
                   LUA_VERSION: ${{ matrix.lua }}
 
             - name: Install test prerequisites
-              run: ./venv/bin/pip install behave==1.2.6
+              run: pipx install behave==1.2.6
 
             - name: Install test prerequisites (apt)
               run: sudo apt-get install -y -qq python3-pytest python3-pytest-asyncio uvicorn python3-falcon python3-aiosqlite python3-pyosmium
@@ -97,18 +97,20 @@ jobs:
               if: matrix.dependencies == 'pip'
 
             - name: Install latest flake8
-              run: ./venv/bin/pip install -U flake8
+              run: pipx install flake8
 
             - name: Python linting
-              run: ../venv/bin/python -m flake8 src test/python test/bdd
+              run: make lint
               working-directory: Nominatim
 
             - name: Install mypy and typechecking info
-              run: ./venv/bin/pip install -U mypy types-PyYAML types-jinja2 types-psutil types-requests types-ujson types-Pygments typing-extensions
+              run: |
+                pipx install mypy
+                pipx inject mypy types-PyYAML types-jinja2 types-psutil types-requests types-ujson types-Pygments typing-extensions
               if: matrix.dependencies == 'pip'
 
             - name: Python static typechecking
-              run: ../venv/bin/python -m mypy --strict --python-version 3.8 src
+              run: make mypy
               working-directory: Nominatim
               if: matrix.dependencies == 'pip'
 
@@ -118,7 +120,7 @@ jobs:
 
             - name: BDD tests
               run: |
-                  ../../../venv/bin/python -m behave -DREMOVE_TEMPLATE=1 --format=progress3
+                  behave -DREMOVE_TEMPLATE=1 --format=progress3
               working-directory: Nominatim/test/bdd
 
     install:

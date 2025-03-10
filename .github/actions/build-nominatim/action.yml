@@ -17,7 +17,7 @@ runs:
           shell: bash
         - name: Install general prerequisites
           run: |
-            sudo apt-get install -y -qq libspatialite-dev libsqlite3-mod-spatialite libicu-dev virtualenv python3-dev osm2pgsql
+            sudo apt-get install -y -qq libspatialite-dev libsqlite3-mod-spatialite libicu-dev virtualenv python3-dev osm2pgsql pipx
           shell: bash
 
         - name: Install prerequisites from apt
