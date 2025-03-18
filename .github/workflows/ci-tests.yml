@@ -118,9 +118,10 @@ jobs:
 
             - name: BDD tests
               run: |
-                  ../../../venv/bin/python -m pytest test/bdd
+                  ../venv/bin/python -m pytest test/bdd
+                  cd test/bdd
                   ../../../venv/bin/python -m behave -DREMOVE_TEMPLATE=1 --format=progress3 db osm2pgsql
-              working-directory: Nominatim/test/bdd
+              working-directory: Nominatim
 
     install:
         runs-on: ubuntu-latest
