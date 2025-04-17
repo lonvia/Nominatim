@@ -44,7 +44,7 @@ def test_load_file_simple(sql_preprocessor_cfg, sql_factory,
     monkeypatch.setenv('NOMINATIM_TABLESPACE_SEARCH_DATA', 'dsearch')
     monkeypatch.setenv('NOMINATIM_TABLESPACE_ADDRESS_INDEX', 'iaddress')
     monkeypatch.setenv('NOMINATIM_TABLESPACE_AUX_DATA', 'daux')
-    sqlfile = sql_factory("RETURN {};".format(expr))
+    sqlfile = sql_factory(f"RETURN {expr};")
 
     SQLPreprocessor(temp_db_conn, sql_preprocessor_cfg).run_sql_file(temp_db_conn, sqlfile)
 

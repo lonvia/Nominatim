@@ -23,13 +23,13 @@ from utils.checks import check_table_content
 
 
 @pytest.fixture
-def osm2pgsql_options(def_config):
+def osm2pgsql_options(bdd_config):
     return dict(osm2pgsql='osm2pgsql',
                 osm2pgsql_cache=50,
-                osm2pgsql_style=str(def_config.get_import_style_file()),
-                osm2pgsql_style_path=def_config.lib_dir.lua,
+                osm2pgsql_style=str(bdd_config.get_import_style_file()),
+                osm2pgsql_style_path=bdd_config.lib_dir.lua,
                 threads=1,
-                dsn=def_config.get_libpq_dsn(),
+                dsn=bdd_config.get_libpq_dsn(),
                 flatnode_file='',
                 tablespaces=dict(slim_data='', slim_index='',
                                  main_data='', main_index=''),
@@ -78,27 +78,27 @@ def load_from_osm_file(db, osm2pgsql_options, opl_writer, docstring):
 
 
 @when('updating osm data')
-def update_from_osm_file(db_conn, def_config, osm2pgsql_options, opl_writer, docstring):
+def update_from_osm_file(db_conn, bdd_config, osm2pgsql_options, opl_writer, docstring):
     """ Update a database previously populated with 'loading osm data'.
         Needs to run indexing on the existing data first to yield the correct
         result.
 
         The data is expected as attached text in OPL format.
     """
-    create_table_triggers(db_conn, def_config)
-    asyncio.run(load_data(def_config.get_libpq_dsn(), 1))
-    cli.nominatim(['index'], def_config.environ)
-    cli.nominatim(['refresh', '--functions'], def_config.environ)
+    create_table_triggers(db_conn, bdd_config)
+    asyncio.run(load_data(bdd_config.get_libpq_dsn(), 1))
+    cli.nominatim(['index'], bdd_config.environ)
+    cli.nominatim(['refresh', '--functions'], bdd_config.environ)
 
     osm2pgsql_options['import_file'] = opl_writer(docstring.replace(r'//', r'/'))
     run_osm2pgsql_updates(db_conn, osm2pgsql_options)
 
 
 @when('indexing')
-def do_index(def_config):
+def do_index(bdd_config):
     """ Run Nominatim's indexing step.
     """
-    cli.nominatim(['index'], def_config.environ)
+    cli.nominatim(['index'], bdd_config.environ)
 
 
 @then(step_parse(r'(?P<table>\w+) contains(?P<exact> exactly)?'))

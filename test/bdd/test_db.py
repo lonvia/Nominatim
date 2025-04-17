@@ -63,12 +63,12 @@ def test_config_env(pytestconfig):
 
 
 @pytest.fixture
-def update_config(def_config):
+def update_config(bdd_config):
     """ Prepare the database for being updatable and return the config.
     """
-    cli.nominatim(['refresh', '--functions'], def_config.environ)
+    cli.nominatim(['refresh', '--functions'], bdd_config.environ)
 
-    return def_config
+    return bdd_config
 
 
 @given(step_parse('the (?P<named>named )?places'), target_fixture=None)
@@ -123,14 +123,14 @@ def import_rels(db_conn, datatable):
 
 
 @when('importing', target_fixture='place_ids')
-def do_import(db_conn, def_config):
+def do_import(db_conn, bdd_config):
     """ Run a reduced version of the Nominatim import.
     """
-    create_table_triggers(db_conn, def_config)
-    asyncio.run(load_data(def_config.get_libpq_dsn(), 1))
-    tokenizer = tokenizer_factory.get_tokenizer_for_db(def_config)
-    update_postcodes(def_config.get_libpq_dsn(), None, tokenizer)
-    cli.nominatim(['index', '-q'], def_config.environ)
+    create_table_triggers(db_conn, bdd_config)
+    asyncio.run(load_data(bdd_config.get_libpq_dsn(), 1))
+    tokenizer = tokenizer_factory.get_tokenizer_for_db(bdd_config)
+    update_postcodes(bdd_config.get_libpq_dsn(), None, tokenizer)
+    cli.nominatim(['index', '-q'], bdd_config.environ)
 
     return _collect_place_ids(db_conn)
 

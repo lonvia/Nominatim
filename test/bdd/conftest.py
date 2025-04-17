@@ -105,7 +105,7 @@ def template_db(pytestconfig):
 
 
 @pytest.fixture
-def def_config(pytestconfig):
+def bdd_config(pytestconfig):
     dbname = pytestconfig.getini('nominatim_test_db')
 
     return Configuration(None,
@@ -129,8 +129,8 @@ def db(template_db, pytestconfig):
 
 
 @pytest.fixture
-def db_conn(db, def_config):
-    with psycopg.connect(def_config.get_libpq_dsn()) as conn:
+def db_conn(db, bdd_config):
+    with psycopg.connect(bdd_config.get_libpq_dsn()) as conn:
         info = psycopg.types.TypeInfo.fetch(conn, "hstore")
         psycopg.types.hstore.register_hstore(info, conn)
         yield conn
