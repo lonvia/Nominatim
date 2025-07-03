@@ -102,9 +102,11 @@ class SearchBuilder:
             else:
                 builder = self.build_special_search(sdata, assignment.address,
                                                     bool(near_items))
+        elif not assignment.housenumber and not assignment.address:
+            builder = self.build_name_search(sdata, assignment.name)
         else:
-            builder = self.build_name_search(sdata, assignment.name, assignment.address,
-                                             bool(near_items))
+            builder = self.build_address_search(sdata, assignment.name, assignment.address,
+                                                bool(near_items))
 
         if near_items:
             penalty = min(near_items.penalties)
@@ -180,12 +182,39 @@ class SearchBuilder:
                 dbf.FieldLookup('nameaddress_vector', addr_fulls, lookups.LookupAny))
 
         sdata.housenumbers = dbf.WeightedStrings([], [])
-        yield dbs.PlaceSearch(0.05, sdata, expected_count)
+        yield dbs.PlaceSearch(0.05, sdata, expected_count, True)
 
     def build_name_search(self, sdata: dbf.SearchData,
-                          name: qmod.TokenRange, address: List[qmod.TokenRange],
-                          is_category: bool) -> Iterator[dbs.AbstractSearch]:
-        """ Build abstract search queries for simple name or address searches.
+                          name: qmod.TokenRange) -> Iterator[dbs.AbstractSearch]:
+        """ Build abstract search queries for simple name searches.
+        """
+        ranking = self.get_name_ranking(name)
+        name_penalty = ranking.normalize_penalty()
+        if ranking.rankings:
+            sdata.rankings.append(ranking)
+
+        name_partials = {t.token: t for t in self.query.iter_partials(name)}
+        exp_count = min(t.count for t in name_partials.values()) / (3**(len(name_partials) - 1))
+
+        if len(name_partials) <= 2 and exp_count > 10000:
+            # lots of results expected: try lookup by full names first
+            name_fulls = list(filter(lambda t: t.count < 10000,
+                                     self.query.get_tokens(name, qmod.TOKEN_WORD)))
+            if name_fulls:
+                fulls_count = sum(t.count for t in name_fulls)
+                sdata.lookups = dbf.lookup_by_any_name([t.token for t in name_fulls], [], [])
+                yield dbs.PlaceSearch(name_penalty, sdata, fulls_count, False)
+            # penalty for the standard lookup by partials
+            name_penalty += 0.5
+
+        # by default, look the name up by its partials
+        sdata.lookups = dbf.lookup_by_names(list(name_partials.keys()), [])
+        yield dbs.PlaceSearch(name_penalty, sdata, exp_count, False)
+
+    def build_address_search(self, sdata: dbf.SearchData,
+                             name: qmod.TokenRange, address: List[qmod.TokenRange],
+                             is_category: bool) -> Iterator[dbs.AbstractSearch]:
+        """ Build abstract search queries for simple address searches.
         """
         if is_category or not sdata.housenumbers or self.configured_for_housenumbers:
             ranking = self.get_name_ranking(name)
@@ -194,7 +223,10 @@ class SearchBuilder:
                 sdata.rankings.append(ranking)
             for penalty, count, lookup in self.yield_lookups(name, address):
                 sdata.lookups = lookup
-                yield dbs.PlaceSearch(penalty + name_penalty, sdata, count)
+                if sdata.housenumbers:
+                    yield dbs.AddressSearch(penalty + name_penalty, sdata, count, bool(address))
+                else:
+                    yield dbs.PlaceSearch(penalty + name_penalty, sdata, count, True)
 
     def yield_lookups(self, name: qmod.TokenRange, address: List[qmod.TokenRange]
                       ) -> Iterator[Tuple[float, int, List[dbf.FieldLookup]]]:

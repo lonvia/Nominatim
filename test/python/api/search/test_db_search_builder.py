@@ -188,8 +188,8 @@ def test_name_only_search():
     assert isinstance(search, dbs.PlaceSearch)
     assert not search.postcodes.values
     assert not search.countries.values
-    assert not search.housenumbers.values
     assert not search.qualifiers.values
+    assert not search.has_address_terms
     assert len(search.lookups) == 1
     assert len(search.rankings) == 1
 
@@ -209,7 +209,7 @@ def test_name_with_qualifier():
     assert isinstance(search, dbs.PlaceSearch)
     assert not search.postcodes.values
     assert not search.countries.values
-    assert not search.housenumbers.values
+    assert not search.has_address_terms
     assert search.qualifiers.values == [('this', 'that')]
     assert len(search.lookups) == 1
     assert len(search.rankings) == 1
@@ -227,7 +227,7 @@ def test_name_with_housenumber_search():
     assert len(searches) == 1
     search = searches[0]
 
-    assert isinstance(search, dbs.PlaceSearch)
+    assert isinstance(search, dbs.AddressSearch)
     assert not search.postcodes.values
     assert not search.countries.values
     assert search.housenumbers.values == ['66']
@@ -254,7 +254,7 @@ def test_name_and_address():
     assert isinstance(search, dbs.PlaceSearch)
     assert not search.postcodes.values
     assert not search.countries.values
-    assert not search.housenumbers.values
+    assert search.has_address_terms
     assert len(search.lookups) == 2
     assert len(search.rankings) == 3
 
@@ -279,7 +279,7 @@ def test_name_and_complex_address():
     assert isinstance(search, dbs.PlaceSearch)
     assert not search.postcodes.values
     assert not search.countries.values
-    assert not search.housenumbers.values
+    assert search.has_address_terms
     assert len(search.lookups) == 2
     assert len(search.rankings) == 2
 
@@ -312,6 +312,7 @@ def test_name_only_search_with_category():
 
     assert isinstance(search, dbs.PlaceSearch)
     assert search.qualifiers.values == [('foo', 'bar')]
+    assert not search.has_address_terms
 
 
 def test_name_with_near_item_search_with_category_mismatch():
@@ -369,6 +370,7 @@ def test_name_with_qualifier_search_with_category_match():
     search = searches[0]
 
     assert isinstance(search, dbs.PlaceSearch)
+    assert not search.has_address_terms
     assert search.qualifiers.values == [('this', 'that')]
 
 
@@ -383,9 +385,9 @@ def test_name_only_search_with_countries():
     search = searches[0]
 
     assert isinstance(search, dbs.PlaceSearch)
+    assert not search.has_address_terms
     assert not search.postcodes.values
     assert set(search.countries.values) == {'de', 'en'}
-    assert not search.housenumbers.values
 
 
 def make_counted_searches(name_part, name_full, address_part, address_full,
@@ -418,6 +420,7 @@ def test_infrequent_partials_in_name():
     search = searches[0]
 
     assert isinstance(search, dbs.PlaceSearch)
+    assert search.has_address_terms
     assert len(search.lookups) == 2
     assert len(search.rankings) == 2
 
