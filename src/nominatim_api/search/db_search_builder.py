@@ -160,19 +160,28 @@ class SearchBuilder:
         sdata.lookups = [dbf.FieldLookup('name_vector', [t.token for t in hnrs], lookups.LookupAny)]
         expected_count = sum(t.count for t in hnrs)
 
-        partials = {t.token: t.addr_count for trange in address
-                    for t in self.query.iter_partials(trange)}
+        partials = [(t.addr_count, t.token) for trange in address
+                    for t in self.query.iter_partials(trange)]
 
         if not partials:
             # can happen when none of the partials is indexed
             return
 
-        if expected_count < 8000:
+        partials.sort()
+
+        if 1 < partials[-1][0] < expected_count:
+            # counts for the partials are available and are less than
+            # what is expected from the housenumber lookup. Use least frequent
+            # address token for lookup
             sdata.lookups.append(dbf.FieldLookup('nameaddress_vector',
-                                                 list(partials), lookups.Restrict))
-        elif len(partials) != 1 or list(partials.values())[0] < 10000:
+                                                 [partials[0][1]], lookups.LookupAll))
+            if len(partials) > 1:
+                sdata.lookups.append(
+                    dbf.FieldLookup('nameaddress_vector',
+                                    [t[1] for t in partials[1:]], lookups.Restrict))
+        elif expected_count < 8000:
             sdata.lookups.append(dbf.FieldLookup('nameaddress_vector',
-                                                 list(partials), lookups.LookupAll))
+                                                 [t[1] for t in partials], lookups.Restrict))
         else:
             addr_fulls = [t.token for t
                           in self.query.get_tokens(address[0], qmod.TOKEN_WORD)]
@@ -180,8 +189,9 @@ class SearchBuilder:
                 return
             sdata.lookups.append(
                 dbf.FieldLookup('nameaddress_vector', addr_fulls, lookups.LookupAny))
+            sdata.lookups.append(dbf.FieldLookup('nameaddress_vector',
+                                                 [t[1] for t in partials], lookups.Restrict))
 
-        sdata.housenumbers = dbf.WeightedStrings([], [])
         yield dbs.PlaceSearch(0.05, sdata, expected_count, True)
 
     def build_name_search(self, sdata: dbf.SearchData,
