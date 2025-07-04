@@ -7,7 +7,7 @@
 """
 Conversion from token assignment to an abstract DB search.
 """
-from typing import Optional, List, Tuple, Iterator, Dict
+from typing import Optional, List, Tuple, Iterator, Dict, Any
 import heapq
 
 from ..types import SearchDetails, DataLayer
@@ -45,6 +45,30 @@ def build_poi_search(category: List[Tuple[str, str]],
         countries = ccs
 
     return dbs.PoiSearch(_PoiData())
+
+
+def _split_for_lookup_index(tokens: List[Tuple[int, Any]]) -> int:
+    """ Takes a list of tuples where the first tuple member is a count
+        and suggests how many items to use for index lookup.
+        The list is expected to be sorted by counts.
+
+        The idea here is that we use as few tokens as possible for the
+        index lookup and avoid tokens with high counts.
+
+        The function will return -1 if the items don't look to be suitable
+        for index lookup at all.
+    """
+    length = len(tokens)
+    min_count = tokens[0][0]
+    if min_count == 1:
+        return min(length, 3)  # no statistics available, use index
+    if min_count < 20000 or (length == 1 and min_count < 100000):
+        return 1
+    if length > 1 and min_count < 200000:
+        return 2
+    if length > 2 and min_count < 2000000:
+        return 3
+    return -1
 
 
 class SearchBuilder:
@@ -160,35 +184,27 @@ class SearchBuilder:
         sdata.lookups = [dbf.FieldLookup('name_vector', [t.token for t in hnrs], lookups.LookupAny)]
         expected_count = sum(t.count for t in hnrs)
 
-        # Counting oddness: if the count is 1 assume that no statistics are
-        # available for this item and avoid for index use.
-        partials = [(100000 if t.addr_count == 1 else t.addr_count, t.token) for trange in address
+        partials = [(t.addr_count, t.token) for trange in address
                     for t in self.query.iter_partials(trange)]
 
         if not partials:
             # can happen when none of the partials is indexed
             return
 
-        partials.sort()
+        # Counting oddness: if the count is 1 assume that no statistics are
+        # available for this item and avoid for index use.
+        partials.sort(key=lambda t: t[0] if t[0] > 1 else 100000)
+        split = _split_for_lookup_index(partials)
 
-        if partials[0][0] < expected_count:
-            # counts for the partials are available and are less than
-            # what is expected from the housenumber lookup. Use least frequent
-            # address token for lookup
-            num_index_items = 1
-            if len(partials) > 1:
-                if partials[0][0] > 50000:
-                    num_index_items = 2
-                elif len(partials) > 2 and partials[0][0] > 500000:
-                    num_index_items = 3
+        if (1 < partials[0][0] < expected_count or expected_count >= 10000) and split > 0:
             sdata.lookups.append(
                 dbf.FieldLookup('nameaddress_vector',
-                                [t[1] for t in partials[:num_index_items]], lookups.LookupAll))
-            if len(partials) > num_index_items:
+                                [t[1] for t in partials[:split]], lookups.LookupAll))
+            if len(partials) > split:
                 sdata.lookups.append(
                     dbf.FieldLookup('nameaddress_vector',
-                                    [t[1] for t in partials], lookups.Restrict))
-        elif expected_count < 8000:
+                                    [t[1] for t in partials[split:]], lookups.Restrict))
+        elif expected_count < 10000:
             sdata.lookups.append(dbf.FieldLookup('nameaddress_vector',
                                                  [t[1] for t in partials], lookups.Restrict))
         else:
@@ -212,10 +228,25 @@ class SearchBuilder:
         if ranking.rankings:
             sdata.rankings.append(ranking)
 
-        name_partials = {t.token: t for t in self.query.iter_partials(name)}
-        exp_count = min(t.count for t in name_partials.values()) / (3**(len(name_partials) - 1))
+        name_partials = [(t.count, t.token) for t in self.query.iter_partials(name)]
+        assert name_partials
+        # Counting oddness: if the count is 1 assume that no statistics are
+        # available for this item and avoid for index use.
+        name_partials.sort(key=lambda t: t[0] if t[0] > 1 else 100000)
 
-        if len(name_partials) <= 2 and exp_count > 10000:
+        split = _split_for_lookup_index(name_partials)
+
+        if split > 0:
+            sdata.lookups = [dbf.FieldLookup('name_vector',
+                                             [t[1] for t in name_partials[:split]],
+                                             lookups.LookupAll)]
+            if len(name_partials) > split:
+                sdata.lookups.append(dbf.FieldLookup('name_vector',
+                                                     [t[1] for t in name_partials[split:]],
+                                                     lookups.Restrict))
+            yield dbs.PlaceSearch(name_penalty, sdata,
+                                  name_partials[0][0] / (5**(split - 1)), False)
+        else:
             # lots of results expected: try lookup by full names first
             name_fulls = list(filter(lambda t: t.count < 10000,
                                      self.query.get_tokens(name, qmod.TOKEN_WORD)))
@@ -226,9 +257,10 @@ class SearchBuilder:
             # penalty for the standard lookup by partials
             name_penalty += 0.5
 
-        # by default, look the name up by its partials
-        sdata.lookups = dbf.lookup_by_names(list(name_partials.keys()), [])
-        yield dbs.PlaceSearch(name_penalty, sdata, exp_count, False)
+            # look the name up by its partials
+            sdata.lookups = dbf.lookup_by_names([t[1] for t in name_partials], [])
+            yield dbs.PlaceSearch(name_penalty, sdata,
+                                  name_partials[0][0] / (5**(len(name_partials) - 1)), False)
 
     def build_address_search(self, sdata: dbf.SearchData,
                              name: qmod.TokenRange, address: List[qmod.TokenRange],
