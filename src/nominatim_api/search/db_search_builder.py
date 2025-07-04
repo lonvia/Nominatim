@@ -160,7 +160,9 @@ class SearchBuilder:
         sdata.lookups = [dbf.FieldLookup('name_vector', [t.token for t in hnrs], lookups.LookupAny)]
         expected_count = sum(t.count for t in hnrs)
 
-        partials = [(t.addr_count, t.token) for trange in address
+        # Counting oddness: if the count is 1 assume that no statistics are
+        # available for this item and avoid for index use.
+        partials = [(100000 if t.addr_count == 1 else t.addr_count, t.token) for trange in address
                     for t in self.query.iter_partials(trange)]
 
         if not partials:
@@ -169,16 +171,23 @@ class SearchBuilder:
 
         partials.sort()
 
-        if 1 < partials[-1][0] < expected_count:
+        if partials[0][0] < expected_count:
             # counts for the partials are available and are less than
             # what is expected from the housenumber lookup. Use least frequent
             # address token for lookup
-            sdata.lookups.append(dbf.FieldLookup('nameaddress_vector',
-                                                 [partials[0][1]], lookups.LookupAll))
+            num_index_items = 1
             if len(partials) > 1:
+                if partials[0][0] > 50000:
+                    num_index_items = 2
+                elif len(partials) > 2 and partials[0][0] > 500000:
+                    num_index_items = 3
+            sdata.lookups.append(
+                dbf.FieldLookup('nameaddress_vector',
+                                [t[1] for t in partials[:num_index_items]], lookups.LookupAll))
+            if len(partials) > num_index_items:
                 sdata.lookups.append(
                     dbf.FieldLookup('nameaddress_vector',
-                                    [t[1] for t in partials[1:]], lookups.Restrict))
+                                    [t[1] for t in partials], lookups.Restrict))
         elif expected_count < 8000:
             sdata.lookups.append(dbf.FieldLookup('nameaddress_vector',
                                                  [t[1] for t in partials], lookups.Restrict))
