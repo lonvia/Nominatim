@@ -243,3 +243,17 @@ def lookup_by_addr(name_tokens: List[int], addr_tokens: List[int]) -> List[Field
     """
     return [FieldLookup('name_vector', name_tokens, lookups.Restrict),
             FieldLookup('nameaddress_vector', addr_tokens, lookups.LookupAll)]
+
+
+def lookup_split(field: str, tokens_with_weights: List[Tuple[int, int]],
+                 split_pos: int) -> List[FieldLookup]:
+    """ Create a lookup list where the first part of the given list is looked
+        up using an index and the second part is used to restrict the search.
+    """
+    lookup = [FieldLookup(field, [t[1] for t in tokens_with_weights[:split_pos]],
+                          lookups.LookupAll)]
+    if len(tokens_with_weights) > split_pos:
+        lookup.append(FieldLookup(field, [t[1] for t in tokens_with_weights[split_pos:]],
+                      lookups.Restrict))
+
+    return lookup

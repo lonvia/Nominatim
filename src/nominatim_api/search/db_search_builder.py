@@ -47,7 +47,7 @@ def build_poi_search(category: List[Tuple[str, str]],
     return dbs.PoiSearch(_PoiData())
 
 
-def _split_for_lookup_index(tokens: List[Tuple[int, Any]]) -> int:
+def _split_for_lookup_index(tokens: List[Tuple[int, Any]], limit: int) -> int:
     """ Takes a list of tuples where the first tuple member is a count
         and suggests how many items to use for index lookup.
         The list is expected to be sorted by counts.
@@ -62,12 +62,14 @@ def _split_for_lookup_index(tokens: List[Tuple[int, Any]]) -> int:
     min_count = tokens[0][0]
     if min_count == 1:
         return min(length, 3)  # no statistics available, use index
-    if min_count < 20000 or (length == 1 and min_count < 100000):
-        return 1
-    if length > 1 and min_count < 200000:
-        return 2
-    if length > 2 and min_count < 2000000:
-        return 3
+
+    for i in range(min(length, 3)):
+        ilimit = (limit * (10**i))
+        if i > 0 and tokens[i][0] > 10 * min_count:
+            return i if min_count < ilimit else -1
+        if min_count < ilimit:
+            return i + 1
+
     return -1
 
 
@@ -194,16 +196,10 @@ class SearchBuilder:
         # Counting oddness: if the count is 1 assume that no statistics are
         # available for this item and avoid for index use.
         partials.sort(key=lambda t: t[0] if t[0] > 1 else 100000)
-        split = _split_for_lookup_index(partials)
+        split = _split_for_lookup_index(partials, 30000)
 
         if (1 < partials[0][0] < expected_count or expected_count >= 10000) and split > 0:
-            sdata.lookups.append(
-                dbf.FieldLookup('nameaddress_vector',
-                                [t[1] for t in partials[:split]], lookups.LookupAll))
-            if len(partials) > split:
-                sdata.lookups.append(
-                    dbf.FieldLookup('nameaddress_vector',
-                                    [t[1] for t in partials[split:]], lookups.Restrict))
+            sdata.lookups.extend(dbf.lookup_split('nameaddress_vector', partials, split))
         elif expected_count < 10000:
             sdata.lookups.append(dbf.FieldLookup('nameaddress_vector',
                                                  [t[1] for t in partials], lookups.Restrict))
@@ -234,16 +230,10 @@ class SearchBuilder:
         # available for this item and avoid for index use.
         name_partials.sort(key=lambda t: t[0] if t[0] > 1 else 100000)
 
-        split = _split_for_lookup_index(name_partials)
+        split = _split_for_lookup_index(name_partials, 30000)
 
         if split > 0:
-            sdata.lookups = [dbf.FieldLookup('name_vector',
-                                             [t[1] for t in name_partials[:split]],
-                                             lookups.LookupAll)]
-            if len(name_partials) > split:
-                sdata.lookups.append(dbf.FieldLookup('name_vector',
-                                                     [t[1] for t in name_partials[split:]],
-                                                     lookups.Restrict))
+            sdata.lookups = dbf.lookup_split('name_vector', name_partials, split)
             yield dbs.PlaceSearch(name_penalty, sdata,
                                   name_partials[0][0] / (5**(split - 1)), False)
         else:
@@ -258,9 +248,10 @@ class SearchBuilder:
             name_penalty += 0.5
 
             # look the name up by its partials
-            sdata.lookups = dbf.lookup_by_names([t[1] for t in name_partials], [])
-            yield dbs.PlaceSearch(name_penalty, sdata,
-                                  name_partials[0][0] / (5**(len(name_partials) - 1)), False)
+            exp_count = name_partials[0][0] / (5**(len(name_partials) - 1))
+            if exp_count < 50000:
+                sdata.lookups = dbf.lookup_by_names([t[1] for t in name_partials], [])
+                yield dbs.PlaceSearch(name_penalty, sdata, exp_count, False)
 
     def build_address_search(self, sdata: dbf.SearchData,
                              name: qmod.TokenRange, address: List[qmod.TokenRange],
@@ -285,77 +276,67 @@ class SearchBuilder:
             be searched for. This takes into account how frequent the terms
             are and tries to find a lookup that optimizes index use.
         """
-        penalty = 0.0  # extra penalty
-        name_partials = {t.token: t for t in self.query.iter_partials(name)}
+        penalty = 0.0
 
-        addr_partials = [t for r in address for t in self.query.iter_partials(r)]
-        addr_tokens = list({t.token for t in addr_partials})
+        name_partials = [(t.count, t.token) for t in self.query.iter_partials(name)]
+        assert name_partials
+        name_partials.sort(key=lambda t: t[0] if t[0] > 1 else 100000)
+        name_split = _split_for_lookup_index(name_partials, 20000)
 
-        exp_count = min(t.count for t in name_partials.values()) / (3**(len(name_partials) - 1))
-
-        if (len(name_partials) > 3 or exp_count < 8000):
-            yield penalty, exp_count, dbf.lookup_by_names(list(name_partials.keys()), addr_tokens)
-            return
-
-        addr_count = min(t.addr_count for t in addr_partials) if addr_partials else 50000
-        # Partial term to frequent. Try looking up by rare full names first.
-        name_fulls = self.query.get_tokens(name, qmod.TOKEN_WORD)
-        if name_fulls:
-            fulls_count = sum(t.count for t in name_fulls)
-
-            if fulls_count < 80000 or addr_count < 50000:
-                yield penalty, fulls_count / (2**len(addr_tokens)), \
-                    self.get_full_name_ranking(name_fulls, addr_partials,
-                                               fulls_count > 30000 / max(1, len(addr_tokens)))
-
-        # To catch remaining results, lookup by name and address
-        # We only do this if there is a reasonable number of results expected.
-        exp_count /= 2**len(addr_tokens)
-        if exp_count < 10000 and addr_count < 20000:
-            penalty += 0.35 * max(1 if name_fulls else 0.1,
-                                  5 - len(name_partials) - len(addr_tokens))
-            yield penalty, exp_count, \
-                self.get_name_address_ranking(list(name_partials.keys()), addr_partials)
-
-    def get_name_address_ranking(self, name_tokens: List[int],
-                                 addr_partials: List[qmod.Token]) -> List[dbf.FieldLookup]:
-        """ Create a ranking expression looking up by name and address.
-        """
-        lookup = [dbf.FieldLookup('name_vector', name_tokens, lookups.LookupAll)]
-
-        addr_restrict_tokens = []
-        addr_lookup_tokens = []
-        for t in addr_partials:
-            if t.addr_count > 20000:
-                addr_restrict_tokens.append(t.token)
-            else:
-                addr_lookup_tokens.append(t.token)
-
-        if addr_restrict_tokens:
-            lookup.append(dbf.FieldLookup('nameaddress_vector',
-                                          addr_restrict_tokens, lookups.Restrict))
-        if addr_lookup_tokens:
-            lookup.append(dbf.FieldLookup('nameaddress_vector',
-                                          addr_lookup_tokens, lookups.LookupAll))
-
-        return lookup
-
-    def get_full_name_ranking(self, name_fulls: List[qmod.Token], addr_partials: List[qmod.Token],
-                              use_lookup: bool) -> List[dbf.FieldLookup]:
-        """ Create a ranking expression with full name terms and
-            additional address lookup. When 'use_lookup' is true, then
-            address lookups will use the index, when the occurrences are not
-            too many.
-        """
-        if use_lookup:
-            addr_restrict_tokens = []
-            addr_lookup_tokens = [t.token for t in addr_partials]
+        addr_partials = list({(t.addr_count, t.token)
+                              for r in address for t in self.query.iter_partials(r)})
+        if addr_partials:
+            addr_partials.sort(key=lambda t: t[0] if t[0] > 1 else 100000)
+            addr_split = _split_for_lookup_index(addr_partials, 20000)
         else:
-            addr_restrict_tokens = [t.token for t in addr_partials]
-            addr_lookup_tokens = []
+            addr_split = 0
 
-        return dbf.lookup_by_any_name([t.token for t in name_fulls],
-                                      addr_restrict_tokens, addr_lookup_tokens)
+        print(name_partials, name_split, addr_partials, addr_split)
+        if name_split < 0 and addr_split < 0:
+            # Partial term too frequent. Try looking up by rare full names first.
+            name_fulls = self.query.get_tokens(name, qmod.TOKEN_WORD)
+            if name_fulls:
+                fulls_count = sum(t.count for t in name_fulls)
+
+                if fulls_count < 80000:
+                    yield 0.0, fulls_count, \
+                        dbf.lookup_by_any_name([t.token for t in name_fulls],
+                                               [t[1] for t in addr_partials],
+                                               [])
+                    penalty += 0.4
+            name_split = _split_for_lookup_index(name_partials, 50000)
+            if addr_partials:
+                addr_split = _split_for_lookup_index(addr_partials, 50000)
+
+        if name_split > 0 and (addr_split <= 0 or name_partials[0][0] <= addr_partials[0][0]):
+            # lookup by name
+            lookup = dbf.lookup_split('name_vector', name_partials, name_split)
+            if addr_partials:
+                lookup.append(dbf.FieldLookup('nameaddress_vector',
+                                              [t[1] for t in addr_partials],
+                                              lookups.Restrict))
+            yield penalty, name_partials[0][0] / (5**(name_split - 1)), lookup
+        elif addr_split > 0:
+            lookup = dbf.lookup_split('nameaddress_vector', addr_partials, addr_split)
+            lookup.append(dbf.FieldLookup('name_vector',
+                                          [t[1] for t in name_partials],
+                                          lookups.Restrict))
+            yield penalty, addr_partials[0][0] / (5**(addr_split - 1)), lookup
+        else:
+            penalty += 0.3
+            # To catch remaining results, lookup by name and address
+            # We only do this if there is a reasonable number of results expected.
+            if addr_partials:
+                exp_count = min(name_partials[0][0], addr_partials[0][0])
+            else:
+                exp_count = name_partials[0][0]
+            exp_count = int(exp_count / (min(3, len(name_partials)) + min(3, len(addr_partials))))
+            if exp_count < 50000:
+                lookup = dbf.lookup_split('name_vector', name_partials, 3)
+                if addr_partials:
+                    lookup.extend(dbf.lookup_split('nameaddress_vector', addr_partials, 3))
+
+                yield penalty, exp_count, lookup
 
     def get_name_ranking(self, trange: qmod.TokenRange,
                          db_field: str = 'name_vector') -> dbf.FieldRanking:
