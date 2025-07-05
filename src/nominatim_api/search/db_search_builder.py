@@ -63,12 +63,11 @@ def _split_for_lookup_index(tokens: List[Tuple[int, Any]], limit: int) -> int:
     if min_count == 1:
         return min(length, 3)  # no statistics available, use index
 
+    ilimit = limit
     for i in range(min(length, 3)):
-        ilimit = (limit * (10**i))
-        if i > 0 and tokens[i][0] > 10 * min_count:
-            return i if min_count < ilimit else -1
         if min_count < ilimit:
             return i + 1
+        ilimit *= 6
 
     return -1
 
@@ -291,7 +290,6 @@ class SearchBuilder:
         else:
             addr_split = 0
 
-        print(name_partials, name_split, addr_partials, addr_split)
         if name_split < 0 and addr_split < 0:
             # Partial term too frequent. Try looking up by rare full names first.
             name_fulls = self.query.get_tokens(name, qmod.TOKEN_WORD)
@@ -303,7 +301,7 @@ class SearchBuilder:
                         dbf.lookup_by_any_name([t.token for t in name_fulls],
                                                [t[1] for t in addr_partials],
                                                [])
-                    penalty += 0.4
+            penalty += 0.4
             name_split = _split_for_lookup_index(name_partials, 50000)
             if addr_partials:
                 addr_split = _split_for_lookup_index(addr_partials, 50000)
@@ -322,8 +320,8 @@ class SearchBuilder:
                                           [t[1] for t in name_partials],
                                           lookups.Restrict))
             yield penalty, addr_partials[0][0] / (5**(addr_split - 1)), lookup
-        else:
-            penalty += 0.3
+        elif len(name_partials) > 1:
+            penalty += 0.5
             # To catch remaining results, lookup by name and address
             # We only do this if there is a reasonable number of results expected.
             if addr_partials:
