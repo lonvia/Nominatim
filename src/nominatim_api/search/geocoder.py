@@ -84,9 +84,7 @@ class ForwardGeocoder:
         prev_penalty = 0.0
         for i, search in enumerate(searches):
             if search.penalty > prev_penalty\
-               and (search.penalty > 2.0
-                    or search.penalty - 1.0 + i * 0.04 > min_accuracy
-                    or i >= 15):
+               and (search.penalty - 1.0 > min_accuracy or i >= 15):
                 break
             log().table_dump(f"{i + 1}. Search", _dump_searches([search], query))
             log().var_dump('Params', self.params)
@@ -99,9 +97,12 @@ class ForwardGeocoder:
                     prevresult.accuracy = min(prevresult.accuracy, result.accuracy)
                 else:
                     results[rhash] = result
-                min_accuracy = min(min_accuracy, result.accuracy)
+                min_accuracy = min(min_accuracy, result.accuracy - (result.importance or 0))
             log().result_dump('Results', ((r.accuracy, r) for r in lookup_results))
+            log().var_dump('min accuracy', min_accuracy)
             prev_penalty = search.penalty
+            if min_accuracy < -0.3 + i * 0.08:
+                break
             if dt.datetime.now() >= end_time:
                 break
 
