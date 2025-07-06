@@ -231,9 +231,14 @@ class AddressSearch(base.AbstractSearch):
         return sql.cte('searches')
 
     async def lookup(self, conn: SearchConnection,
-                     details: SearchDetails) -> nres.SearchResults:
+                     details: SearchDetails, min_accuracy: float) -> nres.SearchResults:
         """ Find results for the search in the database.
         """
+        # housenumbers have no importance, so the penalty presents a lower
+        # bound for accuracy. Don't search, if we cannot become better.
+        if self.penalty > min_accuracy:
+            return nres.SearchResults()
+
         t = conn.t.placex
         tsearch = self._inner_search_name_cte(conn, details)
 

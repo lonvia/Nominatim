@@ -80,14 +80,14 @@ class ForwardGeocoder:
 
         end_time = dt.datetime.now() + self.timeout
 
-        min_ranking = searches[0].penalty + 2.0
+        min_accuracy = 100.0
         prev_penalty = 0.0
         for i, search in enumerate(searches):
-            if search.penalty > prev_penalty and (search.penalty > min_ranking or i > 20):
+            if search.penalty > prev_penalty and (search.penalty - 1.0 > min_accuracy or i > 20):
                 break
             log().table_dump(f"{i + 1}. Search", _dump_searches([search], query))
             log().var_dump('Params', self.params)
-            lookup_results = await search.lookup(self.conn, self.params)
+            lookup_results = await search.lookup(self.conn, self.params, min_accuracy)
             for result in lookup_results:
                 rhash = (result.source_table, result.place_id,
                          result.housenumber, result.country_code)
@@ -96,7 +96,7 @@ class ForwardGeocoder:
                     prevresult.accuracy = min(prevresult.accuracy, result.accuracy)
                 else:
                     results[rhash] = result
-                min_ranking = min(min_ranking, result.accuracy * 1.2, 2.0)
+                min_accuracy = min(min_accuracy, result.accuracy)
             log().result_dump('Results', ((r.accuracy, r) for r in lookup_results))
             prev_penalty = search.penalty
             if dt.datetime.now() >= end_time:
@@ -189,7 +189,7 @@ class ForwardGeocoder:
                 results = SearchResults()
         else:
             search = build_poi_search(categories, self.params.countries)
-            results = await search.lookup(self.conn, self.params)
+            results = await search.lookup(self.conn, self.params, 100)
             await add_result_details(self.conn, results, self.params)
 
         log().result_dump('Final Results', ((r.accuracy, r) for r in results))

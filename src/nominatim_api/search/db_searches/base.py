@@ -28,7 +28,8 @@ class AbstractSearch(abc.ABC):
         self.penalty = penalty
 
     @abc.abstractmethod
-    async def lookup(self, conn: SearchConnection, details: SearchDetails) -> SearchResults:
+    async def lookup(self, conn: SearchConnection,
+                     details: SearchDetails, min_accuracy: float) -> SearchResults:
         """ Find results for the search in the database.
         """
 

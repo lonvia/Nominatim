@@ -35,17 +35,18 @@ class NearSearch(base.AbstractSearch):
         self.categories = categories
 
     async def lookup(self, conn: SearchConnection,
-                     details: SearchDetails) -> nres.SearchResults:
+                     details: SearchDetails, min_accuracy: float) -> nres.SearchResults:
         """ Find results for the search in the database.
         """
         results = nres.SearchResults()
-        base = await self.search.lookup(conn, details)
+        base = await self.search.lookup(conn, details, min_accuracy)
 
         if not base:
             return results
 
         base.sort(key=lambda r: (r.accuracy, r.rank_search))
-        max_accuracy = base[0].accuracy + 0.5
+
+        max_accuracy = min(min_accuracy, base[0].accuracy) + 0.5
         if base[0].rank_address == 0:
             min_rank = 0
             max_rank = 0

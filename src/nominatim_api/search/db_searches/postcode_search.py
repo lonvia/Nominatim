@@ -36,7 +36,7 @@ class PostcodeSearch(base.AbstractSearch):
         self.rankings = sdata.rankings
 
     async def lookup(self, conn: SearchConnection,
-                     details: SearchDetails) -> nres.SearchResults:
+                     details: SearchDetails, min_accuracy: float) -> nres.SearchResults:
         """ Find results for the search in the database.
         """
         t = conn.t.postcode

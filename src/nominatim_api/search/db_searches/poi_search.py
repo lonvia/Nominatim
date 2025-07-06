@@ -35,7 +35,7 @@ class PoiSearch(base.AbstractSearch):
         self.countries = sdata.countries
 
     async def lookup(self, conn: SearchConnection,
-                     details: SearchDetails) -> nres.SearchResults:
+                     details: SearchDetails, min_accuracy: float) -> nres.SearchResults:
         """ Find results for the search in the database.
         """
         bind_params = {
