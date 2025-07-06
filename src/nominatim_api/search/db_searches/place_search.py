@@ -47,7 +47,7 @@ class PlaceSearch(base.AbstractSearch):
         self.has_address_terms = has_address_terms
 
     def _inner_search_name_cte(self, conn: SearchConnection,
-                               details: SearchDetails) -> 'sa.CTE':
+                               details: SearchDetails, min_importance: float) -> 'sa.CTE':
         """ Create a subquery that preselects the rows in the search_name
             table.
         """
@@ -117,6 +117,9 @@ class PlaceSearch(base.AbstractSearch):
                         inner.c.country_code, inner.c.centroid, inner.c.importance,
                         inner.c.penalty)
 
+        if min_importance > 0:
+            sql = sql.where(inner.c.importance > min_importance)
+
         # If the query is not an address search or has a geographic preference,
         # preselect most important items to restrict the number of places
         # that need to be looked up in placex.
@@ -141,7 +144,7 @@ class PlaceSearch(base.AbstractSearch):
         """ Find results for the search in the database.
         """
         t = conn.t.placex
-        tsearch = self._inner_search_name_cte(conn, details)
+        tsearch = self._inner_search_name_cte(conn, details, self.penalty - min_accuracy)
 
         sql = base.select_placex(t).join(tsearch, t.c.place_id == tsearch.c.place_id)
 

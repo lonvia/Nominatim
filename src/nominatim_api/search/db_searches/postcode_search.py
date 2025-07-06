@@ -39,6 +39,10 @@ class PostcodeSearch(base.AbstractSearch):
                      details: SearchDetails, min_accuracy: float) -> nres.SearchResults:
         """ Find results for the search in the database.
         """
+        # postcode importance cannot be over 0.2
+        if self.penalty - 0.2 > min_accuracy:
+            return nres.SearchResults()
+
         t = conn.t.postcode
         pcs = self.postcodes.values
 
