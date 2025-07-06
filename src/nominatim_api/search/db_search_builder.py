@@ -237,7 +237,7 @@ class SearchBuilder:
                                   name_partials[0][0] / (10**(split - 1)), False)
         else:
             # lots of results expected: try lookup by full names first
-            name_fulls = list(filter(lambda t: t.count < 10000,
+            name_fulls = list(filter(lambda t: t.count < 50000,
                                      self.query.get_tokens(name, qmod.TOKEN_WORD)))
             if name_fulls:
                 fulls_count = sum(t.count for t in name_fulls)
