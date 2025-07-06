@@ -292,16 +292,15 @@ CREATE OR REPLACE FUNCTION weigh_search(search_vector INT[],
   RETURNS FLOAT
   AS $$
 DECLARE
-  rank JSON;
+  weight FLOAT;
 BEGIN
-  FOR rank IN
-    SELECT * FROM json_array_elements(rankings::JSON)
-  LOOP
-    IF true = ALL(SELECT x::int = ANY(search_vector) FROM json_array_elements_text(rank->1) as x) THEN
-      RETURN (rank->>0)::float;
-    END IF;
-  END LOOP;
-  RETURN def_weight;
+  SELECT (line->>0)::float FROM json_array_elements(rankings::json) as line
+    INTO weight
+    WHERE translate((line->>1)::text, '[]', '{}')::integer[] @> search_vector
+    ORDER BY (line->>0)::float
+    LIMIT 1;
+
+  RETURN coalesce(weight, def_weight);
 END;
 $$
 LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
