@@ -215,6 +215,19 @@ class AddressSearch(base.AbstractSearch):
                         inner.c.country_code, inner.c.centroid, inner.c.importance,
                         inner.c.penalty)
 
+        if self.expected_count > 5000:
+            # restrict results by penalty to filter better matching ones.
+            sql = sql.add_columns(sa.func.first_value(inner.c.penalty)
+                                    .over(order_by=inner.c.penalty)
+                                    .label('min_penalty'))
+
+            inner = sql.subquery()
+
+            sql = sa.select(inner.c.place_id, inner.c.search_rank, inner.c.address_rank,
+                            inner.c.country_code, inner.c.centroid, inner.c.importance,
+                            inner.c.penalty)\
+                    .where(inner.c.penalty < inner.c.min_penalty + 0.5)
+
         return sql.cte('searches')
 
     async def lookup(self, conn: SearchConnection,
@@ -302,11 +315,15 @@ class AddressSearch(base.AbstractSearch):
                            interpol_sql.label('interpol_hnr'),
                            tiger_sql.label('tiger_hnr')).subquery('unsort')
         sql = sa.select(unsort)\
-                .order_by(sa.case((unsort.c.placex_hnr != None, 1),
+                .order_by(unsort.c.accuracy +
+                          sa.case((unsort.c.placex_hnr != None, 0),
+                                  (unsort.c.interpol_hnr != None, 0),
+                                  (unsort.c.tiger_hnr != None, 0),
+                                  else_=1),
+                          sa.case((unsort.c.placex_hnr != None, 1),
                                   (unsort.c.interpol_hnr != None, 2),
                                   (unsort.c.tiger_hnr != None, 3),
-                                  else_=4),
-                          unsort.c.accuracy)
+                                  else_=4))
 
         sql = sql.limit(LIMIT_PARAM)
 
