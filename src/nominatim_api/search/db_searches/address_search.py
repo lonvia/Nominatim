@@ -373,7 +373,8 @@ class AddressSearch(base.AbstractSearch):
                 # filter conditions.
                 if (not details.excluded or result.place_id not in details.excluded)\
                    and (not self.qualifiers or result.category in self.qualifiers.values)\
-                   and result.rank_address >= details.min_rank:
+                   and result.rank_address >= details.min_rank
+                   and result.rank_address >= 26:
                     result.accuracy += 1.0  # penalty for missing housenumber
                     results.append(result)
             else:
