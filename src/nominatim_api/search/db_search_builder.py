@@ -172,19 +172,14 @@ class SearchBuilder:
                                              partials.get_tokens(),
                                              lookups.Restrict)]
         else:
-            split = partials.get_num_lookup_tokens(20000, 5)
+            split = partials.get_num_lookup_tokens(50000, 5)
             if split > 0:
                 sdata.lookups = partials.split_lookup(split, 'nameaddress_vector')
                 sdata.lookups.append(
                     dbf.FieldLookup('name_vector', hnr_tokens, lookups.Restrict))
             else:
-                addr_fulls = [t.token for t in
-                              self.query.get_tokens(address[0], qmod.TOKEN_WORD)]
-                if len(addr_fulls) > 5:
-                    return
-                sdata.lookups = [
-                    dbf.FieldLookup('name_vector', hnr_tokens, lookups.LookupAny),
-                    dbf.FieldLookup('nameaddress_vector', addr_fulls, lookups.LookupAny)]
+                # give up for combinations of very frequent address terms
+                return
 
         sdata.housenumbers = dbf.WeightedStrings([], [])
         yield dbs.PlaceSearch(0.0, sdata, expected_count, True)
@@ -237,7 +232,8 @@ class SearchBuilder:
                                      self.query.get_tokens(name, qmod.TOKEN_WORD)))
             if name_fulls:
                 yield 0.0, sum(t.count for t in name_fulls), \
-                      dbf.lookup_by_any_name([t.token for t in name_fulls], [], [])
+                      [dbf.FieldLookup('name_vector',
+                                       [t.token for t in name_fulls], lookups.LookupAny)]
 
             # look the name up by its partials
             exp_count = partials.expected_for_all_search(5)
@@ -261,9 +257,10 @@ class SearchBuilder:
 
                 if fulls_count < 80000:
                     yield 0.0, fulls_count, \
-                          dbf.lookup_by_any_name([t.token for t in name_fulls],
-                                                 addr_partials.get_tokens(),
-                                                 [])
+                          [dbf.FieldLookup('name_vector',
+                                           [t.token for t in name_fulls], lookups.LookupAny),
+                           dbf.FieldLookup('nameaddress_vector',
+                                           addr_partials.get_tokens(), lookups.Restrict)]
                     penalty += 0.2
             penalty += 0.4
 
