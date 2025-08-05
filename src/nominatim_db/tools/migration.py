@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2024 by the Nominatim developer community.
+# Copyright (C) 2025 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Functions for database migration to newer software versions.
@@ -115,3 +115,20 @@ def create_postcode_parent_index(conn: Connection, **_: Any) -> None:
             cur.execute("""CREATE INDEX IF NOT EXISTS
                              idx_location_postcode_parent_place_id
                              ON location_postcode USING BTREE (parent_place_id)""")
+
+
+@_migration(5, 1, 99, 0)
+def create_extra_search_name_columns(conn: Connection, **_: Any) -> None:
+    """ Create columns for restrict-only terms. Also creates the necessary
+        index for combined lookups.
+    """
+    if table_exists(conn, "search_name"):
+        with conn.cursor() as cur:
+            cur.execute("""ALTER TABLE search_name
+                            ADD COLUMN IF NOT EXISTS restrict_name_vector INTEGER[]""")
+            cur.execute("""ALTER TABLE search_name
+                            ADD COLUMN IF NOT EXISTS restrict_nameaddress_vector INTEGER[]""")
+            cur.execute("""CREATE INDEX IF NOT EXISTS idx_search_name_combinded_name_vector
+                            ON search_name
+                            USING GIN ((array_cat(name_vector, restrict_name_vector)))
+                            WITH (fastupdate = off)""")

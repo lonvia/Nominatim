@@ -118,7 +118,9 @@ CREATE TABLE search_name (
   search_rank SMALLINT,
   address_rank SMALLINT,
   name_vector integer[],
+  restrict_name_vector integer[],
   nameaddress_vector integer[],
+  restrict_nameaddress_vector integer[],
   country_code varchar(2),
   centroid GEOMETRY(Geometry, 4326)
   ) {{db.tablespace.search_data}};

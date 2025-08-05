@@ -95,6 +95,10 @@ CREATE INDEX IF NOT EXISTS idx_postcode_postcode
   CREATE INDEX IF NOT EXISTS idx_search_name_name_vector
     ON search_name USING GIN (name_vector) WITH (fastupdate = off) {{db.tablespace.search_index}};
 ---
+  CREATE INDEX IF NOT EXISTS idx_search_name_combinded_name_vector
+    ON search_name USING GIN ((array_cat(name_vector, restrict_name_vector)))
+    WITH (fastupdate = off) {{db.tablespace.search_index}};
+---
   CREATE INDEX IF NOT EXISTS idx_search_name_centroid
     ON search_name USING GIST (centroid) {{db.tablespace.search_index}};
 ---
