@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2024 by the Nominatim developer community.
+# Copyright (C) 2025 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 SQLAlchemy definitions for all tables used by the frontend.
@@ -114,7 +114,9 @@ class SearchTables:
             sa.Column('search_rank', sa.SmallInteger),
             sa.Column('address_rank', sa.SmallInteger),
             sa.Column('name_vector', IntArray),
+            sa.Column('restrict_name_vector', IntArray),
             sa.Column('nameaddress_vector', IntArray),
+            sa.Column('restrict_nameaddress_vector', IntArray),
             sa.Column('country_code', sa.String(2)),
             sa.Column('centroid', Geometry))
 
