@@ -229,8 +229,15 @@ def test_update_statistics(word_table, table_factory, temp_db_cursor,
     word_table.add_full_word(1001, 'bye')
     word_table.add_full_word(1002, 'town')
     table_factory('search_name',
-                  'place_id BIGINT, name_vector INT[], nameaddress_vector INT[]',
-                  [(12, [1000], [1001]), (13, [1001], [1002]), (14, [1000, 1001], [1002])])
+                  """place_id BIGINT,
+                     name_vector INT[],
+                     restrict_name_vector INT[],
+                     nameaddress_vector INT[],
+                     restrict_nameaddress_vector INT[]
+                  """,
+                  [(12, [1000], None, [1001], []),
+                   (13, [], [1001], [], [1002]),
+                   (14, [1000, 1001], None, [1002], None)])
     tok = tokenizer_factory()
 
     tok.update_statistics(test_config)
@@ -601,7 +608,8 @@ class TestUpdateWordTokens:
 
     @pytest.fixture(autouse=True)
     def setup(self, tokenizer_factory, table_factory, placex_table, word_table):
-        table_factory('search_name', 'place_id BIGINT, name_vector INT[]')
+        table_factory('search_name',
+                      'place_id BIGINT, name_vector INT[], restrict_name_vector INT[]')
         self.tok = tokenizer_factory()
 
     @pytest.fixture
@@ -609,7 +617,7 @@ class TestUpdateWordTokens:
         place_id = itertools.count(1000)
 
         def _insert(*args):
-            temp_db_cursor.execute("INSERT INTO search_name VALUES (%s, %s)",
+            temp_db_cursor.execute("INSERT INTO search_name VALUES (%s, %s, NULL)",
                                    (next(place_id), list(args)))
 
         return _insert
