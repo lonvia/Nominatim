@@ -2,7 +2,7 @@
 --
 -- This file is part of Nominatim. (https://nominatim.org)
 --
--- Copyright (C) 2022 by the Nominatim developer community.
+-- Copyright (C) 2025 by the Nominatim developer community.
 -- For a full list of authors see the git log.
 
 -- Get tokens used for searching the given place.
@@ -11,7 +11,7 @@
 CREATE OR REPLACE FUNCTION token_get_name_search_tokens(info JSONB)
   RETURNS INTEGER[]
 AS $$
-  SELECT (info->>'names')::INTEGER[]
+  SELECT array_cat((info->>'partial_names')::INTEGER[], (info->>'full_names')::INTEGER[])
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
@@ -21,7 +21,32 @@ $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION token_get_name_match_tokens(info JSONB)
   RETURNS INTEGER[]
 AS $$
-  SELECT (info->>'names')::INTEGER[]
+  SELECT (info->>'full_names')::INTEGER[]
+$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+
+-- Get tokens used for searching the given place in the index.
+--
+-- These are the tokens that will be indexed in the search_name table
+-- and used for preselecting result candidates. This must include all
+-- relevant partial terms for the place.
+CREATE OR REPLACE FUNCTION token_get_name_lookup_tokens(info JSONB)
+  RETURNS INTEGER[]
+AS $$
+  SELECT (info->>'partial_names')::INTEGER[]
+$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+
+-- Get tokens used for restricting the search for a given place.
+--
+-- These are additional tokens that will be saved in the search_name table.
+-- They will usually not necessarily be used for finding the place using
+-- an index but help to further narrow down the search. Add here all
+-- full terms as well as partial terms that are effectively just stop words.
+CREATE OR REPLACE FUNCTION token_get_name_restrict_tokens(info JSONB)
+  RETURNS INTEGER[]
+AS $$
+  SELECT (info->>'full_names')::INTEGER[]
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 

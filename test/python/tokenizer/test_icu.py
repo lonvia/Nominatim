@@ -373,11 +373,15 @@ class TestPlaceNames:
             yield anl
 
     def expect_name_terms(self, info, *expected_terms):
-        tokens = self.analyzer.get_word_token_info(expected_terms)
-        for token in tokens:
+        partial_tokens = self.analyzer.get_word_token_info(
+            list(filter(lambda t: not t.startswith('#'), expected_terms)))
+        full_tokens = self.analyzer.get_word_token_info(
+            list(filter(lambda t: t.startswith('#'), expected_terms)))
+        for token in partial_tokens + full_tokens:
             assert token[2] is not None, "No token for {0}".format(token)
 
-        assert eval(info['names']) == set((t[2] for t in tokens))
+        assert eval(info['partial_names']) == set((t[2] for t in partial_tokens))
+        assert eval(info['full_names']) == set((t[2] for t in full_tokens))
 
     def process_named_place(self, names):
         return self.analyzer.process_place(PlaceInfo({'name': names}))

@@ -679,7 +679,8 @@ class _TokenInfo:
     """ Collect token information to be sent back to the database.
     """
     def __init__(self) -> None:
-        self.names: Optional[str] = None
+        self.full_names: Optional[str] = None
+        self.partial_names: Optional[str] = None
         self.housenumbers: Set[str] = set()
         self.housenumber_tokens: Set[int] = set()
         self.street_tokens: Optional[Set[int]] = None
@@ -695,8 +696,11 @@ class _TokenInfo:
         """
         out: Dict[str, Any] = {}
 
-        if self.names:
-            out['names'] = self.names
+        if self.partial_names:
+            out['partial_names'] = self.partial_names
+
+        if self.full_names:
+            out['full_names'] = self.full_names
 
         if self.housenumbers:
             out['hnr'] = ';'.join(self.housenumbers)
@@ -719,7 +723,8 @@ class _TokenInfo:
     def set_names(self, fulls: Iterable[int], partials: Iterable[int]) -> None:
         """ Adds token information for the normalised names.
         """
-        self.names = self._mk_array(itertools.chain(fulls, partials))
+        self.full_names = self._mk_array(fulls)
+        self.partial_names = self._mk_array(partials)
 
     def add_housenumber(self, token: Optional[int], hnr: Optional[str]) -> None:
         """ Extract housenumber information from a list of normalised
