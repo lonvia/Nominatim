@@ -511,9 +511,11 @@ class TestPlaceAddress:
         assert eval(info['street']) == self.name_token_set('#Grand Road')
 
     def test_process_place_place(self):
+        self.analyzer.process_place(PlaceInfo({'name': {'name': 'Honu Lulu'}}))
         info = self.process_address(place='Honu Lulu')
 
-        assert eval(info['place']) == self.name_token_set('HONU', 'LULU', '#HONU LULU')
+        assert eval(info['place_full']) == self.name_token_set('#HONU LULU')
+        assert eval(info['place_partial']) == self.name_token_set('HONU', 'LULU')
 
     def test_process_place_place_extra(self):
         info = self.process_address(**{'place:en': 'Honu Lulu'})

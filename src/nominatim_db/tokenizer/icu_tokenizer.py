@@ -557,7 +557,7 @@ class ICUNameAnalyzer(AbstractAnalyzer):
                 token_info.add_street(self._retrieve_full_tokens(item.name))
             elif item.kind == 'place':
                 if not item.suffix:
-                    token_info.add_place(itertools.chain(*self._compute_name_tokens([item])))
+                    token_info.add_place(*self._compute_name_tokens([item]))
             elif (not item.kind.startswith('_') and not item.suffix and
                   item.kind not in ('country', 'full', 'inclusion')):
                 token_info.add_address_term(item.kind,
@@ -684,7 +684,8 @@ class _TokenInfo:
         self.housenumbers: Set[str] = set()
         self.housenumber_tokens: Set[int] = set()
         self.street_tokens: Optional[Set[int]] = None
-        self.place_tokens: Set[int] = set()
+        self.place_full_tokens: Set[int] = set()
+        self.place_partial_tokens: Set[int] = set()
         self.address_tokens: Dict[str, str] = {}
         self.postcode: Optional[str] = None
 
@@ -709,8 +710,11 @@ class _TokenInfo:
         if self.street_tokens is not None:
             out['street'] = self._mk_array(self.street_tokens)
 
-        if self.place_tokens:
-            out['place'] = self._mk_array(self.place_tokens)
+        if self.place_full_tokens:
+            out['place_full'] = self._mk_array(self.place_full_tokens)
+
+        if self.place_partial_tokens:
+            out['place_partial'] = self._mk_array(self.place_partial_tokens)
 
         if self.address_tokens:
             out['addr'] = self.address_tokens
@@ -742,10 +746,11 @@ class _TokenInfo:
             self.street_tokens = set()
         self.street_tokens.update(tokens)
 
-    def add_place(self, tokens: Iterable[int]) -> None:
+    def add_place(self, fulls: Iterable[int], partials: Iterable[int]) -> None:
         """ Add addr:place search and match terms.
         """
-        self.place_tokens.update(tokens)
+        self.place_full_tokens.update(fulls)
+        self.place_partial_tokens.update(partials)
 
     def add_address_term(self, key: str, partials: Iterable[int]) -> None:
         """ Add additional address terms.
