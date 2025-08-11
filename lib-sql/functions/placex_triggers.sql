@@ -407,7 +407,7 @@ $$
 LANGUAGE plpgsql STABLE PARALLEL SAFE;
 
 
-CREATE OR REPLACE FUNCTION create_poi_search_terms(obj_place_id BIGINT,
+CREATE OR REPLACE FUNCTION create_poi_name_vectors(obj_place_id BIGINT,
                                                    in_partition SMALLINT,
                                                    parent_place_id BIGINT,
                                                    is_place_addr BOOLEAN,
@@ -415,11 +415,15 @@ CREATE OR REPLACE FUNCTION create_poi_search_terms(obj_place_id BIGINT,
                                                    token_info JSONB,
                                                    geometry GEOMETRY,
                                                    OUT name_vector INTEGER[],
-                                                   OUT nameaddress_vector INTEGER[])
+                                                   OUT restrict_name_vector INTEGER[],
+                                                   OUT nameaddress_vector INTEGER[],
+                                                   OUT restrict_nameaddress_vector INTEGER[])
   AS $$
 DECLARE
   parent_name_vector INTEGER[];
+  parent_restrict_name_vector INTEGER[];
   parent_address_vector INTEGER[];
+  parent_restrict_address_vector INTEGER[];
   addr_place_ids INTEGER[];
   hnr_vector INTEGER[];
 
@@ -429,8 +433,10 @@ DECLARE
 BEGIN
   nameaddress_vector := '{}'::INTEGER[];
 
-  SELECT s.name_vector, s.nameaddress_vector
-    INTO parent_name_vector, parent_address_vector
+  SELECT s.name_vector, s,restrict_name_vector,
+         s.nameaddress_vector, s,restrict_naeaddress_vector
+    INTO parent_name_vector, parent_restrict_name_vector,
+         parent_address_vector, parent_restrict_address_vector
     FROM search_name s
     WHERE s.place_id = parent_place_id;
 
@@ -447,6 +453,7 @@ BEGIN
 
     IF addr_place is null THEN
       -- No place found in OSM that matches. Make it at least searchable.
+      -- Not special casing restrict tokens here!
       nameaddress_vector := array_merge(nameaddress_vector, addr_item.search_tokens);
     ELSE
       IF parent_address_place_ids is null THEN
@@ -459,6 +466,8 @@ BEGIN
       -- are done. Otherwise, add its own place_address line.
       IF not parent_address_place_ids @> ARRAY[addr_place.place_id] THEN
         nameaddress_vector := array_merge(nameaddress_vector, addr_place.keywords);
+        restrict_nameaddress_vector := array_merge(restrict_nameaddress_vector,
+                                                   addr_place.restrict_keywords);
 
         INSERT INTO place_addressline (place_id, address_place_id, fromarea,
                                        isaddress, distance, cached_rank_address)
@@ -468,7 +477,8 @@ BEGIN
     END IF;
   END LOOP;
 
-  name_vector := token_get_name_search_tokens(token_info);
+  name_vector := token_get_name_lookup_tokens(token_info);
+  restrict_name_vector := token_get_name_restrict_tokens(token_info);
 
   -- Check if the parent covers all address terms.
   -- If not, create a search name entry with the house number as the name.
@@ -476,8 +486,11 @@ BEGIN
   -- is returned when we only search for the street/place.
 
   hnr_vector := token_get_housenumber_search_tokens(token_info);
-
-  IF hnr_vector is not null and not nameaddress_vector <@ parent_address_vector THEN
+!!!!!!!
+  IF hnr_vector is not null
+     and not array_cat(nameaddress_vector, restrict_nameaddress_vector)
+               <@ array_cat(parent_address_vector, restrict_parent_address_vector)
+  THEN
     name_vector := array_merge(name_vector, hnr_vector);
   END IF;
 
@@ -485,6 +498,10 @@ BEGIN
   -- from the parent object.
   nameaddress_vector := array_merge(nameaddress_vector, parent_name_vector);
   nameaddress_vector := array_merge(nameaddress_vector, parent_address_vector);
+  restrict_nameaddress_vector := array_merge(restrict_nameaddress_vector,
+                                             restrict_parent_name_vector);
+  restrict_nameaddress_vector := array_merge(restrict_nameaddress_vector,
+                                             restrict_parent_address_vector);
 
   -- make sure addr:place terms are always searchable
   IF is_place_addr THEN
@@ -810,7 +827,9 @@ DECLARE
   max_rank SMALLINT;
 
   name_vector INTEGER[];
+  restrict_name_vector INTEGER[]
   nameaddress_vector INTEGER[];
+  restrict_nameaddress_vector INTEGER[];
   addr_nameaddress_vector INTEGER[];
 
   linked_place BIGINT;
@@ -1119,19 +1138,24 @@ BEGIN
 
       {% if not db.reverse_only %}
       IF NEW.name is not NULL OR NEW.address is not NULL THEN
-        SELECT * INTO name_vector, nameaddress_vector
-          FROM create_poi_search_terms(NEW.place_id,
+        SELECT * INTO name_vector, restrict_name_vector,
+                      nameaddress_vector, restrict_nameaddress_vector
+          FROM create_poi_name_vectors(NEW.place_id,
                                        NEW.partition, NEW.parent_place_id,
                                        is_place_address, NEW.country_code,
                                        NEW.token_info, NEW.centroid);
 
         IF array_length(name_vector, 1) is not NULL THEN
           INSERT INTO search_name (place_id, search_rank, address_rank,
-                                   importance, country_code, name_vector,
-                                   nameaddress_vector, centroid)
+                                   importance, country_code,
+                                   name_vector, restrict_name_vector,
+                                   nameaddress_vector, restrict_nameaddress_vector,
+                                   centroid)
                  VALUES (NEW.place_id, NEW.rank_search, NEW.rank_address,
-                         NEW.importance, NEW.country_code, name_vector,
-                         nameaddress_vector, NEW.centroid);
+                         NEW.importance, NEW.country_code,
+                         name_vector, restrict_name_vector,
+                         nameaddress_vector, restrict_nameaddress_vector,
+                         NEW.centroid);
           {% if debug %}RAISE WARNING 'Place added to search table';{% endif %}
         END IF;
       END IF;

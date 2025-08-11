@@ -2,7 +2,7 @@
 --
 -- This file is part of Nominatim. (https://nominatim.org)
 --
--- Copyright (C) 2022 by the Nominatim developer community.
+-- Copyright (C) 2025 by the Nominatim developer community.
 -- For a full list of authors see the git log.
 
 drop table if exists import_status;
@@ -54,6 +54,7 @@ drop table IF EXISTS location_area CASCADE;
 CREATE TABLE location_area (
   place_id BIGINT,
   keywords INTEGER[],
+  restrict_keywords INTEGER[],
   partition SMALLINT,
   rank_search SMALLINT NOT NULL,
   rank_address SMALLINT NOT NULL,
