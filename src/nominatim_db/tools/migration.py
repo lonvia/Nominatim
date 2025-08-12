@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2024 by the Nominatim developer community.
+# Copyright (C) 2025 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Functions for database migration to newer software versions.
@@ -143,3 +143,28 @@ def create_placex_entrance_table(conn: Connection, config: Configuration, **_: A
           USING BTREE (osm_id)
           WHERE class IN ('routing:entrance', 'entrance');
           """)
+
+
+@_migration(5, 1, 99, 1)
+def create_split_indexes_for_search_name(conn: Connection,
+                                         config: Configuration, **_: Any) -> None:
+    """ Create indexes for new negative token values, which indicate
+        that a token shouldn't be used for index lookup but for rematching
+        only.
+    """
+    if table_exists(conn, 'search_name'):
+        # make sure the transformation functions are there.
+        SQLPreprocessor(conn, config).run_sql_file(conn, 'functions/search.sql')
+        with conn.cursor() as cur:
+            cur.execute("""CREATE INDEX IF NOT EXISTS idx_search_name_lookup_name_vector
+                           ON search_name
+                           USING GIN ((search_name_lookup_tokens(name_vector)))
+                           WITH (fastupdate=off)""")
+            cur.execute("""CREATE INDEX IF NOT EXISTS idx_search_name_all_name_vector
+                           ON search_name
+                           USING GIN ((search_name_all_tokens(name_vector)))
+                           WITH (fastupdate=off)""")
+            cur.execute("""CREATE INDEX IF NOT EXISTS idx_search_name_lookup_nameaddress_vector
+                           ON search_name
+                           USING GIN ((search_name_lookup_tokens(nameaddress_vector)))
+                           WITH (fastupdate=off)""")
