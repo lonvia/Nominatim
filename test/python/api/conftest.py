@@ -171,6 +171,8 @@ class APITester:
     async def create_tables(self):
         async with self.api._async_api._engine.begin() as conn:
             await conn.run_sync(self.api._async_api._tables.meta.create_all)
+            search_funcs = (self.api.config.lib_dir.sql / 'functions/search.sql').read_text()
+            await conn.execute(sa.text(search_funcs))
 
 
 @pytest.fixture
