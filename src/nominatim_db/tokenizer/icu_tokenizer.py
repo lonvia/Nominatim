@@ -113,10 +113,10 @@ class ICUTokenizer(AbstractTokenizer):
                 cur.execute("""
                   CREATE TEMP TABLE word_frequencies AS
                   WITH word_freq AS MATERIALIZED (
-                           SELECT unnest(name_vector) as id, count(*)
+                           SELECT abs(unnest(name_vector)) as id, count(*)
                                  FROM search_name GROUP BY id),
                        addr_freq AS MATERIALIZED (
-                           SELECT unnest(nameaddress_vector) as id, count(*)
+                           SELECT abs(unnest(nameaddress_vector)) as id, count(*)
                                  FROM search_name GROUP BY id)
                   SELECT coalesce(a.id, w.id) as id,
                          (CASE WHEN w.count is null or w.count <= 1 THEN '{}'::JSONB
@@ -162,8 +162,10 @@ class ICUTokenizer(AbstractTokenizer):
                 cur.execute("""SELECT DISTINCT word_id, coalesce(info->>'lookup', word_token)
                                FROM word
                                WHERE type = 'H'
-                                 AND NOT EXISTS(SELECT * FROM search_name
-                                                WHERE ARRAY[word.word_id] && name_vector)
+                                 AND NOT EXISTS(
+                                   SELECT * FROM search_name
+                                   WHERE ARRAY[word.word_id]
+                                           && search_name_all_tokens(name_vector))
                                  AND (char_length(coalesce(word, word_token)) > 6
                                       OR coalesce(word, word_token) not similar to '\\d+')
                             """)
