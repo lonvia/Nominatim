@@ -33,6 +33,7 @@ def test_config(project_env, tmp_path):
     (sqldir / 'tokenizer').mkdir()
     (sqldir / 'tokenizer' / 'icu_tokenizer.sql').write_text("SELECT 'a'")
 
+    project_env.lib_dir.orig_sql = project_env.lib_dir.sql
     project_env.lib_dir.sql = sqldir
 
     return project_env
@@ -231,6 +232,7 @@ def test_update_statistics(word_table, table_factory, temp_db_cursor,
     table_factory('search_name',
                   'place_id BIGINT, name_vector INT[], nameaddress_vector INT[]',
                   [(12, [1000], [1001]), (13, [1001], [1002]), (14, [1000, 1001], [1002])])
+    temp_db_cursor.execute((test_config.lib_dir.orig_sql / 'functions/search.sql').read_text())
     tok = tokenizer_factory()
 
     tok.update_statistics(test_config)
@@ -600,8 +602,10 @@ class TestPlaceHousenumberWithAnalyser:
 class TestUpdateWordTokens:
 
     @pytest.fixture(autouse=True)
-    def setup(self, tokenizer_factory, table_factory, placex_table, word_table):
+    def setup(self, tokenizer_factory, table_factory, placex_table, word_table,
+              temp_db_cursor, def_config):
         table_factory('search_name', 'place_id BIGINT, name_vector INT[]')
+        temp_db_cursor.execute((def_config.lib_dir.sql / 'functions/search.sql').read_text())
         self.tok = tokenizer_factory()
 
     @pytest.fixture
