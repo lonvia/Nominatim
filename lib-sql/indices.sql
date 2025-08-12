@@ -2,7 +2,7 @@
 --
 -- This file is part of Nominatim. (https://nominatim.org)
 --
--- Copyright (C) 2022 by the Nominatim developer community.
+-- Copyright (C) 2025 by the Nominatim developer community.
 -- For a full list of authors see the git log.
 
 -- Indices used only during search and update.
@@ -97,6 +97,18 @@ CREATE INDEX IF NOT EXISTS idx_postcode_postcode
 ---
   CREATE INDEX IF NOT EXISTS idx_search_name_centroid
     ON search_name USING GIST (centroid) {{db.tablespace.search_index}};
+---
+  CREATE INDEX IF NOT EXISTS idx_search_name_lookup_name_vector
+    ON search_name USING GIN ((search_name_lookup_tokens(name_vector)))
+    WITH (fastupdate=off) {{db.tablespace.search_index}};
+---
+  CREATE INDEX IF NOT EXISTS idx_search_name_all_name_vector
+    ON search_name USING GIN ((search_name_all_tokens(name_vector)))
+    WITH (fastupdate=off) {{db.tablespace.search_index}};
+---
+  CREATE INDEX IF NOT EXISTS idx_search_name_lookup_nameaddress_vector
+    ON search_name USING GIN ((search_name_lookup_tokens(nameaddress_vector)))
+    WITH (fastupdate=off) {{db.tablespace.search_index}};
 ---
   CREATE INDEX IF NOT EXISTS idx_placex_housenumber
     ON placex USING btree (parent_place_id)
