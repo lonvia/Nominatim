@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2024 by the Nominatim developer community.
+# Copyright (C) 2025 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Dataclasses for search results and helper functions to fill them.
@@ -744,9 +744,11 @@ async def complete_keywords(conn: SearchConnection, result: BaseResult) -> None:
     sel = sa.select(t.c.word_id, t.c.word_token, t.c.word)
 
     for name_tokens, address_tokens in await conn.execute(sql):
+        name_tokens = [abs(t) for t in name_tokens]
         for row in await conn.execute(sel.where(t.c.word_id.in_(name_tokens))):
             result.name_keywords.append(WordInfo(*row))
 
+        address_tokens = [abs(t) for t in address_tokens]
         for row in await conn.execute(sel.where(t.c.word_id.in_(address_tokens))):
             result.address_keywords.append(WordInfo(*row))
 
