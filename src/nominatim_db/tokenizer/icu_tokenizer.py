@@ -553,7 +553,7 @@ class ICUNameAnalyzer(AbstractAnalyzer):
                 token_info.add_street(self._retrieve_full_tokens(item.name))
             elif item.kind == 'place':
                 if not item.suffix:
-                    token_info.add_place(itertools.chain(*self._compute_name_tokens([item])))
+                    token_info.add_place(*self._compute_name_tokens([item]))
             elif (not item.kind.startswith('_') and not item.suffix and
                   item.kind not in ('country', 'full', 'inclusion')):
                 token_info.add_address_term(item.kind,
@@ -675,11 +675,13 @@ class _TokenInfo:
     """ Collect token information to be sent back to the database.
     """
     def __init__(self) -> None:
-        self.names: Optional[str] = None
+        self.full_names: Optional[str] = None
+        self.partial_names: Optional[str] = None
         self.housenumbers: Set[str] = set()
         self.housenumber_tokens: Set[int] = set()
         self.street_tokens: Optional[Set[int]] = None
-        self.place_tokens: Set[int] = set()
+        self.full_place_tokens: Set[int] = set()
+        self.partial_place_tokens: Set[int] = set()
         self.address_tokens: Dict[str, str] = {}
         self.postcode: Optional[str] = None
 
@@ -691,8 +693,11 @@ class _TokenInfo:
         """
         out: Dict[str, Any] = {}
 
-        if self.names:
-            out['names'] = self.names
+        if self.partial_names:
+            out['partial_names'] = self.partial_names
+
+        if self.full_names:
+            out['full_names'] = self.full_names
 
         if self.housenumbers:
             out['hnr'] = ';'.join(self.housenumbers)
@@ -701,8 +706,11 @@ class _TokenInfo:
         if self.street_tokens is not None:
             out['street'] = self._mk_array(self.street_tokens)
 
-        if self.place_tokens:
-            out['place'] = self._mk_array(self.place_tokens)
+        if self.full_place_tokens:
+            out['full_place'] = self._mk_array(self.full_place_tokens)
+
+        if self.partial_place_tokens:
+            out['partial_place'] = self._mk_array(self.partial_place_tokens)
 
         if self.address_tokens:
             out['addr'] = self.address_tokens
@@ -715,7 +723,8 @@ class _TokenInfo:
     def set_names(self, fulls: Iterable[int], partials: Iterable[int]) -> None:
         """ Adds token information for the normalised names.
         """
-        self.names = self._mk_array(itertools.chain(fulls, partials))
+        self.full_names = self._mk_array(fulls)
+        self.partial_names = self._mk_array(partials)
 
     def add_housenumber(self, token: Optional[int], hnr: Optional[str]) -> None:
         """ Extract housenumber information from a list of normalised
@@ -733,10 +742,11 @@ class _TokenInfo:
             self.street_tokens = set()
         self.street_tokens.update(tokens)
 
-    def add_place(self, tokens: Iterable[int]) -> None:
+    def add_place(self, fulls: Iterable[int], partials: Iterable[int]) -> None:
         """ Add addr:place search and match terms.
         """
-        self.place_tokens.update(tokens)
+        self.full_place_tokens.update(fulls)
+        self.partial_place_tokens.update(partials)
 
     def add_address_term(self, key: str, partials: Iterable[int]) -> None:
         """ Add additional address terms.
