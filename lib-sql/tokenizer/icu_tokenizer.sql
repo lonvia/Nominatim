@@ -2,7 +2,7 @@
 --
 -- This file is part of Nominatim. (https://nominatim.org)
 --
--- Copyright (C) 2022 by the Nominatim developer community.
+-- Copyright (C) 2025 by the Nominatim developer community.
 -- For a full list of authors see the git log.
 
 -- Get tokens used for searching the given place.
@@ -11,7 +11,7 @@
 CREATE OR REPLACE FUNCTION token_get_name_search_tokens(info JSONB)
   RETURNS INTEGER[]
 AS $$
-  SELECT (info->>'names')::INTEGER[]
+  SELECT array_cat((info->>'partial_names')::INTEGER[], (info->>'full_names')::INTEGER[])
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
@@ -21,7 +21,7 @@ $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION token_get_name_match_tokens(info JSONB)
   RETURNS INTEGER[]
 AS $$
-  SELECT (info->>'names')::INTEGER[]
+  SELECT (info->>'full_names')::INTEGER[]
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
@@ -44,7 +44,7 @@ $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION token_is_street_address(info JSONB)
   RETURNS BOOLEAN
 AS $$
-  SELECT info->>'street' is not null or info->>'place' is null;
+  SELECT info->>'street' is not null or info->>'full_place' is null;
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 
@@ -58,7 +58,7 @@ $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION token_has_addr_place(info JSONB)
   RETURNS BOOLEAN
 AS $$
-  SELECT info->>'place' is not null;
+  SELECT info->>'full_place' is not null;
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 
@@ -72,14 +72,14 @@ $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION token_matches_place(info JSONB, place_tokens INTEGER[])
   RETURNS BOOLEAN
 AS $$
-  SELECT (info->>'place')::INTEGER[] <@ place_tokens
+  SELECT (info->>'full_place')::INTEGER[] && place_tokens
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION token_addr_place_search_tokens(info JSONB)
   RETURNS INTEGER[]
 AS $$
-  SELECT (info->>'place')::INTEGER[]
+  SELECT array_cat((info->>'full_place')::INTEGER[], (info->>'partial_place')::INTEGER[])
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
