@@ -183,6 +183,7 @@ def apiobj(temp_db_with_extensions, temp_db_conn, monkeypatch):
 
     proc = SQLPreprocessor(temp_db_conn, testapi.api.config)
     proc.run_sql_file(temp_db_conn, 'functions/ranking.sql')
+    proc.run_sql_file(temp_db_conn, 'functions/search.sql')
 
     loglib.set_log_output('text')
     yield testapi

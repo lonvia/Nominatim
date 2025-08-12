@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2024 by the Nominatim developer community.
+# Copyright (C) 2025 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Implementation of lookup functions for the search_name table.
@@ -22,6 +22,8 @@ LookupType = sa.sql.expression.FunctionElement[Any]
 class LookupAll(LookupType):
     """ Find all entries in search_name table that contain all of
         a given list of tokens using an index for the search.
+
+        The tokens must be a list of partials without stop words.
     """
     inherit_cache = True
 
@@ -34,8 +36,8 @@ class LookupAll(LookupType):
 def _default_lookup_all(element: LookupAll,
                         compiler: 'sa.Compiled', **kw: Any) -> str:
     _, col, _, tokens = list(element.clauses)
-    return "(%s @> %s)" % (compiler.process(col, **kw),
-                           compiler.process(tokens, **kw))
+    return "(search_name_lookup_tokens(%s) @> %s)" % (
+        compiler.process(col, **kw), compiler.process(tokens, **kw))
 
 
 @compiles(LookupAll, 'sqlite')
@@ -72,8 +74,8 @@ class LookupAny(LookupType):
 def _default_lookup_any(element: LookupAny,
                         compiler: 'sa.Compiled', **kw: Any) -> str:
     _, col, _, tokens = list(element.clauses)
-    return "(%s && %s)" % (compiler.process(col, **kw),
-                           compiler.process(tokens, **kw))
+    return "(search_name_all_tokens(%s) && %s)" % (
+        compiler.process(col, **kw), compiler.process(tokens, **kw))
 
 
 @compiles(LookupAny, 'sqlite')
@@ -103,9 +105,9 @@ class Restrict(LookupType):
 @compiles(Restrict)
 def _default_restrict(element: Restrict,
                       compiler: 'sa.Compiled', **kw: Any) -> str:
-    arg1, arg2 = list(element.clauses)
-    return "(coalesce(null, %s) @> %s)" % (compiler.process(arg1, **kw),
-                                           compiler.process(arg2, **kw))
+    col, tokens = list(element.clauses)
+    return "true = ALL (SELECT ARRAY[i, -i] && %s FROM unnest(CAST(%s as int[])) i)" % (
+        compiler.process(col, **kw), compiler.process(tokens, **kw))
 
 
 @compiles(Restrict, 'sqlite')
