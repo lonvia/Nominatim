@@ -77,7 +77,8 @@ BEGIN
         FROM location_area_large_{{ partition }}
         WHERE geometry && ST_Expand(feature, extent)
               AND rank_address between from_rank and to_rank
-              AND token_matches_address(token_info, key, keywords)
+              AND search_name_all_tokens(token_get_address_search_tokens(token_info, key))
+                    <@ search_name_all_tokens(keywords)
         GROUP BY place_id, keywords, rank_address, rank_search, isguess, postcode, centroid
         ORDER BY bool_or(ST_Intersects(geometry, feature)) DESC, distance LIMIT 1;
       RETURN r;

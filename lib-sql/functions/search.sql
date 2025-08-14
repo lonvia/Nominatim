@@ -19,3 +19,8 @@ CREATE OR REPLACE FUNCTION search_name_all_tokens(tokens integer[])
     SELECT ARRAY(SELECT abs(unnest(tokens)))
   $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
+CREATE OR REPLACE FUNCTION make_restrict_tokens(tokens integer[])
+  RETURNS integer[]
+  AS $$
+    SELECT ARRAY(SELECT -abs(unnest(tokens)));
+  $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
