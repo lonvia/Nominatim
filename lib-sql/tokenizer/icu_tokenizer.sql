@@ -15,6 +15,22 @@ AS $$
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
+-- Get partial tokens used for searching the given place.
+CREATE OR REPLACE FUNCTION token_get_partial_name_search_tokens(info JSONB)
+  RETURNS INTEGER[]
+AS $$
+  SELECT (info->>'partial_names')::INTEGER[]
+$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+
+-- Get full-word tokens used for searching the given place.
+CREATE OR REPLACE FUNCTION token_get_full_name_search_tokens(info JSONB)
+  RETURNS INTEGER[]
+AS $$
+  SELECT (info->>'full_names')::INTEGER[]
+$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+
 -- Get tokens for matching the place name against others.
 --
 -- This should usually be restricted to full name tokens.
@@ -83,6 +99,20 @@ AS $$
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
+CREATE OR REPLACE FUNCTION token_addr_place_full_search_tokens(info JSONB)
+  RETURNS INTEGER[]
+AS $$
+  SELECT (info->>'full_place')::INTEGER[]
+$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+
+CREATE OR REPLACE FUNCTION token_addr_place_partial_search_tokens(info JSONB)
+  RETURNS INTEGER[]
+AS $$
+  SELECT (info->>'partial_place')::INTEGER[]
+$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+
 CREATE OR REPLACE FUNCTION token_get_address_keys(info JSONB)
   RETURNS SETOF TEXT
 AS $$
@@ -94,13 +124,6 @@ CREATE OR REPLACE FUNCTION token_get_address_search_tokens(info JSONB, key TEXT)
   RETURNS INTEGER[]
 AS $$
   SELECT (info->'addr'->>key)::INTEGER[];
-$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
-
-
-CREATE OR REPLACE FUNCTION token_matches_address(info JSONB, key TEXT, tokens INTEGER[])
-  RETURNS BOOLEAN
-AS $$
-  SELECT (info->'addr'->>key)::INTEGER[] <@ tokens;
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 

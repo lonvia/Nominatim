@@ -420,7 +420,6 @@ CREATE OR REPLACE FUNCTION create_poi_search_terms(obj_place_id BIGINT,
 DECLARE
   parent_name_vector INTEGER[];
   parent_address_vector INTEGER[];
-  addr_place_ids INTEGER[];
   hnr_vector INTEGER[];
 
   addr_item RECORD;
@@ -439,7 +438,8 @@ BEGIN
            token_get_address_search_tokens(token_info, key) as search_tokens
       FROM token_get_address_keys(token_info) as key,
            LATERAL get_addr_tag_rank(key, country) as ranks
-      WHERE not token_get_address_search_tokens(token_info, key) <@ parent_address_vector
+      WHERE not search_name_all_tokens(token_get_address_search_tokens(token_info, key))
+                  <@ search_name_all_tokens(parent_address_vector)
   LOOP
     addr_place := get_address_place(in_partition, geometry,
                                     addr_item.from_rank, addr_item.to_rank,
@@ -447,6 +447,7 @@ BEGIN
 
     IF addr_place is null THEN
       -- No place found in OSM that matches. Make it at least searchable.
+      -- Note that this will add some of the full name tokens unrestricted.
       nameaddress_vector := array_merge(nameaddress_vector, addr_item.search_tokens);
     ELSE
       IF parent_address_place_ids is null THEN
@@ -468,7 +469,9 @@ BEGIN
     END IF;
   END LOOP;
 
-  name_vector := token_get_name_search_tokens(token_info);
+  name_vector := array_cat(token_get_partial_name_search_tokens(token_info),
+                           make_restrict_tokens(
+                            token_get_full_name_search_tokens(token_info)));
 
   -- Check if the parent covers all address terms.
   -- If not, create a search name entry with the house number as the name.
@@ -488,12 +491,17 @@ BEGIN
 
   -- make sure addr:place terms are always searchable
   IF is_place_addr THEN
-    addr_place_ids := token_addr_place_search_tokens(token_info);
-    IF hnr_vector is not null AND not addr_place_ids <@ parent_name_vector
+    IF hnr_vector is not null AND
+       not token_addr_place_search_tokens(token_info)
+             <@ search_name_all_tokens(parent_name_vector)
     THEN
       name_vector := array_merge(name_vector, hnr_vector);
     END IF;
-    nameaddress_vector := array_merge(nameaddress_vector, addr_place_ids);
+    nameaddress_vector := array_merge(nameaddress_vector,
+                                      token_addr_place_partial_search_tokens(token_info));
+    nameaddress_vector := array_merge(
+                            nameaddress_vector,
+                            make_restrict_tokens(token_addr_place_full_search_tokens(token_info)));
   END IF;
 END;
 $$
@@ -557,6 +565,7 @@ BEGIN
   LOOP
     IF location.place_id is null THEN
       {% if not db.reverse_only %}
+      -- Note that this will put full word tokens in the vector unrestricted.
       nameaddress_vector := array_merge(nameaddress_vector,
                                         token_get_address_search_tokens(token_info,
                                                                         location.key));
@@ -1284,7 +1293,9 @@ BEGIN
   IF NEW.name IS NOT NULL THEN
     -- Initialise the name vector using our name
     NEW.name := add_default_place_name(NEW.country_code, NEW.name);
-    name_vector := token_get_name_search_tokens(NEW.token_info);
+    name_vector := array_cat(token_get_partial_name_search_tokens(NEW.token_info),
+                             make_restrict_tokens(
+                                token_get_full_name_search_tokens(NEW.token_info)));
 
     IF NEW.rank_search <= 25 and NEW.rank_address > 0 THEN
       result := add_location(NEW.place_id, NEW.country_code, NEW.partition,
