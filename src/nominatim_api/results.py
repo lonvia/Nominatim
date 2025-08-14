@@ -712,8 +712,7 @@ async def complete_keywords(conn: SearchConnection, result: BaseResult) -> None:
         the word table.
     """
     t = conn.t.search_name
-    sql = sa.select(sa.func.search_name_all_tokens(t.c.name_vector),
-                    sa.func.search_name_all_tokens(t.c.nameaddress_vector))\
+    sql = sa.select(t.c.name_vector, t.c.nameaddress_vector)\
             .where(t.c.place_id == result.place_id)
 
     result.name_keywords = []
@@ -723,9 +722,11 @@ async def complete_keywords(conn: SearchConnection, result: BaseResult) -> None:
     sel = sa.select(t.c.word_id, t.c.word_token, t.c.word)
 
     for name_tokens, address_tokens in await conn.execute(sql):
+        name_tokens = [abs(t) for t in name_tokens]
         for row in await conn.execute(sel.where(t.c.word_id.in_(name_tokens))):
             result.name_keywords.append(WordInfo(*row))
 
+        address_tokens = [abs(t) for t in address_tokens]
         for row in await conn.execute(sel.where(t.c.word_id.in_(address_tokens))):
             result.address_keywords.append(WordInfo(*row))
 
