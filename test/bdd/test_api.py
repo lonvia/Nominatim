@@ -44,32 +44,33 @@ def session_api_test_db(pytestconfig):
     """
     dbname = pytestconfig.getini('nominatim_api_test_db')
 
-    config = Configuration(None).get_os_env()
-    config['NOMINATIM_DATABASE_DSN'] = f"pgsql:dbname={dbname}"
-    config['NOMINATIM_LANGUAGES'] = 'en,de,fr,ja'
-    config['NOMINATIM_USE_US_TIGER_DATA'] = 'yes'
-    if pytestconfig.option.NOMINATIM_TOKENIZER is not None:
-        config['NOMINATIM_TOKENIZER'] = pytestconfig.option.NOMINATIM_TOKENIZER
+    if not dbname.startswith('sqlite'):
+        config = Configuration(None).get_os_env()
+        config['NOMINATIM_DATABASE_DSN'] = f"pgsql:dbname={dbname}"
+        config['NOMINATIM_LANGUAGES'] = 'en,de,fr,ja'
+        config['NOMINATIM_USE_US_TIGER_DATA'] = 'yes'
+        if pytestconfig.option.NOMINATIM_TOKENIZER is not None:
+            config['NOMINATIM_TOKENIZER'] = pytestconfig.option.NOMINATIM_TOKENIZER
 
-    dbm = DBManager(purge=pytestconfig.option.NOMINATIM_PURGE)
+        dbm = DBManager(purge=pytestconfig.option.NOMINATIM_PURGE)
 
-    if not dbm.check_for_db(dbname):
-        try:
-            cli.nominatim(cli_args=['import', '--project-dir', str(TESTDB_PATH),
-                                    '--osm-file', str(TESTDB_PATH / 'apidb-test-data.pbf')],
-                          environ=config)
-            cli.nominatim(cli_args=['add-data', '--project-dir', str(TESTDB_PATH),
-                                    '--tiger-data', str(TESTDB_PATH / 'tiger')],
-                          environ=config)
-            cli.nominatim(cli_args=['freeze', '--project-dir', str(TESTDB_PATH)],
-                          environ=config)
-            cli.nominatim(cli_args=['special-phrases', '--project-dir', str(TESTDB_PATH),
-                                    '--import-from-csv',
-                                    str(TESTDB_PATH / 'full_en_phrases_test.csv')],
-                          environ=config)
-        except:  # noqa: E722
-            dbm.drop_db(dbname)
-            raise
+        if not dbm.check_for_db(dbname):
+            try:
+                cli.nominatim(cli_args=['import', '--project-dir', str(TESTDB_PATH),
+                                        '--osm-file', str(TESTDB_PATH / 'apidb-test-data.pbf')],
+                              environ=config)
+                cli.nominatim(cli_args=['add-data', '--project-dir', str(TESTDB_PATH),
+                                        '--tiger-data', str(TESTDB_PATH / 'tiger')],
+                              environ=config)
+                cli.nominatim(cli_args=['freeze', '--project-dir', str(TESTDB_PATH)],
+                              environ=config)
+                cli.nominatim(cli_args=['special-phrases', '--project-dir', str(TESTDB_PATH),
+                                        '--import-from-csv',
+                                        str(TESTDB_PATH / 'full_en_phrases_test.csv')],
+                              environ=config)
+            except:  # noqa: E722
+                dbm.drop_db(dbname)
+                raise
 
 
 @pytest.fixture
@@ -77,9 +78,13 @@ def test_config_env(pytestconfig):
     dbname = pytestconfig.getini('nominatim_api_test_db')
 
     config = Configuration(None).get_os_env()
-    config['NOMINATIM_DATABASE_DSN'] = f"pgsql:dbname={dbname}"
+    if dbname.startswith('sqlite'):
+        config['NOMINATIM_DATABASE_DSN'] = dbname
+        config['NOMINATIM_USE_US_TIGER_DATA'] = 'no'
+    else:
+        config['NOMINATIM_DATABASE_DSN'] = f"pgsql:dbname={dbname}"
+        config['NOMINATIM_USE_US_TIGER_DATA'] = 'yes'
     config['NOMINATIM_LANGUAGES'] = 'en,de,fr,ja'
-    config['NOMINATIM_USE_US_TIGER_DATA'] = 'yes'
     if pytestconfig.option.NOMINATIM_TOKENIZER is not None:
         config['NOMINATIM_TOKENIZER'] = pytestconfig.option.NOMINATIM_TOKENIZER
 
