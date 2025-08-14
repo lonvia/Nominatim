@@ -297,11 +297,13 @@ CREATE OR REPLACE FUNCTION weigh_search(search_vector INT[],
   AS $$
 DECLARE
   rank JSON;
+  abs_vector integer[];
 BEGIN
+  abs_vector := search_name_all_tokens(search_vector);
   FOR rank IN
     SELECT * FROM json_array_elements(rankings::JSON)
   LOOP
-    IF true = ALL(SELECT x::int = ANY(search_vector) FROM json_array_elements_text(rank->1) as x) THEN
+    IF (rank->>1)::integer[] <@ abs_vector THEN
       RETURN (rank->>0)::float;
     END IF;
   END LOOP;
