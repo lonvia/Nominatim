@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2024 by the Nominatim developer community.
+# Copyright (C) 2025 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Custom functions for SQLite.
@@ -15,9 +15,9 @@ def weigh_search(search_vector: Optional[str], rankings: str, default: float) ->
     """ Custom weight function for search results.
     """
     if search_vector is not None:
-        svec = [int(x) for x in search_vector.split(',')]
+        svec = [abs(int(x)) for x in search_vector.split(',')]
         for rank in json.loads(rankings):
-            if all(r in svec for r in rank[1]):
+            if all(int(r) in svec for r in rank[1][1:-1].split(',')):
                 return cast(float, rank[0])
 
     return default

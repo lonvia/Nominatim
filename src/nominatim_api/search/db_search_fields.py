@@ -187,12 +187,10 @@ class FieldRanking:
 
         rout = JsonWriter().start_array()
         for rank in self.rankings:
-            rout.start_array().value(rank.penalty).next()
-            rout.start_array()
-            for token in rank.tokens:
-                rout.value(token).next()
-            rout.end_array()
-            rout.end_array().next()
+            rout.start_array()\
+                .value(rank.penalty).next()\
+                .value('{' + ','.join(map(str, rank.tokens)) + '}').next()\
+                .end_array().next()
         rout.end_array()
 
         return sa.func.weigh_search(table.c[self.column], rout(), self.default)
