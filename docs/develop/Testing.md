@@ -102,6 +102,17 @@ and compromises the following data:
 API tests should only be testing the functionality of the website frontend code.
 Most tests should be formulated as BDD DB creation tests (see below) instead.
 
+#### Running API tests against an SQlite database
+
+The API tests can also be executed against a database that was
+[converted to SQLite](../customize/SQLite.md):
+
+1. Run the tests once to make sure, the test database gets created.
+2. Manually convert the database to an SQLite database:
+   `NOMINATIM_DATABASE_DSN="pgsql:dbname=test_api_nominatim" ./nominatim-cli.py convert --output test.sqlite --with-reverse --with-search --with-details`
+3. Run the tests against the converted database:
+   `pytest -o nominatim_api_test_db=sqlite:dbname=test.sqlite test/bdd/test_api.py`
+
 ### DB Creation Tests (`test/bdd/db`)
 
 These tests check the import and update of the Nominatim database. They do not
