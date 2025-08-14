@@ -6,6 +6,7 @@
 -- For a full list of authors see the git log.
 
 {% include('functions/utils.sql') %}
+{% include 'functions/search.sql' %}
 {% include('functions/ranking.sql') %}
 {% include('functions/importance.sql') %}
 {% include('functions/interpolation.sql') %}
@@ -18,9 +19,6 @@
     {% include 'functions/placex_triggers.sql' %}
 {% endif %}
 
-{% if 'search_name' in db.tables %}
-    {% include 'functions/search.sql' %}
-{% endif %}
 
 {% if 'location_postcode' in db.tables %}
     {% include 'functions/postcode_triggers.sql' %}
