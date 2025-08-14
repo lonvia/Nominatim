@@ -217,7 +217,11 @@ class SqliteWriter:
 
         tsrc = self.src.t.search_name
         for column in ('name_vector', 'nameaddress_vector'):
-            sql = sa.select(sa.func.unnest(getattr(tsrc.c, column)).label('word'),
+            if column == 'name_vector':
+                word_col = sa.func.search_name_all_tokens(getattr(tsrc.c, column))
+            else:
+                word_col = sa.func.search_name_lookup_tokens(getattr(tsrc.c, column))
+            sql = sa.select(sa.func.unnest(word_col).label('word'),
                             sa.func.ArrayAgg(tsrc.c.place_id).label('places'))\
                     .group_by('word')
 
