@@ -177,7 +177,9 @@ class SearchBuilder:
                 sdata.lookups = partials.split_lookup(split, 'nameaddress_vector')
                 sdata.lookups.append(
                     dbf.FieldLookup('name_vector', hnr_tokens, lookups.Restrict))
-            # give up for combinations of very frequent address terms
+            else:
+                # give up for combinations of very frequent address terms
+                return
 
         sdata.housenumbers = dbf.WeightedStrings([], [])
         yield dbs.PlaceSearch(0.05, sdata, expected_count, True)
