@@ -106,7 +106,7 @@ class Restrict(LookupType):
 def _default_restrict(element: Restrict,
                       compiler: 'sa.Compiled', **kw: Any) -> str:
     col, tokens = list(element.clauses)
-    return "(coalesce(null, search_name_all_tokens(%s)) @> %s)" % (
+    return "true = ALL (SELECT ARRAY[i, -i] && %s FROM unnest(%s) i)" % (
         compiler.process(col, **kw), compiler.process(tokens, **kw))
 
 
