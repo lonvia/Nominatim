@@ -205,7 +205,7 @@ class AddressSearch(base.AbstractSearch):
                         inner.c.country_code, inner.c.centroid, inner.c.importance,
                         inner.c.penalty)
 
-        return sql.cte('searches')
+        return sql.cte('searches').prefix_with('MATERIALIZED')
 
     async def lookup(self, conn: SearchConnection,
                      details: SearchDetails) -> nres.SearchResults:
