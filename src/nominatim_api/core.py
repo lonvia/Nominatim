@@ -183,8 +183,7 @@ class NominatimAPIAsync:
         assert self._engine is not None
         assert self._tables is not None
 
-        async with self._engine.begin() as conn:
-            yield SearchConnection(conn, self._tables, self._property_cache, self.config)
+        yield SearchConnection(self._engine, self._tables, self._property_cache, self.config)
 
     async def status(self) -> StatusResult:
         """ Return the status of the database.

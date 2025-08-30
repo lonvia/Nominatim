@@ -440,9 +440,10 @@ async def get_routes(api: NominatimAPIAsync) -> Sequence[Tuple[str, EndpointFunc
         return insp.has_table('search_name')
 
     try:
-        async with api.begin() as conn:
-            if await conn.connection.run_sync(has_search_name):
-                routes.append(('search', search_endpoint))
+        async with api.begin() as sconn:
+            async with sconn.engine.begin() as conn:
+                if await conn.run_sync(has_search_name):
+                    routes.append(('search', search_endpoint))
     except (PGCORE_ERROR, sa.exc.OperationalError):
         pass  # ignored
 

@@ -12,7 +12,7 @@ from typing import cast, Any, Mapping, Sequence, Union, Dict, Optional, Set, \
 import asyncio
 
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from .typing import SaFromClause
 from .sql.sqlalchemy_schema import SearchTables
@@ -30,11 +30,11 @@ class SearchConnection:
         The 't' property is the collection of Nominatim tables.
     """
 
-    def __init__(self, conn: AsyncConnection,
+    def __init__(self, engine: AsyncEngine,
                  tables: SearchTables,
                  properties: Dict[str, Any],
                  config: Configuration) -> None:
-        self.connection = conn
+        self.engine = engine
         self.t = tables
         self.config = config
         self._property_cache = properties
@@ -51,16 +51,18 @@ class SearchConnection:
                      params: Union[Mapping[str, Any], None] = None) -> Any:
         """ Execute a 'scalar()' query on the connection.
         """
-        log().sql(self.connection, sql, params)
-        return await asyncio.wait_for(self.connection.scalar(sql, params), self.query_timeout)
+        async with self.engine.begin() as conn:
+            log().sql(conn, sql, params)
+            return await asyncio.wait_for(conn.scalar(sql, params), self.query_timeout)
 
     async def execute(self, sql: 'sa.Executable',
                       params: Union[Mapping[str, Any], Sequence[Mapping[str, Any]], None] = None
                       ) -> 'sa.Result[Any]':
         """ Execute a 'execute()' query on the connection.
         """
-        log().sql(self.connection, sql, params)
-        return await asyncio.wait_for(self.connection.execute(sql, params), self.query_timeout)
+        async with self.engine.begin() as conn:
+            log().sql(conn, sql, params)
+            return await asyncio.wait_for(conn.execute(sql, params), self.query_timeout)
 
     async def get_property(self, name: str, cached: bool = True) -> str:
         """ Get a property from Nominatim's property table.
@@ -79,7 +81,9 @@ class SearchConnection:
 
         sql = sa.select(self.t.properties.c.value)\
             .where(self.t.properties.c.property == name)
-        value = await self.connection.scalar(sql)
+
+        async with self.engine.begin() as conn:
+            value = await conn.scalar(sql)
 
         if value is None:
             raise ValueError(f"Property '{name}' not found in database.")

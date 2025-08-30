@@ -158,7 +158,8 @@ class APITester:
                 if 'word' not in conn.t.meta.tables:
                     await make_query_analyzer(conn)
                     word_table = conn.t.meta.tables['word']
-                    await conn.connection.run_sync(word_table.create)
+                    async with conn.engine.begin() as dbconn:
+                        await dbconn.run_sync(word_table.create)
                 if data:
                     await conn.execute(conn.t.meta.tables['word'].insert(), data)
 
@@ -211,7 +212,8 @@ def frontend(request, tmp_path):
                         return
                     await make_query_analyzer(conn)
                     word_table = conn.t.meta.tables['word']
-                    await conn.connection.run_sync(word_table.create)
+                    async with conn.engine.begin() as dbconn:
+                        await dbconn.run_sync(word_table.create)
 
             apiobj.async_to_sync(_do_sql())
 

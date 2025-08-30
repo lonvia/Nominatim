@@ -76,7 +76,8 @@ class SqliteWriter:
         else:
             await self.create_class_tables()
 
-        await self.dest.connection.run_sync(self.dest.t.meta.create_all)
+        async with self.dest.engine.begin() as conn:
+            await conn.run_sync(self.dest.t.meta.create_all)
 
         # Convert all Geometry columns to Spatialite geometries
         for table in self.dest.t.meta.sorted_tables:
@@ -108,16 +109,19 @@ class SqliteWriter:
         src = self.src.t.meta.tables['word']
         dest = self.dest.t.meta.tables['word']
 
-        await self.dest.connection.run_sync(dest.create)
+        async with self.dest.engine.begin() as dest_conn:
+            await dest_conn.run_sync(dest.create)
 
-        LOG.warning("Copying word table")
-        async_result = await self.src.connection.stream(sa.select(src))
+        async with self.src.engine.begin() as src_conn:
+            LOG.warning("Copying word table")
+            async_result = await src_conn.stream(sa.select(src))
 
-        async for partition in async_result.partitions(10000):
-            data = [{k: getattr(r, k) for k in r._fields} for r in partition]
-            await self.dest.execute(dest.insert(), data)
+            async for partition in async_result.partitions(10000):
+                data = [{k: getattr(r, k) for k in r._fields} for r in partition]
+                await self.dest.execute(dest.insert(), data)
 
-        await self.dest.connection.run_sync(sa.Index('idx_word_woken', dest.c.word_token).create)
+        async with self.dest.engine.begin() as dest_conn:
+            await dest_conn.run_sync(sa.Index('idx_word_woken', dest.c.word_token).create)
 
     async def copy_data(self) -> None:
         """ Copy data for all registered tables.
@@ -129,21 +133,23 @@ class SqliteWriter:
                     value = value.astimezone(dt.timezone.utc)
             return value
 
-        for table in self.dest.t.meta.sorted_tables:
-            LOG.warning("Copying '%s'", table.name)
-            async_result = await self.src.connection.stream(self.select_from(table.name))
+        async with self.src.engine.begin() as src_conn:
+            for table in self.dest.t.meta.sorted_tables:
+                LOG.warning("Copying '%s'", table.name)
+                async_result = await src_conn.stream(self.select_from(table.name))
 
-            async for partition in async_result.partitions(10000):
-                data = [{('class_' if k == 'class' else k): _getfield(r, k)
-                         for k in r._fields}
-                        for r in partition]
-                await self.dest.execute(table.insert(), data)
+                async for partition in async_result.partitions(10000):
+                    data = [{('class_' if k == 'class' else k): _getfield(r, k)
+                             for k in r._fields}
+                            for r in partition]
+                    await self.dest.execute(table.insert(), data)
 
         # Set up a minimal copy of pg_tables used to look up the class tables later.
         pg_tables = sa.Table('pg_tables', self.dest.t.meta,
                              sa.Column('schemaname', sa.Text, default='public'),
                              sa.Column('tablename', sa.Text))
-        await self.dest.connection.run_sync(pg_tables.create)
+        async with self.dest.engine.begin() as dest_conn:
+            await dest_conn.run_sync(pg_tables.create)
         data = [{'tablename': t} for t in self.dest.t.meta.tables]
         await self.dest.execute(pg_tables.insert().values(data))
 
@@ -202,8 +208,9 @@ class SqliteWriter:
         """ Create a simple index on the given table and column.
         """
         table = getattr(self.dest.t, table_name)
-        await self.dest.connection.run_sync(
-            sa.Index(f"idx_{table}_{column}", getattr(table.c, column)).create)
+        async with self.dest.engine.begin() as dest_conn:
+            await dest_conn.run_sync(
+                sa.Index(f"idx_{table}_{column}", getattr(table.c, column)).create)
 
     async def create_search_index(self) -> None:
         """ Create the tables and indexes needed for word lookup.
@@ -213,26 +220,29 @@ class SqliteWriter:
                        sa.Column('word', sa.Integer()),
                        sa.Column('column', sa.Text()),
                        sa.Column('places', IntArray))
-        await self.dest.connection.run_sync(rsn.create)
+        async with self.dest.engine.begin() as dest_conn:
+            await dest_conn.run_sync(rsn.create)
 
-        tsrc = self.src.t.search_name
-        for column in ('name_vector', 'nameaddress_vector'):
-            sql = sa.select(sa.func.unnest(getattr(tsrc.c, column)).label('word'),
-                            sa.func.ArrayAgg(tsrc.c.place_id).label('places'))\
-                    .group_by('word')
+        async with self.src.engine.begin() as src_conn:
+            tsrc = self.src.t.search_name
+            for column in ('name_vector', 'nameaddress_vector'):
+                sql = sa.select(sa.func.unnest(getattr(tsrc.c, column)).label('word'),
+                                sa.func.ArrayAgg(tsrc.c.place_id).label('places'))\
+                        .group_by('word')
 
-            async_result = await self.src.connection.stream(sql)
-            async for partition in async_result.partitions(100):
-                data = []
-                for row in partition:
-                    row.places.sort()
-                    data.append({'word': row.word,
-                                 'column': column,
-                                 'places': row.places})
-                await self.dest.execute(rsn.insert(), data)
+                async_result = await src_conn.stream(sql)
+                async for partition in async_result.partitions(100):
+                    data = []
+                    for row in partition:
+                        row.places.sort()
+                        data.append({'word': row.word,
+                                     'column': column,
+                                     'places': row.places})
+                    await self.dest.execute(rsn.insert(), data)
 
-        await self.dest.connection.run_sync(
-            sa.Index('idx_reverse_search_name_word', rsn.c.word).create)
+        async with self.dest.engine.begin() as dest_conn:
+            await dest_conn.run_sync(
+                sa.Index('idx_reverse_search_name_word', rsn.c.word).create)
 
     def select_from(self, table: str) -> SaSelect:
         """ Create the SQL statement to select the source columns and rows.
