@@ -65,6 +65,16 @@ local table_definitions = {
             { column = 'geometry', type = 'geometry', projection = 'WGS84', not_null = true }
         },
         indexes = {}
+    },
+    place_postcode = {
+        ids = { type = 'any', id_column = 'osm_id', type_column = 'osm_type' },
+        columns = {
+            { column = 'postcode', type = 'text', not_null = true },
+            { column = 'country_code', type = 'text' },
+            { column = 'centroid', type = 'point', projection = 'WGS84', not_null = true },
+            { column = 'geometry', type = 'geometry', projection = 'WGS84' }
+        },
+        indexes = {}
     }
 }
 
@@ -113,6 +123,7 @@ local PlaceTransform = {}
 
 -- Special transform meanings which are interpreted elsewhere
 PlaceTransform.fallback = 'fallback'
+PlaceTransform.postcode_area = 'postcode_area'
 PlaceTransform.delete = 'delete'
 PlaceTransform.extra = 'extra'
 
@@ -419,11 +430,22 @@ function Place:write_place(k, v, mfunc)
     return 0
 end
 
-function Place:write_row(k, v)
-    if self.geometry == nil then
-        self.geometry = self.geom_func(self.object)
+function Place:geometry_is_valid()
+    if self.geometry ~= nil then
+        return self.geometry ~= false
     end
+
+    self.geometry = self.geom_func(self.object)
+
     if self.geometry == nil or self.geometry:is_null() then
+        self.geometry = false
+    end
+
+    return self.geometry ~= false
+end
+
+function Place:write_row(k, v)
+    if not self:geometry_is_valid() then
         return 0
     end
 
@@ -675,9 +697,6 @@ function module.process_tags(o)
     if o.address.country ~= nil and #o.address.country ~= 2 then
         o.address['country'] = nil
     end
-    if POSTCODE_FALLBACK and fallback == nil and o.address.postcode ~= nil then
-        fallback = {'place', 'postcode', PlaceTransform.always}
-    end
 
     if o.address.interpolation ~= nil then
         o:write_place('place', 'houses', PlaceTransform.always)
@@ -689,16 +708,38 @@ function module.process_tags(o)
         local ktable = MAIN_KEYS[k]
         if ktable then
             local ktype = ktable[v] or ktable[1]
+            if ktype == 'postcode_area' then
+            end
             if type(ktype) == 'function' then
                 o:write_place(k, v, ktype)
+            elseif ktype == 'postcode_area'
+                    and o.object.type == 'relation'
+                    and o.object.tags.postal_code ~= nil then
+                if o:geometry_is_valid() then
+                    o.num_entries = o.num_entries + 1
+                    insert_row.place_postcode{
+                        postcode = o.object.tags.postal_code,
+                        centroid = o.geometry:centroid(),
+                        geometry = o.geometry
+                    }
+                end
             elseif ktype == 'fallback' and o.has_name then
                 fallback = {k, v, PlaceTransform.named}
             end
         end
     end
 
-    if fallback ~= nil and o.num_entries == 0 then
-        o:write_place(fallback[1], fallback[2], fallback[3])
+    if o.num_entries == 0 then
+        if fallback ~= nil then
+            o:write_place(fallback[1], fallback[2], fallback[3])
+        elseif POSTCODE_FALLBACK and o.address.postcode ~= nil then
+            if o:geometry_is_valid() then
+                insert_row.place_postcode{
+                    postcode = o.address.postcode,
+                    centroid = o.geometry:centroid()
+                }
+            end
+        end
     end
 end
 
