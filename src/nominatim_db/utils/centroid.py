@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2024 by the Nominatim developer community.
+# Copyright (C) 2025 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Functions for computation of centroids.
@@ -32,6 +32,17 @@ class PointsCentroid:
 
         return (self.sum_x / self.count / 10_000_000,
                 self.sum_y / self.count / 10_000_000)
+
+    def centroid_dict(self) -> dict[str, float]:
+        """ Return the centroid of all points collected so far.
+
+            The centroid is returned as a dictionary with the two fields x, y.
+        """
+        if self.count == 0:
+            raise ValueError("No points available for centroid.")
+
+        return {'x': self.sum_x / self.count / 10_000_000,
+                'y': self.sum_y / self.count / 10_000_000}
 
     def __len__(self) -> int:
         return self.count
