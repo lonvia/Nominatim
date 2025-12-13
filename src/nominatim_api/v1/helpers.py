@@ -12,7 +12,7 @@ from typing import Tuple, Optional, Any, Dict, Iterable
 from itertools import chain
 import re
 
-from ..results import SearchResult, SearchResults, SourceTable
+from ..results import SearchResults, SourceTable
 from ..types import SearchDetails, GeometryFormat
 
 

@@ -495,7 +495,7 @@ def _get_address_lookup_id(result: BaseResultT) -> int:
 async def _finalize_entry(conn: SearchConnection, result: BaseResultT) -> None:
     assert result.address_rows is not None
 
-    postcode = result.postcode or result.address.get('postcode')
+    postcode = result.postcode or (result.address and result.address.get('postcode'))
     if postcode and ',' not in postcode and ';' not in postcode:
         result.address_rows.append(AddressLine(
             category=('place', 'postcode'),
