@@ -52,6 +52,8 @@ CREATE OR REPLACE FUNCTION postcode_delete()
 BEGIN
   UPDATE placex p SET indexed_status = 2
    WHERE p.postcode = OLD.postcode AND ST_Intersects(OLD.geometry, p.geometry);
+
+  RETURN OLD;
 END;
 $$
 LANGUAGE plpgsql;
@@ -68,7 +70,7 @@ BEGIN
 
   IF existing.postcode is NULL THEN
     UPDATE placex p SET indexed_status = 2
-     AND ST_Intersects(NEW.geometry, p.geometry)
+     WHERE ST_Intersects(NEW.geometry, p.geometry)
      AND p.rank_address >= 22 AND not p.address ? 'postcode';
 
     -- new entry, just insert
@@ -78,10 +80,13 @@ BEGIN
 
   -- update: only when there are changes
   IF coalesce(NEW.osm_id, -1) != coalesce(existing.osm_id, -1)
-     OR NEW.geometry::text != existing.geometry::text
+     OR (NEW.osm_id is not null AND NEW.geometry::text != existing.geometry::text)
+     OR (NEW.osm_id is null
+         AND (abs(ST_X(existing.centroid) - ST_X(NEW.centroid)) > 0.0000001
+              OR abs(ST_Y(existing.centroid) - ST_Y(NEW.centroid)) > 0.0000001))
   THEN
     UPDATE placex p SET indexed_status = 2
-      AND ST_Intersects(ST_Difference(NEW.geometry, existing.geometry), p.geometry)
+      WHERE ST_Intersects(ST_Difference(NEW.geometry, existing.geometry), p.geometry)
       AND p.rank_address >= 22 AND not p.address ? 'postcode';
 
     UPDATE placex p SET indexed_status = 2

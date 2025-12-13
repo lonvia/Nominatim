@@ -127,7 +127,7 @@ class _PostcodeCollector:
                                     _to_float(row['lat'], 90))
                         self.collected[postcode] += centroid
                     except ValueError:
-                        LOG.warning("Bad coordinates %s, %s in %s country postcode file.",
+                        LOG.warning("Bad coordinates %s, %s in '%s' country postcode file.",
                                     row['lat'], row['lon'], self.country)
 
         finally:
@@ -226,10 +226,9 @@ def _update_postcode_areas(conn: Connection, analyzer: AbstractAnalyzer,
 
 def _update_guessed_postcode(conn: Connection, analyzer: AbstractAnalyzer,
                              matcher: PostcodeFormatter, project_dir: Optional[Path]) -> None:
-    """
-    Computes artificial postcode centroids from the placex table,
-    potentially enhances it with external data and then updates the
-    postcodes in the table 'location_postcode'.
+    """ Computes artificial postcode centroids from the placex table,
+        potentially enhances it with external data and then updates the
+        postcodes in the table 'location_postcode'.
     """
     # First get the list of countries that currently have postcodes.
     # (Doing this before starting to insert, so it is fast on import.)
@@ -295,8 +294,7 @@ def _update_guessed_postcode(conn: Connection, analyzer: AbstractAnalyzer,
 
 
 def can_compute(dsn: str) -> bool:
-    """
-        Check that the place_postcode table exists so that
+    """ Check that the place_postcode table exists so that
         postcodes can be computed.
     """
     with connect(dsn) as conn:
