@@ -704,19 +704,18 @@ function module.process_tags(o)
     end
 
     -- collect main keys
+    local postcode_collect = false
     for k, v in pairs(o.intags) do
         local ktable = MAIN_KEYS[k]
         if ktable then
             local ktype = ktable[v] or ktable[1]
-            if ktype == 'postcode_area' then
-            end
             if type(ktype) == 'function' then
                 o:write_place(k, v, ktype)
-            elseif ktype == 'postcode_area'
-                    and o.object.type == 'relation'
-                    and o.object.tags.postal_code ~= nil then
-                if o:geometry_is_valid() then
-                    o.num_entries = o.num_entries + 1
+            elseif ktype == 'postcode_area' then
+                postcode_collect = true
+                if o.object.type == 'relation'
+                        and o.object.tags.postal_code ~= nil
+                        and o:geometry_is_valid() then
                     insert_row.place_postcode{
                         postcode = o.object.tags.postal_code,
                         centroid = o.geometry:centroid(),
@@ -732,13 +731,13 @@ function module.process_tags(o)
     if o.num_entries == 0 then
         if fallback ~= nil then
             o:write_place(fallback[1], fallback[2], fallback[3])
-        elseif POSTCODE_FALLBACK and o.address.postcode ~= nil then
-            if o:geometry_is_valid() then
-                insert_row.place_postcode{
-                    postcode = o.address.postcode,
-                    centroid = o.geometry:centroid()
-                }
-            end
+        elseif POSTCODE_FALLBACK and not postcode_collect
+                and o.address.postcode ~= nil
+                and o:geometry_is_valid() then
+            insert_row.place_postcode{
+                postcode = o.address.postcode,
+                centroid = o.geometry:centroid()
+            }
         end
     end
 end

@@ -107,11 +107,15 @@ Feature: Tag evaluation
             n2 x12.36853 y51.42362
             n3 x12.63666 y51.42362
             n4 x12.63666 y51.50618
-            w1 Tboundary=postal_code,ref=3456 Nn1,n2,n3,n4,n1
+            w1 Nn1,n2,n3,n4,n1
+            w2 Tboundary=postal_code,postal_code=443 Nn1,n2,n3,n4,n1
+            r1 Ttype=boundary,boundary=postal_code,postal_code=3456 Mw1@
             """
         Then place contains exactly
-            | object | class    | type        | name!dict     |
-            | W1     | boundary | postal_code | 'ref': '3456' |
+            | object |
+        And place_postcode contains exactly
+            | object | postcode |
+            | R1     | 3456     |
 
     Scenario: Main with extra
         When loading osm data
@@ -192,7 +196,9 @@ Feature: Tag evaluation
             | N12001 | tourism  | hotel    |
             | N12003 | building | shed     |
             | N12004 | building | yes      |
-            | N12005 | place    | postcode |
+        And place_postcode contains exactly
+            | object | postcode | geometry |
+            | N12005 | 12345    | -        |
 
 
     Scenario: Address interpolations

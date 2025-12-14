@@ -97,6 +97,29 @@ def import_place_entrances(db_conn, datatable, node_grid):
                          data.columns.get('extratags')))
 
 
+@given(step_parse('the postcodes'), target_fixture=None)
+def import_place_postcode(db_conn, datatable, node_grid):
+    """ Insert todo rows into the place_postcode table.
+    """
+    with db_conn.cursor() as cur:
+        for row in datatable[1:]:
+            data = {k: v for k, v in zip(datatable[0], row)}
+
+            data['centroid'] = f"srid=4326;{node_grid.geometry_to_wkt(data['centroid'])}"
+            data['osm_type'] = data['osm'][0]
+            data['osm_id'] = data['osm'][1:]
+
+            if 'geometry' in data:
+                geom = f"'srid=4326;{node_grid.geometry_to_wkt(data['geometry'])}'::geometry"
+            else:
+                geom = 'null'
+
+            cur.execute(f"""INSERT INTO place_postcode
+                            (osm_type, osm_id, postcode, centroid, geometry)
+                            VALUES (%(osm_type)s, %(osm_id)s, %(postcode)s,
+                                    %(centroid)s, {geom})""", data)
+
+
 @given('the ways', target_fixture=None)
 def import_ways(db_conn, datatable):
     """ Import raw ways into the osm2pgsql way middle table.
