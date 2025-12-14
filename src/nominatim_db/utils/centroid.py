@@ -56,4 +56,4 @@ class PointsCentroid:
                 self.count += 1
                 return self
 
-        raise ValueError("Can only add 2-element tuples to centroid.")
+        raise ValueError(f"Can only add 2-element tuples to centroid. Got: {other}")

@@ -26,6 +26,13 @@ import mocks
 from cursor import CursorForTesting
 
 
+def _with_srid(geom, default=None):
+    if geom is None:
+        return None if default is None else f"SRID=4326;{default}"
+
+    return f"SRID=4326;{geom}"
+
+
 @pytest.fixture
 def src_dir():
     return SRC_DIR
@@ -203,7 +210,8 @@ def place_postcode_row(place_postcode_table, temp_db_cursor):
         temp_db_cursor.execute("INSERT INTO place_postcode VALUES (%s, %s, %s, %s, %s, %s)",
                                (osm_type, osm_id or next(idseq),
                                 postcode, country,
-                                centroid or 'SRID=4326;POINT(0 0)', geom))
+                                _with_srid(centroid, 'POINT(12.0 4.0)'),
+                                _with_srid(geom)))
 
     return _insert
 

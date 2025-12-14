@@ -59,15 +59,10 @@ class MockPostcodeTable:
     @property
     def row_set(self):
         with self.conn.cursor() as cur:
-            cur.execute("""SELECT country_code, postcode,
+            cur.execute("""SELECT osm_id, country_code, postcode,
                                   ST_X(centroid), ST_Y(centroid)
                            FROM location_postcode""")
             return set((tuple(row) for row in cur))
-
-
-@pytest.fixture
-def tokenizer():
-    return dummy_tokenizer.DummyTokenizer(None)
 
 
 @pytest.fixture
@@ -79,22 +74,36 @@ def postcode_table(def_config, temp_db_conn, placex_table, table_factory):
 
 @pytest.fixture
 def insert_implicit_postcode(placex_table, place_postcode_row):
-    """
-        Inserts data into the placex and place table
+    """ Insert data into the placex and place table
         which can then be used to compute one postcode.
     """
-    def _insert_implicit_postcode(osm_id, country, geometry, address, in_placex=False):
+    def _insert_implicit_postcode(osm_id, country, geometry, postcode, in_placex=False):
         if in_placex:
-            placex_table.add(osm_id=osm_id, country=country, geom=geometry)
+            placex_table.add(osm_id=osm_id, country=country, geom=geometry,
+                             centroid=f'SRID=4326;{geometry}',
+                             address={'postcode': postcode})
         else:
-            place_postcode_row(osm_id=osm_id, centroid='SRID=4326;'+geometry,
-                               country=country, postcode=address['postcode'])
+            place_postcode_row(osm_id=osm_id, centroid=geometry,
+                               country=country, postcode=postcode)
 
     return _insert_implicit_postcode
 
+@pytest.fixture
+def insert_postcode_area(place_postcode_row):
+    """ Insert an area around a centroid to the postcode table.
+    """
+    def _do(osm_id, country, postcode, x, y):
+        x1, x2, y1, y2 = x - 0.001, x + 0.001, y - 0.001, y + 0.001
+        place_postcode_row(osm_type='R', osm_id=osm_id, postcode=postcode, country=country,
+                           centroid=f"POINT({x} {y})",
+                           geom=f"POLYGON(({x1} {y1}, {x1} {y2}, {x2} {y2}, {x2} {y1}, {x1} {y1}))")
+
+    return _do
+
 
 @pytest.fixture
-def postcode_update(dsn, tokenizer, temp_db_conn):
+def postcode_update(dsn, temp_db_conn):
+    tokenizer = dummy_tokenizer.DummyTokenizer(None)
     def _do(data_path=None):
         with temp_db_conn.cursor() as cur:
             cur.execute("""CREATE TRIGGER location_postcode_before_update
@@ -118,50 +127,82 @@ def test_postcodes_empty(postcode_update, postcode_table, place_postcode_table):
     assert not postcode_table.row_set
 
 
-def test_postcodes_add_new(postcode_update, postcode_table, insert_implicit_postcode):
-    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', dict(postcode='9486'))
+@pytest.mark.parametrize('in_placex', [True, False])
+def test_postcodes_add_new_point(postcode_update, postcode_table,
+                                 insert_implicit_postcode, in_placex):
+    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', '9486', in_placex)
     postcode_table.add('yy', '9486', 99, 34)
 
     postcode_update()
 
-    assert postcode_table.row_set == {('xx', '9486', 10, 12), }
+    assert postcode_table.row_set == {(None, 'xx', '9486', 10, 12), }
+
+
+def test_postcodes_add_new_area(postcode_update, insert_postcode_area, postcode_table):
+    insert_postcode_area(345, 'de', '10445', 23.5, 46.2)
+
+    postcode_update()
+
+    assert postcode_table.row_set == {(345, 'de', '10445', 23.5, 46.2)}
+
+
+@pytest.mark.parametrize('in_placex', [True, False])
+def test_postcodes_add_area_and_point(postcode_update, insert_postcode_area,
+                                      insert_implicit_postcode, postcode_table, in_placex):
+    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', '10445', in_placex)
+    insert_postcode_area(345, 'xx', '10445', 23.5, 46.2)
+
+    postcode_update()
+
+    assert postcode_table.row_set == {(345, 'xx', '10445', 23.5, 46.2)}
+
+
+@pytest.mark.parametrize('in_placex', [True, False])
+def test_postcodes_add_point_within_area(postcode_update, insert_postcode_area,
+                                      insert_implicit_postcode, postcode_table, in_placex):
+    insert_implicit_postcode(1, 'xx', 'POINT(23.5 46.2)', '10446', in_placex)
+    insert_postcode_area(345, 'xx', '10445', 23.5, 46.2)
+
+    postcode_update()
+
+    assert postcode_table.row_set == {(345, 'xx', '10445', 23.5, 46.2)}
 
 
 @pytest.mark.parametrize('coords', [(99, 34), (10, 34), (99, 12),
                                     (9, 34), (9, 11), (23, 11)])
 def test_postcodes_replace_coordinates(postcode_update, postcode_table, tmp_path,
                                        insert_implicit_postcode, coords):
-    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', dict(postcode='AB 4511'))
+    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', 'AB 4511')
     postcode_table.add('xx', 'AB 4511', *coords)
 
     postcode_update(tmp_path)
 
-    assert postcode_table.row_set == {('xx', 'AB 4511', 10, 12)}
+    assert postcode_table.row_set == {(None, 'xx', 'AB 4511', 10, 12)}
 
 
 def test_postcodes_replace_coordinates_close(postcode_update, postcode_table,
                                              insert_implicit_postcode):
-    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', dict(postcode='AB 4511'))
+    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', 'AB 4511')
     postcode_table.add('xx', 'AB 4511', 10, 11.99999999)
 
     postcode_update()
 
-    assert postcode_table.row_set == {('xx', 'AB 4511', 10, 11.99999999)}
+    assert postcode_table.row_set == {(None, 'xx', 'AB 4511', 10, 11.99999999)}
 
 
-def test_postcodes_remove(postcode_update, postcode_table,
-                          insert_implicit_postcode):
-    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', dict(postcode='AB 4511'))
+def test_postcodes_remove_point(postcode_update, postcode_table,
+                                insert_implicit_postcode):
+    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', 'AB 4511')
     postcode_table.add('xx', 'badname', 10, 12)
 
     postcode_update()
 
-    assert postcode_table.row_set == {('xx', 'AB 4511', 10, 12)}
+    assert postcode_table.row_set == {(None, 'xx', 'AB 4511', 10, 12)}
 
 
 def test_postcodes_ignore_empty_country(postcode_update, postcode_table,
                                         insert_implicit_postcode):
-    insert_implicit_postcode(1, None, 'POINT(10 12)', dict(postcode='AB 4511'))
+    insert_implicit_postcode(1, None, 'POINT(10 12)', 'AB 4511')
     postcode_update()
     assert not postcode_table.row_set
 
@@ -175,23 +216,23 @@ def test_postcodes_remove_all(postcode_update, postcode_table, place_postcode_ta
 
 def test_postcodes_multi_country(postcode_update, postcode_table,
                                  insert_implicit_postcode):
-    insert_implicit_postcode(1, 'de', 'POINT(10 12)', dict(postcode='54451'))
-    insert_implicit_postcode(2, 'cc', 'POINT(100 56)', dict(postcode='DD23 T'))
-    insert_implicit_postcode(3, 'de', 'POINT(10.3 11.0)', dict(postcode='54452'))
-    insert_implicit_postcode(4, 'cc', 'POINT(10.3 11.0)', dict(postcode='54452'))
+    insert_implicit_postcode(1, 'de', 'POINT(10 12)', '54451')
+    insert_implicit_postcode(2, 'cc', 'POINT(100 56)', 'DD23 T')
+    insert_implicit_postcode(3, 'de', 'POINT(10.3 11.0)', '54452')
+    insert_implicit_postcode(4, 'cc', 'POINT(10.3 11.0)', '54452')
 
     postcode_update()
 
-    assert postcode_table.row_set == {('de', '54451', 10, 12),
-                                      ('de', '54452', 10.3, 11.0),
-                                      ('cc', '54452', 10.3, 11.0),
-                                      ('cc', 'DD23 T', 100, 56)}
+    assert postcode_table.row_set == {(None, 'de', '54451', 10, 12),
+                                      (None, 'de', '54452', 10.3, 11.0),
+                                      (None, 'cc', '54452', 10.3, 11.0),
+                                      (None, 'cc', 'DD23 T', 100, 56)}
 
 
 @pytest.mark.parametrize("gzipped", [True, False])
 def test_postcodes_extern(postcode_update, postcode_table, tmp_path,
                           insert_implicit_postcode, gzipped):
-    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', dict(postcode='AB 4511'))
+    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', 'AB 4511')
 
     extfile = tmp_path / 'xx_postcodes.csv'
     extfile.write_text("postcode,lat,lon\nAB 4511,-4,-1\nCD 4511,-5, -10")
@@ -202,33 +243,33 @@ def test_postcodes_extern(postcode_update, postcode_table, tmp_path,
 
     postcode_update(tmp_path)
 
-    assert postcode_table.row_set == {('xx', 'AB 4511', 10, 12),
-                                      ('xx', 'CD 4511', -10, -5)}
+    assert postcode_table.row_set == {(None, 'xx', 'AB 4511', 10, 12),
+                                      (None, 'xx', 'CD 4511', -10, -5)}
 
 
 def test_postcodes_extern_bad_column(postcode_update, postcode_table, tmp_path,
                                      insert_implicit_postcode):
-    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', dict(postcode='AB 4511'))
+    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', 'AB 4511')
 
     extfile = tmp_path / 'xx_postcodes.csv'
     extfile.write_text("postode,lat,lon\nAB 4511,-4,-1\nCD 4511,-5, -10")
 
     postcode_update(tmp_path)
 
-    assert postcode_table.row_set == {('xx', 'AB 4511', 10, 12)}
+    assert postcode_table.row_set == {(None, 'xx', 'AB 4511', 10, 12)}
 
 
 def test_postcodes_extern_bad_number(postcode_update, insert_implicit_postcode,
                                      postcode_table, tmp_path):
-    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', dict(postcode='AB 4511'))
+    insert_implicit_postcode(1, 'xx', 'POINT(10 12)', 'AB 4511')
 
     extfile = tmp_path / 'xx_postcodes.csv'
     extfile.write_text("postcode,lat,lon\nXX 4511,-4,NaN\nCD 4511,-5, -10\n34,200,0")
 
     postcode_update(tmp_path)
 
-    assert postcode_table.row_set == {('xx', 'AB 4511', 10, 12),
-                                      ('xx', 'CD 4511', -10, -5)}
+    assert postcode_table.row_set == {(None, 'xx', 'AB 4511', 10, 12),
+                                      (None, 'xx', 'CD 4511', -10, -5)}
 
 
 def test_can_compute(dsn, table_factory):
@@ -245,14 +286,14 @@ def test_no_placex_entry(postcode_update, temp_db_cursor, place_postcode_row, po
         RETURN 'yy';
         END; $$ LANGUAGE plpgsql;
     """)
-    place_postcode_row(centroid='SRID=4326;POINT(10 12)', postcode='AB 4511')
+    place_postcode_row(centroid='POINT(10 12)', postcode='AB 4511')
     postcode_update()
 
-    assert postcode_table.row_set == {('yy', 'AB 4511', 10, 12)}
+    assert postcode_table.row_set == {(None, 'yy', 'AB 4511', 10, 12)}
 
 
 def test_discard_badly_formatted_postcodes(postcode_update, place_postcode_row, postcode_table):
-    place_postcode_row(centroid='SRID=4326;POINT(10 12)', country='fr', postcode='AB 4511')
+    place_postcode_row(centroid='POINT(10 12)', country='fr', postcode='AB 4511')
     postcode_update()
 
     assert not postcode_table.row_set
