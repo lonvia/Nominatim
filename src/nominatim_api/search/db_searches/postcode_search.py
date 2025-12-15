@@ -14,7 +14,7 @@ from . import base
 from ...typing import SaBind, SaExpression
 from ...sql.sqlalchemy_types import Geometry, IntArray
 from ...connection import SearchConnection
-from ...types import SearchDetails, Bbox
+from ...types import SearchDetails
 from ... import results as nres
 from ..db_search_fields import SearchData
 
@@ -57,7 +57,7 @@ class PostcodeSearch(base.AbstractSearch):
                                else_=1.0)
 
         if details.near is not None:
-            sql = sql.order_by(t.c.geometry.ST_Distance(NEAR_PARAM))
+            sql = sql.order_by(t.c.centroid.ST_Distance(NEAR_PARAM))
 
         sql = base.filter_by_area(sql, t, details)
 

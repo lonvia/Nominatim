@@ -224,7 +224,9 @@ def test_name_and_postcode(apiobj, frontend, wcount, rids):
     apiobj.add_search_name(991, names=[111], centroid=(10.3, 10.3),
                            search_rank=27, address_rank=27)
     apiobj.add_postcode(place_id=100, country_code='ch', postcode='11225',
-                        geometry='POINT(10 10)')
+                        centroid='POINT(10 10)',
+                        geometry='POLYGON((9.99 9.99, 9.99 10.001, 10.001 10.001, '
+                                 '10.001 9.99, 9.99 9.99))')
 
     lookup = FieldLookup('name_vector', [111], LookupAll)
 

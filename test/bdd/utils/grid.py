@@ -10,6 +10,7 @@ Useful for visually describing geometries.
 """
 import re
 
+
 class Grid:
 
     def __init__(self, table, step, origin):
@@ -52,7 +53,7 @@ class Grid:
             with coordinates or grid points.
         """
         if re.fullmatch(r'([A-Z]+)\((.*)\)', value) is not None:
-            return value # already a WKT
+            return value  # already a WKT
 
         # points
         if ',' not in value:
@@ -67,5 +68,5 @@ class Grid:
 
         # simple polygons
         coords = ','.join(' '.join(f"{p:.7f}" for p in pt)
-                                  for pt in self.parse_line(value[1:-1]))
+                          for pt in self.parse_line(value[1:-1]))
         return f"POLYGON(({coords}))"

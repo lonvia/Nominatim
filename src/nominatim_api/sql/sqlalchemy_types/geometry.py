@@ -178,6 +178,8 @@ class Geometry(types.UserDefinedType):  # type: ignore[type-arg]
 
     def bind_processor(self, dialect: 'sa.Dialect') -> Callable[[Any], str]:
         def process(value: Any) -> str:
+            if value is None:
+                return 'null'
             if isinstance(value, str):
                 return value
 

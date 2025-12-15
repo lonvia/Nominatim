@@ -30,6 +30,7 @@ from nominatim_db.tokenizer import factory as tokenizer_factory
 
 from utils.geometry_alias import ALIASES
 
+
 def _rewrite_placeid_field(field, new_field, datatable, place_ids):
     try:
         oidx = datatable[0].index(field)

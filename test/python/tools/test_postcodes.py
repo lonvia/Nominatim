@@ -88,6 +88,7 @@ def insert_implicit_postcode(placex_table, place_postcode_row):
 
     return _insert_implicit_postcode
 
+
 @pytest.fixture
 def insert_postcode_area(place_postcode_row):
     """ Insert an area around a centroid to the postcode table.
@@ -104,6 +105,7 @@ def insert_postcode_area(place_postcode_row):
 @pytest.fixture
 def postcode_update(dsn, temp_db_conn):
     tokenizer = dummy_tokenizer.DummyTokenizer(None)
+
     def _do(data_path=None):
         with temp_db_conn.cursor() as cur:
             cur.execute("""CREATE TRIGGER location_postcode_before_update
@@ -159,7 +161,7 @@ def test_postcodes_add_area_and_point(postcode_update, insert_postcode_area,
 
 @pytest.mark.parametrize('in_placex', [True, False])
 def test_postcodes_add_point_within_area(postcode_update, insert_postcode_area,
-                                      insert_implicit_postcode, postcode_table, in_placex):
+                                         insert_implicit_postcode, postcode_table, in_placex):
     insert_implicit_postcode(1, 'xx', 'POINT(23.5 46.2)', '10446', in_placex)
     insert_postcode_area(345, 'xx', '10445', 23.5, 46.2)
 

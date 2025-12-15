@@ -51,6 +51,8 @@ CREATE INDEX IF NOT EXISTS idx_osmline_parent_osm_id
 ---
 CREATE INDEX IF NOT EXISTS idx_postcode_postcode
   ON location_postcode USING BTREE (postcode) {{db.tablespace.search_index}};
+CREATE INDEX IF NOT EXISTS idx_postcode_osmid
+  ON location_postcode USING BTREE (osm_id) {{db.tablespace.search_index}};
 
 {% if drop %}
 ---

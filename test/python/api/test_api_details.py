@@ -489,9 +489,9 @@ def test_lookup_in_postcode(apiobj, frontend):
                         parent_place_id=152,
                         postcode='34 425',
                         country_code='gb',
-                        rank_search=20, rank_address=22,
                         indexed_date=import_date,
-                        geometry='POINT(-9.45 5.6)')
+                        centroid='POINT(-9.45 5.6)',
+                        geometry='POLYGON((-9.5 5.5, -9.5 5.7, -9.4 5.6, -9.5 5.5))')
 
     api = frontend(apiobj, options={'details'})
     result = api.details(napi.PlaceID(554))
@@ -516,8 +516,8 @@ def test_lookup_in_postcode(apiobj, frontend):
     assert result.postcode is None
     assert result.wikipedia is None
 
-    assert result.rank_search == 20
-    assert result.rank_address == 22
+    assert result.rank_search == 21
+    assert result.rank_address == 11
     assert result.importance is None
 
     assert result.country_code == 'gb'
@@ -529,15 +529,17 @@ def test_lookup_in_postcode(apiobj, frontend):
     assert result.name_keywords is None
     assert result.address_keywords is None
 
-    assert result.geometry == {'type': 'ST_Point'}
+    assert result.geometry == {'type': 'ST_Polygon'}
 
 
-def test_lookup_postcode_with_address_details(apiobj, frontend):
+@pytest.mark.parametrize('lookup', [napi.PlaceID(9000),
+                                    napi.OsmID('R', 12)])
+def test_lookup_postcode_with_address_details(apiobj, frontend, lookup):
     apiobj.add_postcode(place_id=9000,
+                        osm_id=12,
                         parent_place_id=332,
                         postcode='34 425',
-                        country_code='gb',
-                        rank_search=25, rank_address=25)
+                        country_code='gb')
     apiobj.add_placex(place_id=332, osm_type='N', osm_id=3333,
                       class_='place', type='suburb',  name='Smallplace',
                       country_code='gb', admin_level=13,
@@ -549,15 +551,15 @@ def test_lookup_postcode_with_address_details(apiobj, frontend):
                               rank_search=17, rank_address=16)
 
     api = frontend(apiobj, options={'details'})
-    result = api.details(napi.PlaceID(9000), address_details=True)
+    result = api.details(lookup, address_details=True)
     napi.Locales().localize_results([result])
 
     assert result.address_rows == [
-               napi.AddressLine(place_id=9000, osm_object=None,
-                                category=('place', 'postcode'),
+               napi.AddressLine(place_id=9000, osm_object=('R', 12),
+                                category=('boundary', 'postal_code'),
                                 names={'ref': '34 425'}, extratags={},
                                 admin_level=15, fromarea=True, isaddress=True,
-                                rank_address=25, distance=0.0,
+                                rank_address=11, distance=0.0,
                                 local_name='34 425'),
                napi.AddressLine(place_id=332, osm_object=('N', 3333),
                                 category=('place', 'suburb'),
