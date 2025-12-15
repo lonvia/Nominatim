@@ -94,7 +94,7 @@ class _PostcodeCollector:
                          (place_id, country_code, postcode, centroid, geometry)
                        VALUES (nextval('seq_place'), {}, %(pc)s,
                                ST_SetSRID(ST_MakePoint(%(x)s, %(y)s), 4326),
-                               ST_Expand(ST_SetSRID(ST_MakePoint(%(x)s, %(y)s), 4326), 0.005))
+                               ST_Expand(ST_SetSRID(ST_MakePoint(%(x)s, %(y)s), 4326), 0.05))
                     """).format(pysql.Literal(self.country)),
                     to_add)
             if to_delete:
@@ -177,8 +177,9 @@ def _insert_postcode_areas(conn: Connection, country_code: str, pcs: list[list[s
         with conn.cursor() as inserter:
             inserter.execute(
                 """ INSERT INTO location_postcode
-                        (osm_id, country_code, postcode, centroid, geometry)
-                        SELECT osm_id, country_code, outpc, centroid, geometry
+                        (place_id, osm_id, country_code, postcode, centroid, geometry)
+                        SELECT nextval('seq_place'), osm_id, country_code, outpc,
+                               centroid, geometry
                         FROM place_postcode, unnest(%s::text[]) as inpc,
                              unnest(%s::text[]) as outpc
                         WHERE country_code = %s and postcode = inpc
@@ -193,7 +194,7 @@ def _update_postcode_areas(conn: Connection, analyzer: AbstractAnalyzer,
     # first delete all areas that have gone
     conn.execute(""" DELETE FROM location_postcode pc
                      WHERE pc.osm_id is not null
-                       AND not EXISTS(
+                       AND NOT EXISTS(
                               SELECT * FROM place_postcode pp
                               WHERE pp.osm_type = 'R' and pp.osm_id = pc.osm_id)
                 """)

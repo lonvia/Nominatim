@@ -79,7 +79,7 @@ Feature: Querying fo postcode variants
            | N35 | place | house | E4 7EA        | 111              | country:gb |
         When importing
         Then location_postcode contains exactly
-           | country_code | postcode | geometry!wkt |
+           | country_code | postcode | centroid!wkt |
            | gb           | EH4 7EA  | country:gb |
            | gb           | E4 7EA   | country:gb |
         When geocoding "EH4 7EA"
@@ -90,20 +90,3 @@ Feature: Querying fo postcode variants
         Then result 0 contains
            | type     | display_name |
            | postcode | E4 7EA, United Kingdom |
-
-
-    Scenario: Postcode areas are preferred over postcode points
-        Given the grid with origin DE
-            | 1 | 2 |
-            | 4 | 3 |
-        Given the places
-            | osm | class    | type        | postcode | geometry    |
-            | R23 | boundary | postal_code | 12345    | (1,2,3,4,1) |
-        When importing
-        Then location_postcode contains exactly
-          | country_code | postcode |
-          | de           | 12345    |
-        When geocoding "12345, de"
-        Then result 0 contains
-          | object |
-          | R23 |

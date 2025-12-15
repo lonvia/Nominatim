@@ -148,18 +148,6 @@ DECLARE
   cnt INTEGER;
   location RECORD;
 BEGIN
-    -- First try: be within the coverage aera of a postcode
-    FOR location IN
-      SELECT postcode
-        FROM location_postcode p
-       WHERE ST_Covers(p.geometry, geom)
-             AND p.country_code = country
-       ORDER BY osm_id is null, ST_Distance(p.centroid, geom)
-       LIMIT 1
-    LOOP
-        RETURN location.postcode;
-    END LOOP;
-
     -- If the geometry is an area then only one postcode must be within
     -- that area, otherwise consider the area as not having a postcode.
     IF ST_GeometryType(geom) in ('ST_Polygon','ST_MultiPolygon') THEN
@@ -173,8 +161,22 @@ BEGIN
 
         IF cnt = 1 THEN
             RETURN outcode;
+        ELSE
+            RETURN null;
         END IF;
     END IF;
+
+    -- Otherwise: be fully within the coverage area of a postcode
+    FOR location IN
+      SELECT postcode
+        FROM location_postcode p
+       WHERE ST_Covers(p.geometry, geom)
+             AND p.country_code = country
+       ORDER BY osm_id is null, ST_Distance(p.centroid, geom)
+       LIMIT 1
+    LOOP
+        RETURN location.postcode;
+    END LOOP;
 
     RETURN null;
 END;

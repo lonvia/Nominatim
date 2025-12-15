@@ -407,11 +407,12 @@ def create_from_postcode_row(row: SaRow, class_type: Type[BaseResultT]) -> BaseR
     """
     return class_type(source_table=SourceTable.POSTCODE,
                       place_id=row.place_id,
+                      osm_object=None if row.osm_id is None else ('R', row.osm_id),
                       parent_place_id=row.parent_place_id,
-                      category=('place', 'postcode'),
+                      rank_address=11, rank_search=21,
+                      category=('place', 'postcode')
+                                if row.osm_id is None else ('boundary', 'postal_code'),
                       names={'ref': row.postcode},
-                      rank_search=row.rank_search,
-                      rank_address=row.rank_address,
                       country_code=row.country_code,
                       centroid=Point.from_wkb(row.centroid),
                       geometry=_filter_geometries(row))

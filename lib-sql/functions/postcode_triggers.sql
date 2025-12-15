@@ -18,6 +18,7 @@ CREATE OR REPLACE FUNCTION postcode_update()
   AS $$
 DECLARE
   partition SMALLINT;
+  pc_rank_search SMALLINT;
   location RECORD;
 BEGIN
     IF NEW.indexed_status != 0 OR OLD.indexed_status = 0 THEN
@@ -28,13 +29,13 @@ BEGIN
 
     partition := get_partition(NEW.country_code);
 
-    SELECT * FROM get_postcode_rank(NEW.country_code, NEW.postcode)
-      INTO NEW.rank_search, NEW.rank_address;
+    SELECT rank_search FROM get_postcode_rank(NEW.country_code, NEW.postcode)
+      INTO pc_rank_search;
 
     NEW.parent_place_id = 0;
     FOR location IN
       SELECT place_id
-        FROM getNearFeatures(partition, NEW.geometry, NEW.geometry, NEW.rank_search)
+        FROM getNearFeatures(partition, NEW.centroid, NEW.centroid, pc_rank_search)
         WHERE NOT isguess ORDER BY rank_address DESC, distance asc LIMIT 1
     LOOP
         NEW.parent_place_id = location.place_id;
@@ -65,17 +66,32 @@ CREATE OR REPLACE FUNCTION postcode_insert()
 DECLARE
   existing RECORD;
 BEGIN
-  SELECT * INTO existing FROM location_postcode p
-    WHERE p.country_code = NEW.country_code AND p.postcode = NEW.postcode;
+  IF NEW.osm_id is not NULL THEN
+    -- postcode area, remove existing from same OSM object
+    SELECT * INTO existing FROM location_postcode p
+      WHERE p.osm_id = NEW.osm_id;
 
-  IF existing.postcode is NULL THEN
-    UPDATE placex p SET indexed_status = 2
-     WHERE ST_Intersects(NEW.geometry, p.geometry)
-     AND p.rank_address >= 22 AND not p.address ? 'postcode';
+    IF existing.place_id is not NULL THEN
+      IF existing.postcode != NEW.postcode or existing.country_code != NEW.country_code THEN
+        DELETE FROM location_postcode p WHERE p.osm_id = NEW.osm_id;
+        existing := NULL;
+      END IF;
+    END IF;
+  END IF;
 
-    -- new entry, just insert
-    existing.indexed_status := 1;
-    RETURN NEW;
+  IF existing is NULL THEN
+    SELECT * INTO existing FROM location_postcode p
+      WHERE p.country_code = NEW.country_code AND p.postcode = NEW.postcode;
+
+    IF existing.postcode is NULL THEN
+      UPDATE placex p SET indexed_status = 2
+       WHERE ST_Intersects(NEW.geometry, p.geometry)
+       AND p.rank_address >= 22 AND not p.address ? 'postcode';
+
+      -- new entry, just insert
+      NEW.indexed_status := 1;
+      RETURN NEW;
+    END IF;
   END IF;
 
   -- update: only when there are changes

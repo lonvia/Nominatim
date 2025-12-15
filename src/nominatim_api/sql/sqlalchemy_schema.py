@@ -70,12 +70,12 @@ class SearchTables:
             'location_postcode', meta,
             sa.Column('place_id', sa.BigInteger),
             sa.Column('parent_place_id', sa.BigInteger),
-            sa.Column('rank_search', sa.SmallInteger),
-            sa.Column('rank_address', sa.SmallInteger),
+            sa.Column('osm_id', sa.BigInteger),
             sa.Column('indexed_status', sa.SmallInteger),
             sa.Column('indexed_date', sa.DateTime),
             sa.Column('country_code', sa.String(2)),
             sa.Column('postcode', sa.Text),
+            sa.Column('centroid', Geometry),
             sa.Column('geometry', Geometry))
 
         self.osmline = sa.Table(

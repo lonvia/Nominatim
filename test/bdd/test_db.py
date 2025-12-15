@@ -11,6 +11,7 @@ These tests check the Nominatim import chain after the osm2pgsql import.
 """
 import asyncio
 import re
+from collections import defaultdict
 
 import psycopg
 
@@ -27,6 +28,7 @@ from nominatim_db.tools.database_import import load_data, create_table_triggers
 from nominatim_db.tools.postcodes import update_postcodes
 from nominatim_db.tokenizer import factory as tokenizer_factory
 
+from utils.geometry_alias import ALIASES
 
 def _rewrite_placeid_field(field, new_field, datatable, place_ids):
     try:
@@ -99,13 +101,20 @@ def import_place_entrances(db_conn, datatable, node_grid):
 
 @given(step_parse('the postcodes'), target_fixture=None)
 def import_place_postcode(db_conn, datatable, node_grid):
-    """ Insert todo rows into the place_postcode table.
+    """ Insert todo rows into the place_postcode table. If a row for the
+        requested object already exists it is overwritten.
     """
     with db_conn.cursor() as cur:
         for row in datatable[1:]:
-            data = {k: v for k, v in zip(datatable[0], row)}
+            data = defaultdict(lambda: None)
+            data.update((k, v) for k, v in zip(datatable[0], row))
 
-            data['centroid'] = f"srid=4326;{node_grid.geometry_to_wkt(data['centroid'])}"
+            if data['centroid'].startswith('country:'):
+                ccode = data['centroid'][8:].upper()
+                data['centroid'] = 'srid=4326;POINT({} {})'.format(*ALIASES[ccode])
+            else:
+                data['centroid'] = f"srid=4326;{node_grid.geometry_to_wkt(data['centroid'])}"
+
             data['osm_type'] = data['osm'][0]
             data['osm_id'] = data['osm'][1:]
 
@@ -114,10 +123,15 @@ def import_place_postcode(db_conn, datatable, node_grid):
             else:
                 geom = 'null'
 
+            cur.execute(""" DELETE FROM place_postcode
+                            WHERE osm_type = %(osm_type)s and osm_id = %(osm_id)s""",
+                        data)
             cur.execute(f"""INSERT INTO place_postcode
-                            (osm_type, osm_id, postcode, centroid, geometry)
-                            VALUES (%(osm_type)s, %(osm_id)s, %(postcode)s,
+                            (osm_type, osm_id, country_code, postcode, centroid, geometry)
+                            VALUES (%(osm_type)s, %(osm_id)s,
+                                    %(country)s, %(postcode)s,
                                     %(centroid)s, {geom})""", data)
+    db_conn.commit()
 
 
 @given('the ways', target_fixture=None)
@@ -191,7 +205,7 @@ def do_update(db_conn, update_config, node_grid, datatable):
 
 @when('updating entrances', target_fixture=None)
 def update_place_entrances(db_conn, datatable, node_grid):
-    """ Insert todo rows into the place_entrance table.
+    """ Update rows in the place_entrance table.
     """
     with db_conn.cursor() as cur:
         for row in datatable[1:]:
@@ -204,9 +218,10 @@ def update_place_entrances(db_conn, datatable, node_grid):
                            VALUES (%s, %s, %s, {})""".format(data.get_wkt()),
                         (data.columns['osm_id'], data.columns['type'],
                          data.columns.get('extratags')))
+    db_conn.commit()
 
 
-@when('updating postcodes')
+@when('refreshing postcodes')
 def do_postcode_update(update_config):
     """ Recompute the postcode centroids.
     """
@@ -221,6 +236,8 @@ def do_delete_place(db_conn, update_config, node_grid, otype, oid):
     with db_conn.cursor() as cur:
         cur.execute('TRUNCATE place_to_be_deleted')
         cur.execute('DELETE FROM place WHERE osm_type = %s and osm_id = %s',
+                    (otype, oid))
+        cur.execute('DELETE FROM place_postcode WHERE osm_type = %s and osm_id = %s',
                     (otype, oid))
         cur.execute('SELECT flush_deleted_places()')
         if otype == 'N':
