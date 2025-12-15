@@ -103,3 +103,49 @@ Feature: Update of postcode
         Then location_postcode contains exactly
            | country_code | postcode | centroid!wkt | parent_place_id |
            | de           | 12345    | 9            | R1              |
+
+    Scenario: When a postcode area appears, postcode points are shadowed
+        Given the grid with origin DE
+           | 1 |   | 3 |   |
+           |   | 9 |   | 8 |
+           | 2 |   | 5 |   |
+        Given the postcodes
+           | osm | postcode | centroid |
+           | N92 | 44321    | 9        |
+           | N4  | 00245    | 8        |
+        When importing
+        Then location_postcode contains exactly
+           | country_code | postcode | osm_id | centroid!wkt |
+           | de           | 44321    | -      | 9            |
+           | de           | 00245    | -      | 8            |
+        Given the postcodes
+           | osm | postcode | centroid | geometry    |
+           | R45 | 00245    | 9        | (1,3,5,2,1) |
+        When refreshing postcodes
+        Then location_postcode contains exactly
+           | country_code | postcode | osm_id | centroid!wkt |
+           | de           | 00245    | 45     | 9            |
+
+    Scenario: When a postcode area disappears, postcode points are unshadowed
+        Given the grid with origin DE
+           | 1 |   | 3 |   |
+           |   | 9 |   | 8 |
+           | 2 |   | 5 |   |
+        Given the postcodes
+           | osm | postcode | centroid | geometry    |
+           | R45 | 00245    | 9        | (1,3,5,2,1) |
+        Given the postcodes
+           | osm | postcode | centroid |
+           | N92 | 44321    | 9        |
+           | N4  | 00245    | 8        |
+        When importing
+        Then location_postcode contains exactly
+           | country_code | postcode | osm_id | centroid!wkt |
+           | de           | 00245    | 45     | 9            |
+        When marking for delete R45
+        And refreshing postcodes
+        Then location_postcode contains exactly
+           | country_code | postcode | osm_id | centroid!wkt |
+           | de           | 44321    | -      | 9            |
+           | de           | 00245    | -      | 8            |
+
