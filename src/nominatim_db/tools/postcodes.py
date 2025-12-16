@@ -173,20 +173,19 @@ def update_postcodes(dsn: str, project_dir: Optional[Path], tokenizer: AbstractT
         analyzer.update_postcodes_from_db()
 
 
-def _insert_postcode_areas(conn: Connection, country_code: str, pcs: list[list[str]]) -> None:
+def _insert_postcode_areas(conn: Connection, country_code: str, pcs: list[dict[str, str]]) -> None:
     if pcs:
-        inpcs, outpcs = zip(*pcs)
         with conn.cursor() as inserter:
-            inserter.execute(
-                """ INSERT INTO location_postcode
-                        (place_id, osm_id, country_code, postcode, centroid, geometry)
-                        SELECT nextval('seq_place'), osm_id, country_code, outpc,
-                               centroid, geometry
-                        FROM place_postcode, unnest(%s::text[]) as inpc,
-                             unnest(%s::text[]) as outpc
-                        WHERE country_code = %s and postcode = inpc
-                              and geometry is not null
-                """, (list(inpcs), list(outpcs), country_code))
+            inserter.executemany(
+                pysql.SQL(
+                    """ INSERT INTO location_postcode
+                            (place_id, osm_id, country_code, postcode, centroid, geometry)
+                            SELECT nextval('seq_place'), osm_id, country_code, %(out)s,
+                                   centroid, geometry
+                            FROM place_postcode
+                            WHERE country_code = {} and postcode = %(in)s
+                                  and geometry is not null
+                    """).format(pysql.Literal(country_code)), pcs)
 
 
 def _update_postcode_areas(conn: Connection, analyzer: AbstractAnalyzer,
@@ -221,7 +220,7 @@ def _update_postcode_areas(conn: Connection, analyzer: AbstractAnalyzer,
             assert fmt is not None
 
             if (m := fmt.match(postcode)):
-                pcs.append([postcode, fmt.normalize(m)])
+                pcs.append({'out': fmt.normalize(m), 'in': postcode})
 
         if country_code is not None and pcs:
             _insert_postcode_areas(conn, country_code, pcs)
