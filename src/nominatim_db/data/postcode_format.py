@@ -2,13 +2,16 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2024 by the Nominatim developer community.
+# Copyright (C) 2025 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Functions for formatting postcodes according to their country-specific
 format.
+
+country_info must have been initialised before any of the functions can
+be used.
 """
-from typing import Any, Mapping, Optional, Set, Match
+from typing import Any, Mapping, Optional, Set, Match, cast
 import re
 
 from ..errors import UsageError
@@ -67,12 +70,15 @@ class PostcodeFormatter:
         self.country_without_postcode: Set[Optional[str]] = {None}
         self.country_matcher = {}
         self.default_matcher = CountryPostcodeMatcher('', {'pattern': '.*'})
+        self.postcode_extent = {}
 
         for ccode, prop in country_info.iterate('postcode'):
             if prop is False:
                 self.country_without_postcode.add(ccode)
             elif isinstance(prop, dict):
                 self.country_matcher[ccode] = CountryPostcodeMatcher(ccode, prop)
+                if 'extent' in prop:
+                    self.postcode_extent[ccode] = prop['extent']
             else:
                 raise UsageError(f"Invalid entry 'postcode' for country '{ccode}'")
 
@@ -113,3 +119,9 @@ class PostcodeFormatter:
             `match()`
         """
         return self.country_matcher.get(country_code, self.default_matcher).normalize(match)
+
+    def get_postcode_extent(self, country_code: str) -> int:
+        """ Return the extent to use for the given country. If no
+            specific extent is set, then the defualt will be returned.
+        """
+        return cast(int, self.postcode_extent.get(country_code, 5000))

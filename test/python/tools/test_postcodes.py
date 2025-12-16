@@ -43,6 +43,10 @@ class MockPostcodeTable:
                            RETURN null;
                            END; $$ LANGUAGE plpgsql;
                         """)
+            cur.execute("""CREATE OR REPLACE FUNCTION expand_by_meters(geom GEOMETRY, meters FLOAT)
+                           RETURNS GEOMETRY AS $$
+                           SELECT ST_Envelope(ST_Buffer(geom::geography, meters, 1)::geometry)
+                           $$ LANGUAGE sql;""")
         conn.commit()
 
     def add(self, country, postcode, x, y):

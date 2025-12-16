@@ -43,10 +43,11 @@ class _PostcodeCollector:
     """
 
     def __init__(self, country: str, matcher: Optional[CountryPostcodeMatcher],
-                 exclude: set[str] = set()):
+                 default_extent: float, exclude: set[str] = set()):
         self.country = country
         self.matcher = matcher
         self.exclude = exclude
+        self.extent = default_extent
         self.collected: Dict[str, PointsCentroid] = defaultdict(PointsCentroid)
         self.normalization_cache: Optional[Tuple[str, Optional[str]]] = None
 
@@ -94,8 +95,9 @@ class _PostcodeCollector:
                          (place_id, country_code, postcode, centroid, geometry)
                        VALUES (nextval('seq_place'), {}, %(pc)s,
                                ST_SetSRID(ST_MakePoint(%(x)s, %(y)s), 4326),
-                               ST_Expand(ST_SetSRID(ST_MakePoint(%(x)s, %(y)s), 4326), 0.05))
-                    """).format(pysql.Literal(self.country)),
+                               expand_by_meters(ST_SetSRID(ST_MakePoint(%(x)s, %(y)s), 4326), {}))
+                    """).format(pysql.Literal(self.country),
+                                pysql.Literal(self.extent)),
                     to_add)
             if to_delete:
                 cur.execute("""DELETE FROM location_postcode
@@ -279,6 +281,7 @@ def _update_guessed_postcode(conn: Connection, analyzer: AbstractAnalyzer,
                 if collector is not None:
                     collector.commit(conn, analyzer, project_dir)
                 collector = _PostcodeCollector(country, matcher.get_matcher(country),
+                                               matcher.get_postcode_extent(country),
                                                exclude=area_pcs[country])
                 todo_countries.discard(country)
             collector.add(postcode, x, y)
@@ -289,7 +292,9 @@ def _update_guessed_postcode(conn: Connection, analyzer: AbstractAnalyzer,
     # Now handle any countries that are only in the postcode table.
     for country in todo_countries:
         fmt = matcher.get_matcher(country)
-        _PostcodeCollector(country, fmt).commit(conn, analyzer, project_dir)
+        ext = matcher.get_postcode_extent(country)
+        _PostcodeCollector(country, fmt, ext,
+                           exclude=area_pcs[country]).commit(conn, analyzer, project_dir)
 
     conn.execute("DROP TABLE IF EXISTS _global_postcode_area")
 
