@@ -232,6 +232,7 @@ DROP TABLE IF EXISTS location_postcode;
 CREATE TABLE location_postcode (
   place_id BIGINT,
   osm_id BIGINT,
+  rank_search SMALLINT,
   parent_place_id BIGINT,
   indexed_status SMALLINT,
   indexed_date TIMESTAMP,
