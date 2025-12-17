@@ -183,7 +183,8 @@ def _insert_postcode_areas(conn: Connection, country_code: str, pcs: list[dict[s
                             SELECT nextval('seq_place'), osm_id, country_code, %(out)s,
                                    centroid, geometry
                             FROM place_postcode
-                            WHERE country_code = {} and postcode = %(in)s
+                            WHERE osm_type = 'R'
+                                  and country_code = {} and postcode = %(in)s
                                   and geometry is not null
                     """).format(pysql.Literal(country_code)), pcs)
 
