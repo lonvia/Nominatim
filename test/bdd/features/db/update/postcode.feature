@@ -30,7 +30,7 @@ Feature: Update of postcode
            | osm | class | type  | addr+postcode | addr+housenumber | geometry |
            | N34 | place | house | 01982         | 111              | country:de |
         When importing
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | centroid!wkt |
            | de           | 01982    | country:de |
         Given the postcodes
@@ -40,7 +40,7 @@ Feature: Update of postcode
            | osm | class | type  | addr+postcode | addr+housenumber | geometry |
            | N35 | place | house | 4567          | 5                | country:ch |
         And refreshing postcodes
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | centroid!wkt |
            | de           | 01982    | country:de |
            | ch           | 4567     | country:ch |
@@ -54,7 +54,7 @@ Feature: Update of postcode
         When importing
         And marking for delete N34
         And refreshing postcodes
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | centroid!wkt |
            | ch           | 4567     | country:ch |
 
@@ -66,7 +66,7 @@ Feature: Update of postcode
         When importing
         And marking for delete N34
         And refreshing postcodes
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | centroid!wkt|
            | fr           | 01982    | country:fr |
 
@@ -79,7 +79,7 @@ Feature: Update of postcode
            | osm | class | type     | addr+postcode |  geometry |
            | N34 | place | postcode | 20453         | country:de |
         And refreshing postcodes
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | centroid!wkt |
            | de           | 20453    | country:de |
 
@@ -96,11 +96,11 @@ Feature: Update of postcode
            | osm | postcode | centroid |
            | N9  | 12345    | 9        |
         When importing
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | postcode | centroid!wkt | parent_place_id |
            | 12345    | 9            | R2              |
         When marking for delete R2
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | centroid!wkt | parent_place_id |
            | de           | 12345    | 9            | R1              |
 
@@ -114,7 +114,7 @@ Feature: Update of postcode
            | N92 | 44321    | 9        |
            | N4  | 00245    | 8        |
         When importing
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | osm_id | centroid!wkt |
            | de           | 44321    | -      | 9            |
            | de           | 00245    | -      | 8            |
@@ -122,7 +122,7 @@ Feature: Update of postcode
            | osm | postcode | centroid | geometry    |
            | R45 | 00245    | 9        | (1,3,5,2,1) |
         When refreshing postcodes
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | osm_id | centroid!wkt |
            | de           | 00245    | 45     | 9            |
 
@@ -139,12 +139,12 @@ Feature: Update of postcode
            | N92 | 44321    | 9        |
            | N4  | 00245    | 8        |
         When importing
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | osm_id | centroid!wkt |
            | de           | 00245    | 45     | 9            |
         When marking for delete R45
         And refreshing postcodes
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | osm_id | centroid!wkt |
            | de           | 44321    | -      | 9            |
            | de           | 00245    | -      | 8            |

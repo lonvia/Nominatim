@@ -227,8 +227,8 @@ GRANT SELECT ON planet_osm_rels to "{{config.DATABASE_WEBUSER}}" ;
 GRANT SELECT on location_area to "{{config.DATABASE_WEBUSER}}" ;
 
 -- Table for synthetic postcodes.
-DROP TABLE IF EXISTS location_postcode;
-CREATE TABLE location_postcode (
+DROP TABLE IF EXISTS location_postcodes;
+CREATE TABLE location_postcodes (
   place_id BIGINT,
   osm_id BIGINT,
   rank_search SMALLINT,
@@ -240,9 +240,9 @@ CREATE TABLE location_postcode (
   centroid GEOMETRY(Point, 4326),
   geometry GEOMETRY(Geometry, 4326) NOT NULL
   );
-CREATE UNIQUE INDEX idx_postcode_id ON location_postcode USING BTREE (place_id) {{db.tablespace.search_index}};
-CREATE INDEX idx_postcode_geometry ON location_postcode USING GIST (geometry) {{db.tablespace.address_index}};
-GRANT SELECT ON location_postcode TO "{{config.DATABASE_WEBUSER}}" ;
+CREATE UNIQUE INDEX idx_location_postcodes_id ON location_postcodes USING BTREE (place_id) {{db.tablespace.search_index}};
+CREATE INDEX idx_location_postcodes_geometry ON location_postcodes USING GIST (geometry) {{db.tablespace.address_index}};
+GRANT SELECT ON location_postcodes TO "{{config.DATABASE_WEBUSER}}" ;
 
 -- Table to store location of entrance nodes
 DROP TABLE IF EXISTS placex_entrance;

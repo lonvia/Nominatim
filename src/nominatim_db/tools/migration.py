@@ -188,7 +188,7 @@ def create_place_postcode_table(conn: Connection, config: Configuration, **_: An
     """
     mutable = not is_frozen(conn)
     has_place_table = table_exists(conn, 'place_postcode')
-    has_postcode_centroid = table_has_column(conn, 'location_postcode', 'centroid')
+    has_postcode_table = table_exists(conn, 'location_postcodes')
     if mutable and not has_place_table:
         with conn.cursor() as cur:
             cur.execute(
@@ -224,13 +224,13 @@ def create_place_postcode_table(conn: Connection, config: Configuration, **_: An
                   USING BTREE (osm_type, osm_id)
                 """)
             cur.execute("ALTER TABLE place ENABLE TRIGGER ALL")
-    if not has_postcode_centroid:
+    if not has_postcode_table:
         with conn.cursor() as cur:
             # create a new location_postcode table which will replace the
             # old one atomically in the end
             cur.execute(
                 """
-                CREATE TABLE new_location_postcode (
+                CREATE TABLE location_postcodes (
                     place_id BIGINT,
                     osm_id BIGINT,
                     rank_search SMALLINT,
@@ -242,7 +242,7 @@ def create_place_postcode_table(conn: Connection, config: Configuration, **_: An
                     centroid Geometry(Point, 4326),
                     geometry Geometry(Geometry, 4326) NOT NULL
                 )
-                """
+                """)
             # remove postcodes from the various auxillary tables
             cur.execute(
                 """
@@ -269,7 +269,7 @@ def create_place_postcode_table(conn: Connection, config: Configuration, **_: An
                           WHERE osm_type = 'R'
                                 AND class = 'boundary' AND type = 'postal_code')
                     """)
-            # move postcode areas from placex to location_postcode
+            # move postcode areas from placex to location_postcodes
             # avoiding automatic invalidation
             cur.execute("ALTER TABLE placex DISABLE TRIGGER ALL")
             cur.execute(
@@ -281,48 +281,44 @@ def create_place_postcode_table(conn: Connection, config: Configuration, **_: An
                       RETURNING place_id, osm_id, rank_search, parent_place_id,
                                 indexed_status, indexed_date,
                                 country_code, postcode, centroid, geometry)
-                INSERT INTO new_location_postcode (SELECT * from deleted)
+                INSERT INTO location_postcodes (SELECT * from deleted)
                 """)
             cur.execute("ALTER TABLE placex ENABLE TRIGGER ALL")
             # remove any old postcode centroid that would overlap with areas
             cur.execute(
                 """
-                DELETE FROM location_postcode o USING new_location_postcode n
+                DELETE FROM location_postcode o USING location_postcodes n
                    WHERE o.country_code = n.country_code
                          AND o.postcode = n.postcode
                 """)
             # copy over old postcodes
             cur.execute(
                 """
-                INSERT INTO new_location_postcode
+                INSERT INTO location_postcodes
                     (SELECT place_id, NULL, rank_search, parent_place_id,
                             indexed_status, indexed_date, country_code,
                             postcode, geometry,
                             ST_Expand(geometry, 0.05)
                      FROM location_postcode)
                 """)
-            # add indexes
-            cur.execute("""CREATE INDEX idx_new_postcode_geometry
-                           ON new_location_postcode USING GIST(geometry)""")
-            cur.execute("""CREATE INDEX idx_new_postcode_id
-                           ON new_location_postcode USING BTREE(place_id)""")
-            cur.execute("""CREATE INDEX idx_new_postcode_osmid
-                           ON new_location_postcode USING BTREE(osm_id)""")
-            cur.execute("""CREATE INDEX idx_new_postcode_postcode
-                           ON new_location_postcode USING BTREE(postcode)""")
-            cur.execute("""CREATE INDEX idx_new_postcode_parent_place_id
-                           ON new_location_postcode USING BTREE(parent_place_id)""")
-            # swap out tables
-            cur.execute("ALTER TABLE location_postcode RENAME TO old_location_postcode")
-            cur.execute("ALTER TABLE new_location_postcode RENAME TO location_postcode")
-            # Now commit, so the other users see the new tables. XXX
-            cur.execute("""CREATE TRIGGER location_postcode_before_update
-                           BEFORE UPDATE ON location_postcode
-                           FOR EACH ROW EXECUTE PROCEDURE postcode_update()""")
-            cur.execute("""CREATE TRIGGER location_postcode_before_delete
-                           BEFORE DELETE ON location_postcode
-                           FOR EACH ROW EXECUTE PROCEDURE postcode_delete()""")
-            cur.execute("""CREATE TRIGGER location_postcode_before_insert
-                           BEFORE INSERT ON location_postcode
-                           FOR EACH ROW EXECUTE PROCEDURE postcode_insert()""")
-
+            # add indexes and triggers
+            cur.execute("""CREATE INDEX idx_location_postcodes_geometry
+                           ON location_postcodes USING GIST(geometry)""")
+            cur.execute("""CREATE INDEX idx_location_postcodes_id
+                           ON location_postcodes USING BTREE(place_id)""")
+            cur.execute("""CREATE INDEX idx_location_postcodes_osmid
+                           ON location_postcodes USING BTREE(osm_id)""")
+            cur.execute("""CREATE INDEX idx_location_postcodes_postcode
+                           ON location_postcodes USING BTREE(postcode)""")
+            cur.execute("""CREATE INDEX idx_location_postcodes_parent_place_id
+                           ON location_postcodes USING BTREE(parent_place_id)""")
+            # XXX install triggers
+            cur.execute("""CREATE TRIGGER location_postcodes_before_update
+                           BEFORE UPDATE ON location_postcodes
+                           FOR EACH ROW EXECUTE PROCEDURE postcodes_update()""")
+            cur.execute("""CREATE TRIGGER location_postcodes_before_delete
+                           BEFORE DELETE ON location_postcodes
+                           FOR EACH ROW EXECUTE PROCEDURE postcodes_delete()""")
+            cur.execute("""CREATE TRIGGER location_postcodes_before_insert
+                           BEFORE INSERT ON location_postcodes
+                           FOR EACH ROW EXECUTE PROCEDURE postcodes_insert()""")

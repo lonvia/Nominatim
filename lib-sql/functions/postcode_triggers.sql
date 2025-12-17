@@ -5,7 +5,7 @@
 -- Copyright (C) 2025 by the Nominatim developer community.
 -- For a full list of authors see the git log.
 
--- Trigger functions for location_postcode table.
+-- Trigger functions for location_postcodes table.
 
 
 -- Trigger for updates of location_postcode
@@ -13,7 +13,7 @@
 -- Computes the parent object the postcode most likely refers to.
 -- This will be the place that determines the address displayed when
 -- searching for this postcode.
-CREATE OR REPLACE FUNCTION postcode_update()
+CREATE OR REPLACE FUNCTION postcodes_update()
   RETURNS TRIGGER
   AS $$
 DECLARE
@@ -47,7 +47,7 @@ $$
 LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION postcode_delete()
+CREATE OR REPLACE FUNCTION postcodes_delete()
   RETURNS TRIGGER
   AS $$
 BEGIN
@@ -60,7 +60,7 @@ $$
 LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION postcode_insert()
+CREATE OR REPLACE FUNCTION postcodes_insert()
   RETURNS TRIGGER
   AS $$
 DECLARE
@@ -68,19 +68,19 @@ DECLARE
 BEGIN
   IF NEW.osm_id is not NULL THEN
     -- postcode area, remove existing from same OSM object
-    SELECT * INTO existing FROM location_postcode p
+    SELECT * INTO existing FROM location_postcodes p
       WHERE p.osm_id = NEW.osm_id;
 
     IF existing.place_id is not NULL THEN
       IF existing.postcode != NEW.postcode or existing.country_code != NEW.country_code THEN
-        DELETE FROM location_postcode p WHERE p.osm_id = NEW.osm_id;
+        DELETE FROM location_postcodes p WHERE p.osm_id = NEW.osm_id;
         existing := NULL;
       END IF;
     END IF;
   END IF;
 
   IF existing is NULL THEN
-    SELECT * INTO existing FROM location_postcode p
+    SELECT * INTO existing FROM location_postcodes p
       WHERE p.country_code = NEW.country_code AND p.postcode = NEW.postcode;
 
     IF existing.postcode is NULL THEN
@@ -109,7 +109,7 @@ BEGIN
       WHERE ST_Intersects(ST_Difference(existing.geometry, NEW.geometry), p.geometry)
       AND p.postcode = OLD.postcode;
 
-    UPDATE location_postcode p
+    UPDATE location_postcodes p
       SET osm_id = NEW.osm_id,
           indexed_status = 2,
           centroid = NEW.centroid,

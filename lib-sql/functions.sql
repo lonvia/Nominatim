@@ -18,7 +18,7 @@
     {% include 'functions/placex_triggers.sql' %}
 {% endif %}
 
-{% if 'location_postcode' in db.tables %}
+{% if 'location_postcodes' in db.tables %}
     {% include 'functions/postcode_triggers.sql' %}
 {% endif %}
 

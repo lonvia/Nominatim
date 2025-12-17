@@ -18,13 +18,13 @@ import dummy_tokenizer
 
 
 class MockPostcodeTable:
-    """ A location_postcode table for testing.
+    """ A location_postcodes table for testing.
     """
     def __init__(self, conn, config):
         self.conn = conn
         SQLPreprocessor(conn, config).run_sql_file(conn, 'functions/postcode_triggers.sql')
         with conn.cursor() as cur:
-            cur.execute("""CREATE TABLE location_postcode (
+            cur.execute("""CREATE TABLE location_postcodes (
                                place_id BIGINT,
                                osm_id BIGINT,
                                parent_place_id BIGINT,
@@ -52,7 +52,7 @@ class MockPostcodeTable:
     def add(self, country, postcode, x, y):
         with self.conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO location_postcode
+                """INSERT INTO location_postcodes
                        (place_id, indexed_status, country_code, postcode, centroid, geometry)
                      VALUES (nextval('seq_place'), 1, %(cc)s, %(pc)s,
                              ST_SetSRID(ST_MakePoint(%(x)s, %(y)s), 4326),
@@ -65,7 +65,7 @@ class MockPostcodeTable:
         with self.conn.cursor() as cur:
             cur.execute("""SELECT osm_id, country_code, postcode,
                                   ST_X(centroid), ST_Y(centroid)
-                           FROM location_postcode""")
+                           FROM location_postcodes""")
             return set((tuple(row) for row in cur))
 
 
@@ -112,15 +112,15 @@ def postcode_update(dsn, temp_db_conn):
 
     def _do(data_path=None):
         with temp_db_conn.cursor() as cur:
-            cur.execute("""CREATE TRIGGER location_postcode_before_update
-                            BEFORE UPDATE ON location_postcode
-                            FOR EACH ROW EXECUTE PROCEDURE postcode_update()""")
-            cur.execute("""CREATE TRIGGER location_postcode_before_delete
-                            BEFORE DELETE ON location_postcode
-                            FOR EACH ROW EXECUTE PROCEDURE postcode_delete()""")
-            cur.execute("""CREATE TRIGGER location_postcode_before_insert
-                            BEFORE INSERT ON location_postcode
-                            FOR EACH ROW EXECUTE PROCEDURE postcode_insert()""")
+            cur.execute("""CREATE TRIGGER location_postcodes_before_update
+                            BEFORE UPDATE ON location_postcodes
+                            FOR EACH ROW EXECUTE PROCEDURE postcodes_update()""")
+            cur.execute("""CREATE TRIGGER location_postcodes_before_delete
+                            BEFORE DELETE ON location_postcodes
+                            FOR EACH ROW EXECUTE PROCEDURE postcodes_delete()""")
+            cur.execute("""CREATE TRIGGER location_postcodes_before_insert
+                            BEFORE INSERT ON location_postcodes
+                            FOR EACH ROW EXECUTE PROCEDURE postcodes_insert()""")
         temp_db_conn.commit()
 
         postcodes.update_postcodes(dsn, data_path, tokenizer)

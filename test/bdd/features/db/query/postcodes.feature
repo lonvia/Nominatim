@@ -78,7 +78,7 @@ Feature: Querying fo postcode variants
            | N34 | place | house | EH4 7EA       | 111              | country:gb |
            | N35 | place | house | E4 7EA        | 111              | country:gb |
         When importing
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | centroid!wkt |
            | gb           | EH4 7EA  | country:gb |
            | gb           | E4 7EA   | country:gb |

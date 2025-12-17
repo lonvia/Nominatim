@@ -152,9 +152,9 @@ BEGIN
     -- that area, otherwise consider the area as not having a postcode.
     IF ST_GeometryType(geom) in ('ST_Polygon','ST_MultiPolygon') THEN
         SELECT min(postcode), count(*) FROM
-              (SELECT postcode FROM location_postcode
-                WHERE geom && location_postcode.geometry -- want to use the index
-                      AND ST_Contains(geom, location_postcode.centroid)
+              (SELECT postcode FROM location_postcodes
+                WHERE geom && location_postcodes.geometry -- want to use the index
+                      AND ST_Contains(geom, location_postcodes.centroid)
                       AND country_code = country
                 LIMIT 2) sub
           INTO outcode, cnt;
@@ -169,7 +169,7 @@ BEGIN
     -- Otherwise: be fully within the coverage area of a postcode
     FOR location IN
       SELECT postcode
-        FROM location_postcode p
+        FROM location_postcodes p
        WHERE ST_Covers(p.geometry, geom)
              AND p.country_code = country
        ORDER BY osm_id is null, ST_Distance(p.centroid, geom)

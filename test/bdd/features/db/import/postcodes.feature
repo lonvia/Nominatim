@@ -173,7 +173,7 @@ Feature: Import of postcodes
            | osm | class | type  | addr+postcode | addr+housenumber | geometry |
            | N34 | place | house | 01982         | 111              | country:de |
         When importing
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
            | country_code | postcode | centroid!wkt |
            | de           | 01982    | country:de |
 
@@ -185,7 +185,7 @@ Feature: Import of postcodes
             | osm | class | type   | name        | geometry |
             | N1  | place | hamlet | Null Island | 0 0      |
         When importing
-        Then location_postcode contains exactly
+        Then location_postcodes contains exactly
             | place_id |
         When geocoding "111, 01982 Null Island"
         Then the result set contains
