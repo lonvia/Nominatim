@@ -33,7 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_placex_geometry_reverse_lookupPolygon
   ON placex USING gist (geometry) {{db.tablespace.search_index}}
   WHERE St_GeometryType(geometry) in ('ST_Polygon', 'ST_MultiPolygon')
     AND rank_address between 4 and 25
-    AND name is not null AND indexed_status = 0 AND linked_place_id is null;
+    AND name is not null AND linked_place_id is null;
 ---
 -- used in reverse large area lookup
 CREATE INDEX IF NOT EXISTS idx_placex_geometry_reverse_lookupPlaceNode

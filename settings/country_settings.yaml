@@ -305,7 +305,7 @@ ch:
     names: !include country-names/ch.yaml
     postcode:
       pattern: "dddd"
-      extent: 0.03
+      extent: 3000
 
 
 # Côte d'Ivoire (Côte d’Ivoire)

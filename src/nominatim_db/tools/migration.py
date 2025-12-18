@@ -186,6 +186,7 @@ def convert_country_tokens(conn: Connection, config: Configuration, **_: Any) ->
 def create_place_postcode_table(conn: Connection, config: Configuration, **_: Any) -> None:
     """ Restructure postcode tables
     """
+    sqlp = SQLPreprocessor(conn, config)
     mutable = not is_frozen(conn)
     has_place_table = table_exists(conn, 'place_postcode')
     has_postcode_table = table_exists(conn, 'location_postcodes')
@@ -225,6 +226,7 @@ def create_place_postcode_table(conn: Connection, config: Configuration, **_: An
                 """)
             cur.execute("ALTER TABLE place ENABLE TRIGGER ALL")
     if not has_postcode_table:
+        sqlp.run_sql_file(conn, 'functions/postcode_triggers.sql')
         with conn.cursor() as cur:
             # create a new location_postcode table which will replace the
             # old one atomically in the end
@@ -312,7 +314,6 @@ def create_place_postcode_table(conn: Connection, config: Configuration, **_: An
                            ON location_postcodes USING BTREE(postcode)""")
             cur.execute("""CREATE INDEX idx_location_postcodes_parent_place_id
                            ON location_postcodes USING BTREE(parent_place_id)""")
-            # XXX install triggers
             cur.execute("""CREATE TRIGGER location_postcodes_before_update
                            BEFORE UPDATE ON location_postcodes
                            FOR EACH ROW EXECUTE PROCEDURE postcodes_update()""")
@@ -322,3 +323,22 @@ def create_place_postcode_table(conn: Connection, config: Configuration, **_: An
             cur.execute("""CREATE TRIGGER location_postcodes_before_insert
                            BEFORE INSERT ON location_postcodes
                            FOR EACH ROW EXECUTE PROCEDURE postcodes_insert()""")
+        sqlp.run_string(
+            conn,
+            """
+            CREATE INDEX IF NOT EXISTS idx_placex_geometry_reverse_lookupPolygon_nopostcode
+            ON placex USING gist (geometry) {{db.tablespace.search_index}}
+            WHERE St_GeometryType(geometry) in ('ST_Polygon', 'ST_MultiPolygon')
+            AND rank_address between 4 and 25
+            AND name is not null AND linked_place_id is null;
+
+            CREATE INDEX IF NOT EXISTS idx_placex_geometry_reverse_lookupPlaceNode_nopostcode
+              ON placex USING gist (ST_Buffer(geometry, reverse_place_diameter(rank_search)))
+              {{db.tablespace.search_index}}
+              WHERE rank_address between 4 and 25
+                AND name is not null AND linked_place_id is null AND osm_type = 'N';
+
+            CREATE INDEX idx_placex_geometry_placenode_nopostcode ON placex
+              USING SPGIST (geometry) {{db.tablespace.address_index}}
+              WHERE osm_type = 'N' and rank_search < 26 and class = 'place';
+            """)
