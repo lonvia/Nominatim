@@ -155,7 +155,9 @@ def create_tables(conn: Connection, config: Configuration, reverse_only: bool = 
     sql = SQLPreprocessor(conn, config)
     sql.env.globals['db']['reverse_only'] = reverse_only
 
+    conn.autocommit = True
     sql.run_sql_file(conn, 'tables.sql')
+    conn.autocommit = False
 
 
 def create_table_triggers(conn: Connection, config: Configuration) -> None:
