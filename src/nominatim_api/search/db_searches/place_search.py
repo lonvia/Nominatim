@@ -79,7 +79,7 @@ class PlaceSearch(base.AbstractSearch):
                 tpc = conn.t.postcode
                 sql = sql.where(sa.select(tpc.c.postcode)
                                   .where(tpc.c.postcode.in_(self.postcodes.values))
-                                  .where(t.c.centroid.ST_CoveredBy(tpc.c.geometry))
+                                  .where(t.c.centroid.intersects(tpc.c.geometry, use_index=False))
                                   .exists())
 
         if details.viewbox is not None:

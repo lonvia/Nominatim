@@ -175,7 +175,7 @@ class AddressSearch(base.AbstractSearch):
                 sql = sql.where(sa.select(tpc.c.postcode)
                                   .where(tpc.c.postcode.in_(self.postcodes.values))
                                   .where(tpc.c.country_code == t.c.country_code)
-                                  .where(t.c.centroid.within_distance(tpc.c.geometry, 0.4))
+                                  .where(t.c.centroid.intersects(tpc.c.geometry, use_index=False))
                                   .exists())
 
         if details.viewbox is not None:
