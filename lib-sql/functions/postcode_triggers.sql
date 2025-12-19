@@ -51,9 +51,11 @@ CREATE OR REPLACE FUNCTION postcodes_delete()
   RETURNS TRIGGER
   AS $$
 BEGIN
+{% if not disable_diff_updates %}
   UPDATE placex p SET indexed_status = 2
    WHERE p.postcode = OLD.postcode AND ST_Intersects(OLD.geometry, p.geometry)
          AND indexed_status = 0;
+{% endif %}
 
   RETURN OLD;
 END;
@@ -85,10 +87,12 @@ BEGIN
       WHERE p.country_code = NEW.country_code AND p.postcode = NEW.postcode;
 
     IF existing.postcode is NULL THEN
+{% if not disable_diff_updates %}
       UPDATE placex p SET indexed_status = 2
        WHERE ST_Intersects(NEW.geometry, p.geometry)
              AND indexed_status = 0
              AND p.rank_address >= 22 AND not p.address ? 'postcode';
+{% endif %}
 
       -- new entry, just insert
       NEW.indexed_status := 1;
@@ -103,6 +107,7 @@ BEGIN
          AND (abs(ST_X(existing.centroid) - ST_X(NEW.centroid)) > 0.0000001
               OR abs(ST_Y(existing.centroid) - ST_Y(NEW.centroid)) > 0.0000001))
   THEN
+{% if not disable_diff_updates %}
     UPDATE placex p SET indexed_status = 2
       WHERE ST_Intersects(ST_Difference(NEW.geometry, existing.geometry), p.geometry)
             AND indexed_status = 0
@@ -112,6 +117,7 @@ BEGIN
       WHERE ST_Intersects(ST_Difference(existing.geometry, NEW.geometry), p.geometry)
             AND indexed_status = 0
             AND p.postcode = OLD.postcode;
+{% endif %}
 
     UPDATE location_postcodes p
       SET osm_id = NEW.osm_id,
