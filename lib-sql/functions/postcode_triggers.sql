@@ -52,7 +52,8 @@ CREATE OR REPLACE FUNCTION postcodes_delete()
   AS $$
 BEGIN
   UPDATE placex p SET indexed_status = 2
-   WHERE p.postcode = OLD.postcode AND ST_Intersects(OLD.geometry, p.geometry);
+   WHERE p.postcode = OLD.postcode AND ST_Intersects(OLD.geometry, p.geometry)
+         AND indexed_status = 0;
 
   RETURN OLD;
 END;
@@ -86,7 +87,8 @@ BEGIN
     IF existing.postcode is NULL THEN
       UPDATE placex p SET indexed_status = 2
        WHERE ST_Intersects(NEW.geometry, p.geometry)
-       AND p.rank_address >= 22 AND not p.address ? 'postcode';
+             AND indexed_status = 0
+             AND p.rank_address >= 22 AND not p.address ? 'postcode';
 
       -- new entry, just insert
       NEW.indexed_status := 1;
@@ -103,11 +105,13 @@ BEGIN
   THEN
     UPDATE placex p SET indexed_status = 2
       WHERE ST_Intersects(ST_Difference(NEW.geometry, existing.geometry), p.geometry)
-      AND p.rank_address >= 22 AND not p.address ? 'postcode';
+            AND indexed_status = 0
+            AND p.rank_address >= 22 AND not p.address ? 'postcode';
 
     UPDATE placex p SET indexed_status = 2
       WHERE ST_Intersects(ST_Difference(existing.geometry, NEW.geometry), p.geometry)
-      AND p.postcode = OLD.postcode;
+            AND indexed_status = 0
+            AND p.postcode = OLD.postcode;
 
     UPDATE location_postcodes p
       SET osm_id = NEW.osm_id,
