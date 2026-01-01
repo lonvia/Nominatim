@@ -34,31 +34,31 @@ GRANT SELECT ON TABLE nominatim_properties TO "{{config.DATABASE_WEBUSER}}";
 
 drop table IF EXISTS location_area CASCADE;
 CREATE TABLE location_area (
-  place_id BIGINT,
+  place_id BIGINT NOT NULL,
   keywords INTEGER[],
-  partition SMALLINT,
+  partition SMALLINT NOT NULL,
   rank_search SMALLINT NOT NULL,
   rank_address SMALLINT NOT NULL,
   country_code VARCHAR(2),
   isguess BOOL,
   postcode TEXT,
-  centroid GEOMETRY(Point, 4326),
-  geometry GEOMETRY(Geometry, 4326)
+  centroid GEOMETRY(Point, 4326) NOT NULL,
+  geometry GEOMETRY(Geometry, 4326) NOT NULL
   );
 
 CREATE TABLE location_area_large () INHERITS (location_area);
 
 DROP TABLE IF EXISTS location_area_country;
 CREATE TABLE location_area_country (
-  place_id BIGINT,
+  place_id BIGINT NOT NULL,
   country_code varchar(2),
-  geometry GEOMETRY(Geometry, 4326)
+  geometry GEOMETRY(Geometry, 4326) NOT NULL
   ) {{db.tablespace.address_data}};
 CREATE INDEX idx_location_area_country_geometry ON location_area_country USING GIST (geometry) {{db.tablespace.address_index}};
 
 
 CREATE TABLE location_property_tiger (
-  place_id BIGINT,
+  place_id BIGINT NOT NULL,
   parent_place_id BIGINT,
   startnumber INTEGER,
   endnumber INTEGER,
@@ -95,27 +95,27 @@ GRANT SELECT ON location_property_osmline TO "{{config.DATABASE_WEBUSER}}";
 drop table IF EXISTS search_name;
 {% if not db.reverse_only %}
 CREATE TABLE search_name (
-  place_id BIGINT,
-  importance FLOAT,
-  search_rank SMALLINT,
-  address_rank SMALLINT,
-  name_vector integer[],
-  nameaddress_vector integer[],
+  place_id BIGINT NOT NULL,
+  importance FLOAT NOT NULL,
+  search_rank SMALLINT NOT NULL,
+  address_rank SMALLINT NOT NULL,
+  name_vector integer[] NOT NULL,
+  nameaddress_vector integer[] NOT NULL,
   country_code varchar(2),
-  centroid GEOMETRY(Geometry, 4326)
+  centroid GEOMETRY(Geometry, 4326) NOT NULL
   ) {{db.tablespace.search_data}};
-CREATE INDEX idx_search_name_place_id ON search_name USING BTREE (place_id) {{db.tablespace.search_index}};
+CREATE UNIQUE INDEX idx_search_name_place_id ON search_name USING BTREE (place_id) {{db.tablespace.search_index}};
 GRANT SELECT ON search_name to "{{config.DATABASE_WEBUSER}}" ;
 {% endif %}
 
 drop table IF EXISTS place_addressline;
 CREATE TABLE place_addressline (
-  place_id BIGINT,
-  address_place_id BIGINT,
-  distance FLOAT,
-  cached_rank_address SMALLINT,
-  fromarea boolean,
-  isaddress boolean
+  place_id BIGINT NOT NULL,
+  address_place_id BIGINT NOT NULL,
+  distance FLOAT NOT NULL,
+  cached_rank_address SMALLINT NOT NULL,
+  fromarea boolean NOT NULL,
+  isaddress boolean NOT NULL
   ) {{db.tablespace.search_data}};
 CREATE INDEX idx_place_addressline_place_id on place_addressline USING BTREE (place_id) {{db.tablespace.search_index}};
 
@@ -139,7 +139,7 @@ CREATE TABLE placex (
   country_code varchar(2),
   housenumber TEXT,
   postcode TEXT,
-  centroid GEOMETRY(Geometry, 4326)
+  centroid GEOMETRY(Geometry, 4326) NOT NULL
   ) {{db.tablespace.search_data}};
 
 CREATE UNIQUE INDEX idx_place_id ON placex USING BTREE (place_id) {{db.tablespace.search_index}};
@@ -214,7 +214,7 @@ CREATE TABLE location_postcodes (
   place_id BIGINT NOT NULL,
   parent_place_id BIGINT,
   osm_id BIGINT,
-  rank_search SMALLINT,
+  rank_search SMALLINT NOT NULL,
   indexed_status SMALLINT,
   indexed_date TIMESTAMP,
   country_code varchar(2),
