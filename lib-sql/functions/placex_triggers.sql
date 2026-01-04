@@ -426,10 +426,12 @@ DECLARE
 BEGIN
   nameaddress_vector := '{}'::INTEGER[];
 
-  SELECT s.name_vector, s.nameaddress_vector
-    INTO parent_name_vector, parent_address_vector
-    FROM search_name s
-    WHERE s.place_id = parent_place_id;
+  IF parent_place_id is not NULL AND parent_place_id > 0 THEN
+    SELECT s.name_vector, s.nameaddress_vector
+      INTO parent_name_vector, parent_address_vector
+      FROM search_name s
+      WHERE s.place_id = parent_place_id;
+  END IF;
 
   FOR addr_item IN
     SELECT ranks.*, key,
@@ -447,9 +449,13 @@ BEGIN
       nameaddress_vector := array_merge(nameaddress_vector, addr_item.search_tokens);
     ELSE
       IF parent_address_place_ids is null THEN
-        SELECT array_agg(parent_place_id) INTO parent_address_place_ids
-          FROM place_addressline
-          WHERE place_id = parent_place_id;
+        IF parent_place_id is not NULL AND parent_place_id > 0 THEN
+          SELECT array_agg(parent_place_id) INTO parent_address_place_ids
+            FROM place_addressline
+            WHERE place_id = parent_place_id;
+        ELSE
+          parent_address_place_ids := '{}'::BIGINT[];
+        END IF;
       END IF;
 
       -- If the parent already lists the place in place_address line, then we
