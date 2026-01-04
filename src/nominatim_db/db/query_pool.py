@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2024 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 A connection pool that executes incoming queries in parallel.
@@ -27,6 +27,7 @@ class QueryPool:
         The results of the queries is discarded.
     """
     def __init__(self, dsn: str, pool_size: int = 1, **conn_args: Any) -> None:
+        self.is_cancelled = False
         self.wait_time = 0.0
         self.query_queue: 'asyncio.Queue[QueueItem]' = asyncio.Queue(maxsize=2 * pool_size)
 
@@ -36,10 +37,17 @@ class QueryPool:
     async def put_query(self, query: psycopg.abc.Query, params: Any) -> None:
         """ Schedule a query for execution.
         """
+        if self.is_cancelled:
+            await self.finish()
+            return
+
         tstart = time.time()
         await self.query_queue.put((query, params))
         self.wait_time += time.time() - tstart
         await asyncio.sleep(0)
+
+        if self.is_cancelled:
+            await self.finish()
 
     async def finish(self) -> None:
         """ Wait for all queries to finish and close the pool.
@@ -57,27 +65,45 @@ class QueryPool:
                 raise excp
 
     async def _worker_loop(self, dsn: str, **conn_args: Any) -> None:
-        conn_args['autocommit'] = True
-        aconn = await psycopg.AsyncConnection.connect(dsn, **conn_args)
-        async with aconn:
-            async with aconn.cursor() as cur:
-                item = await self.query_queue.get()
-                while item is not None:
-                    try:
-                        if item[1] is None:
-                            await cur.execute(item[0])
-                        else:
-                            await cur.execute(item[0], item[1])
+        try:
+            conn_args['autocommit'] = True
+            aconn = await psycopg.AsyncConnection.connect(dsn, **conn_args)
+            async with aconn:
+                async with aconn.cursor() as cur:
+                    item = await self.query_queue.get()
+                    while item is not None:
+                        try:
+                            if item[1] is None:
+                                await cur.execute(item[0])
+                            else:
+                                await cur.execute(item[0], item[1])
 
-                        item = await self.query_queue.get()
-                    except psycopg.errors.DeadlockDetected:
-                        assert item is not None
-                        LOG.info("Deadlock detected (sql = %s, params = %s), retry.",
-                                 str(item[0]), str(item[1]))
-                        # item is still valid here, causing a retry
+                            item = await self.query_queue.get()
+                        except psycopg.errors.DeadlockDetected:
+                            assert item is not None
+                            LOG.info("Deadlock detected (sql = %s, params = %s), retry.",
+                                     str(item[0]), str(item[1]))
+                            # item is still valid here, causing a retry
+        except Exception as e:
+            self.is_cancelled = True
+            # clear the queue to ensure that put() above returns
+            self.clear_queue()
+            raise e
+
+    def clear_queue(self):
+        """ Immediately clear all items from the queue.
+        """
+        try:
+            while True:
+                self.query_queue.get_nowait()
+        except asyncio.QueueEmpty:
+                pass  # done
 
     async def __aenter__(self) -> 'QueryPool':
         return self
 
     async def __aexit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        if exc_type is not None:
+            # make sure there is space to send off the end items
+            self.clear_queue()
         await self.finish()
