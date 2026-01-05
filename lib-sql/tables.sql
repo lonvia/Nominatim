@@ -60,11 +60,11 @@ CREATE INDEX idx_location_area_country_geometry ON location_area_country USING G
 CREATE TABLE location_property_tiger (
   place_id BIGINT NOT NULL,
   parent_place_id BIGINT,
-  startnumber INTEGER,
-  endnumber INTEGER,
-  step SMALLINT,
-  partition SMALLINT,
-  linegeo GEOMETRY,
+  startnumber INTEGER NOT NULL,
+  endnumber INTEGER NOT NULL,
+  step SMALLINT NOT NULL,
+  partition SMALLINT NOT NULL,
+  linegeo GEOMETRY NOT NULL,
   postcode TEXT);
 GRANT SELECT ON location_property_tiger TO "{{config.DATABASE_WEBUSER}}";
 
@@ -73,14 +73,14 @@ CREATE TABLE location_property_osmline (
     place_id BIGINT NOT NULL,
     osm_id BIGINT,
     parent_place_id BIGINT,
-    geometry_sector INTEGER,
+    geometry_sector INTEGER NOT NULL,
     indexed_date TIMESTAMP,
     startnumber INTEGER,
     endnumber INTEGER,
     step SMALLINT,
-    partition SMALLINT,
-    indexed_status SMALLINT,
-    linegeo GEOMETRY,
+    partition SMALLINT NOT NULL,
+    indexed_status SMALLINT NOT NULL,
+    linegeo GEOMETRY NOT NULL,
     address HSTORE,
     token_info JSONB, -- custom column for tokenizer use only
     postcode TEXT,
@@ -128,11 +128,11 @@ CREATE TABLE placex (
   linked_place_id BIGINT,
   importance FLOAT,
   indexed_date TIMESTAMP,
-  geometry_sector INTEGER,
-  rank_address SMALLINT,
-  rank_search SMALLINT,
-  partition SMALLINT,
-  indexed_status SMALLINT,
+  geometry_sector INTEGER NOT NULL,
+  rank_address SMALLINT NOT NULL,
+  rank_search SMALLINT NOT NULL,
+  partition SMALLINT NOT NULL,
+  indexed_status SMALLINT NOT NULL,
   LIKE place INCLUDING CONSTRAINTS,
   wikipedia TEXT, -- calculated wikipedia article name (language:title)
   token_info JSONB, -- custom column for tokenizer use only
