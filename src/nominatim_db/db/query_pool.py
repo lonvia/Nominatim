@@ -90,14 +90,14 @@ class QueryPool:
             self.clear_queue()
             raise e
 
-    def clear_queue(self):
+    def clear_queue(self) -> None:
         """ Immediately clear all items from the queue.
         """
         try:
             while True:
                 self.query_queue.get_nowait()
         except asyncio.QueueEmpty:
-                pass  # done
+            pass  # done
 
     async def __aenter__(self) -> 'QueryPool':
         return self
