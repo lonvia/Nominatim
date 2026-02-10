@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Tests for functions to maintain the artificial postcode table.
@@ -75,7 +75,6 @@ class MockPostcodeTable:
 @pytest.fixture
 def postcode_table(def_config, temp_db_conn, placex_table, table_factory):
     country_info.setup_country_config(def_config)
-    table_factory('country_name', 'partition INT', ((0, ), (1, ), (2, )))
     return MockPostcodeTable(temp_db_conn, def_config)
 
 

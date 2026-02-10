@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 import itertools
 import sys
@@ -139,6 +139,11 @@ def property_table(table_factory, temp_db_conn):
 
 
 @pytest.fixture
+def country_table(table_factory):
+    table_factory('country_name', 'partition INT', ((0, ), (1, ), (2, )))
+
+
+@pytest.fixture
 def status_table(table_factory):
     """ Create an empty version of the status table and
         the status logging table.
@@ -219,10 +224,11 @@ def place_postcode_row(place_postcode_table, temp_db_cursor):
 
 
 @pytest.fixture
-def placex_table(temp_db_with_extensions, temp_db_conn):
-    """ Create an empty version of the place table.
+def placex_table(temp_db_with_extensions, temp_db_conn, country_table, place_table):
+    """ Create an empty version of the placex table.
     """
-    return mocks.MockPlacexTable(temp_db_conn)
+    return mocks.MockPlacexTable(temp_db_conn,
+                                 SQLPreprocessor(temp_db_conn, Configuration(None)))
 
 
 @pytest.fixture
@@ -245,8 +251,7 @@ def osmline_table(temp_db_with_extensions, table_factory):
 
 
 @pytest.fixture
-def sql_preprocessor_cfg(tmp_path, table_factory, temp_db_with_extensions):
-    table_factory('country_name', 'partition INT', ((0, ), (1, ), (2, )))
+def sql_preprocessor_cfg(tmp_path, country_table, temp_db_with_extensions):
     cfg = Configuration(None)
     cfg.set_libdirs(sql=tmp_path)
     return cfg

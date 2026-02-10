@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 import pytest_asyncio  # noqa
 import psycopg
-from psycopg import sql as pysql
 
 from nominatim_db.tools import database_import
 from nominatim_db.errors import UsageError
@@ -169,16 +168,32 @@ def test_truncate_database_tables(temp_db_conn, temp_db_cursor, table_factory, w
 @pytest.mark.parametrize("threads", (1, 5))
 @pytest.mark.asyncio
 async def test_load_data(dsn, place_row, placex_table, osmline_table,
-                         temp_db_cursor, threads):
-    for func in ('precompute_words', 'getorcreate_housenumber_id', 'make_standard_name'):
-        temp_db_cursor.execute(pysql.SQL("""CREATE FUNCTION {} (src TEXT)
-                                            RETURNS TEXT AS $$ SELECT 'a'::TEXT $$ LANGUAGE SQL
-                                         """).format(pysql.Identifier(func)))
+                         temp_db_conn, temp_db_cursor, threads):
     for oid in range(100, 130):
         place_row(osm_id=oid)
     place_row(osm_type='W', osm_id=342, cls='place', typ='houses',
               geom='SRID=4326;LINESTRING(0 0, 10 10)')
 
+    temp_db_conn.execute("""
+        CREATE OR REPLACE FUNCTION placex_insert()
+        RETURNS TRIGGER
+        AS $$
+        BEGIN
+        NEW.place_id := nextval('seq_place');
+        NEW.indexed_status := 1;
+        NEW.centroid := ST_Centroid(NEW.geometry);
+        NEW.partition := 0;
+        NEW.geometry_sector := 2424;
+        NEW.rank_address := 30;
+        NEW.rank_search := 30;
+        RETURN NEW;
+        END;
+        $$
+        LANGUAGE plpgsql STABLE PARALLEL SAFE;
+        """)
+    temp_db_conn.execute("""
+        CREATE TRIGGER placex_before_insert BEFORE INSERT ON placex
+        FOR EACH ROW EXECUTE PROCEDURE placex_insert()""")
     await database_import.load_data(dsn, threads)
 
     assert temp_db_cursor.table_rows('placex') == 30
