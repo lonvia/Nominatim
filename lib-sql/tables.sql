@@ -22,11 +22,7 @@ CREATE TABLE import_osmosis_log (
   event text
   );
 
-DROP TABLE IF EXISTS nominatim_properties;
-CREATE TABLE nominatim_properties (
-    property TEXT NOT NULL,
-    value TEXT
-);
+{% include('tables/nominatim_properties.sql') %}
 
 drop table IF EXISTS location_area CASCADE;
 CREATE TABLE location_area (
