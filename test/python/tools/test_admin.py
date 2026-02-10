@@ -62,14 +62,14 @@ def test_analyse_indexing_unknown_osmid(project_env):
         admin.analyse_indexing(project_env, osm_id='W12345674')
 
 
-def test_analyse_indexing_with_place_id(project_env, placex_table):
-    placex_table.add(place_id=12345)
+def test_analyse_indexing_with_place_id(project_env, placex_row):
+    place_id = placex_row()
 
-    admin.analyse_indexing(project_env, place_id=12345)
+    admin.analyse_indexing(project_env, place_id=place_id)
 
 
-def test_analyse_indexing_with_osm_id(project_env, temp_db_cursor, placex_table):
-    placex_table.add(osm_type='N', osm_id=10000)
+def test_analyse_indexing_with_osm_id(project_env, temp_db_cursor, placex_row):
+    placex_row(osm_type='N', osm_id=10000)
 
     admin.analyse_indexing(project_env, osm_id='N10000')
 
@@ -77,7 +77,7 @@ def test_analyse_indexing_with_osm_id(project_env, temp_db_cursor, placex_table)
 class TestAdminCleanDeleted:
 
     @pytest.fixture(autouse=True)
-    def setup_polygon_delete(self, project_env, table_factory, place_table, placex_table,
+    def setup_polygon_delete(self, project_env, table_factory, place_table, placex_row,
                              osmline_table, temp_db_cursor, temp_db_conn, def_config, src_dir):
         """ Set up place_force_delete function and related tables
         """
@@ -93,12 +93,12 @@ class TestAdminCleanDeleted:
                        (175, 'R', 'landcover', 'grass')))
 
         now = dt.datetime.now()
-        placex_table.add(osm_type='N', osm_id=100, cls='boundary', typ='administrative',
-                         indexed_status=1, indexed_date=now - dt.timedelta(days=30))
-        placex_table.add(osm_type='N', osm_id=145, cls='boundary', typ='administrative',
-                         indexed_status=1, indexed_date=now - dt.timedelta(days=90))
-        placex_table.add(osm_type='R', osm_id=175, cls='landcover', typ='grass',
-                         indexed_status=1, indexed_date=now - dt.timedelta(days=90))
+        placex_row(osm_type='N', osm_id=100, cls='boundary', typ='administrative',
+                   indexed_status=1, indexed_date=now - dt.timedelta(days=30))
+        placex_row(osm_type='N', osm_id=145, cls='boundary', typ='administrative',
+                   indexed_status=1, indexed_date=now - dt.timedelta(days=90))
+        placex_row(osm_type='R', osm_id=175, cls='landcover', typ='grass',
+                   indexed_status=1, indexed_date=now - dt.timedelta(days=90))
         # set up tables and triggers for utils function
         table_factory('place_to_be_deleted',
                       """osm_id BIGINT,

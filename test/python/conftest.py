@@ -227,8 +227,35 @@ def place_postcode_row(place_postcode_table, temp_db_cursor):
 def placex_table(temp_db_with_extensions, temp_db_conn, country_table, place_table):
     """ Create an empty version of the placex table.
     """
-    return mocks.MockPlacexTable(temp_db_conn,
-                                 SQLPreprocessor(temp_db_conn, Configuration(None)))
+    SQLPreprocessor(temp_db_conn, Configuration(None))\
+        .run_sql_file(temp_db_conn, 'tables/placex.sql')
+    temp_db_conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_place START 1")
+
+
+@pytest.fixture
+def placex_row(placex_table, temp_db_cursor):
+    """ A factory for rows in the placex table. The table is created as a
+        prerequisite to the fixture.
+    """
+    idseq = itertools.count(1001)
+
+    def _add(osm_type='N', osm_id=None, cls='amenity', typ='cafe', names=None,
+             admin_level=None, address=None, extratags=None, geom='POINT(10 4)',
+             country=None, housenumber=None, rank_search=30, centroid='POINT(10 4)',
+             indexed_status=0, indexed_date=None):
+        args = {'place_id': pysql.SQL("nextval('seq_place')"),
+                'osm_type': osm_type, 'osm_id': osm_id or next(idseq),
+                'class': cls, 'type': typ, 'name': names, 'admin_level': admin_level,
+                'address': address, 'housenumber': housenumber,
+                'rank_search': rank_search, 'rank_address': rank_search,
+                'extratags': extratags,
+                'centroid': _with_srid(centroid), 'geometry': _with_srid(geom),
+                'country_code': country,
+                'indexed_status': indexed_status, 'indexed_date': indexed_date,
+                'partition': pysql.Literal(0), 'geometry_sector': pysql.Literal(1)}
+        return temp_db_cursor.insert_row('placex', **args)
+
+    return _add
 
 
 @pytest.fixture

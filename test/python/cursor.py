@@ -2,12 +2,13 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Specialised psycopg cursor with shortcut functions useful for testing.
 """
 import psycopg
+from psycopg import sql as pysql
 
 
 class CursorForTesting(psycopg.Cursor):
@@ -53,6 +54,34 @@ class CursorForTesting(psycopg.Cursor):
         """ Return the number of rows in the given table.
         """
         if where is None:
-            return self.scalar('SELECT count(*) FROM ' + table)
+            return self.scalar(pysql.SQL('SELECT count(*) FROM ') + pysql.Identifier(table))
 
-        return self.scalar('SELECT count(*) FROM {} WHERE {}'.format(table, where))
+        return self.scalar(pysql.SQL('SELECT count(*) FROM {} WHERE {}')
+                                .format(pysql.Identifier(table),
+                                        pysql.SQL(where)))
+
+    def insert_row(self, table, **data):
+        columns = []
+        placeholders = []
+        values = []
+        for k, v in data.items():
+            columns.append(pysql.Identifier(k))
+            if isinstance(v, tuple):
+                placeholders.append(pysql.SQL(v[0]))
+                values.append(v[1])
+            elif isinstance(v, (pysql.Literal, pysql.SQL)):
+                placeholders.append(v)
+            else:
+                placeholders.append(pysql.Placeholder())
+                values.append(v)
+
+        sql = pysql.SQL("INSERT INTO {table} ({columns}) VALUES({values})")\
+                   .format(table=pysql.Identifier(table),
+                           columns=pysql.SQL(',').join(columns),
+                           values=pysql.SQL(',').join(placeholders))
+
+        if 'place_id' in data:
+            sql += pysql.SQL('RETURNING place_id')
+
+        self.execute(sql, values)
+        return self.fetchone()[0]

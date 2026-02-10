@@ -79,15 +79,15 @@ def postcode_table(def_config, temp_db_conn, placex_table, table_factory):
 
 
 @pytest.fixture
-def insert_implicit_postcode(placex_table, place_postcode_row):
+def insert_implicit_postcode(placex_row, place_postcode_row):
     """ Insert data into the placex and place table
         which can then be used to compute one postcode.
     """
     def _insert_implicit_postcode(osm_id, country, geometry, postcode, in_placex=False):
         if in_placex:
-            placex_table.add(osm_id=osm_id, country=country, geom=geometry,
-                             centroid=f'SRID=4326;{geometry}',
-                             address={'postcode': postcode})
+            placex_row(osm_id=osm_id, country=country, geom=geometry,
+                       centroid=geometry,
+                       address={'postcode': postcode})
         else:
             place_postcode_row(osm_id=osm_id, centroid=geometry,
                                country=country, postcode=postcode)
