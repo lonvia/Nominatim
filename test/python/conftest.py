@@ -172,21 +172,11 @@ def property_table(table_factory, temp_db_conn, load_sql):
 
 
 @pytest.fixture
-def status_table(table_factory):
+def status_table(load_sql):
     """ Create an empty version of the status table and
         the status logging table.
     """
-    table_factory('import_status',
-                  """lastimportdate timestamp with time zone NOT NULL,
-                     sequence_id integer,
-                     indexed boolean""")
-    table_factory('import_osmosis_log',
-                  """batchend timestamp,
-                     batchseq integer,
-                     batchsize bigint,
-                     starttime timestamp,
-                     endtime timestamp,
-                     event text""")
+    load_sql('tables/status.sql')
 
 
 @pytest.fixture

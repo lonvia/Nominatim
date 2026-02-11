@@ -5,23 +5,7 @@
 -- Copyright (C) 2026 by the Nominatim developer community.
 -- For a full list of authors see the git log.
 
-drop table if exists import_status;
-CREATE TABLE import_status (
-  lastimportdate timestamp with time zone NOT NULL,
-  sequence_id integer,
-  indexed boolean
-  );
-
-drop table if exists import_osmosis_log;
-CREATE TABLE import_osmosis_log (
-  batchend timestamp,
-  batchseq integer,
-  batchsize bigint,
-  starttime timestamp,
-  endtime timestamp,
-  event text
-  );
-
+{% include('tables/status.sql') %}
 {% include('tables/nominatim_properties.sql') %}
 
 drop table IF EXISTS location_area CASCADE;
