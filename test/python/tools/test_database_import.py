@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio  # noqa
 import psycopg
+from psycopg import sql as pysql
 
 from nominatim_db.tools import database_import
 from nominatim_db.errors import UsageError

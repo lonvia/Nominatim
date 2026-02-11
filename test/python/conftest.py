@@ -282,6 +282,27 @@ def osmline_table(temp_db_with_extensions, load_sql):
 
 
 @pytest.fixture
+def postcode_table(temp_db_with_extensions, load_sql):
+    load_sql('tables/postcodes.sql')
+
+
+@pytest.fixture
+def postcode_row(postcode_table, temp_db_cursor):
+    def _add(country, postcode, x, y):
+        geom = _with_srid(f"POINT({x} {y})")
+        return temp_db_cursor.insert_row(
+            'location_postcodes',
+            place_id=pysql.SQL("nextval('seq_place')"),
+            indexed_status=pysql.Literal(1),
+            country_code=country, postcode=postcode,
+            centroid=geom,
+            rank_search=pysql.Literal(16),
+            geometry=('ST_Expand(%s::geometry, 0.005)', geom))
+
+    return _add
+
+
+@pytest.fixture
 def sql_preprocessor_cfg(tmp_path, country_row, temp_db_with_extensions):
     for part in range(3):
         country_row(partition=part)
