@@ -84,4 +84,4 @@ class CursorForTesting(psycopg.Cursor):
             sql += pysql.SQL('RETURNING place_id')
 
         self.execute(sql, values)
-        return self.fetchone()[0]
+        return self.fetchone()[0] if 'place_id' in data else None

@@ -17,12 +17,11 @@ SRC_DIR = (Path(__file__) / '..' / '..' / '..').resolve()
 sys.path.insert(0, str(SRC_DIR / 'src'))
 
 from nominatim_db.config import Configuration
-from nominatim_db.db import connection
+from nominatim_db.db import connection, properties
 from nominatim_db.db.sql_preprocessor import SQLPreprocessor
 import nominatim_db.tokenizer.factory
 
 import dummy_tokenizer
-import mocks
 from cursor import CursorForTesting
 
 
@@ -132,15 +131,44 @@ def project_env(tmp_path):
 
 
 @pytest.fixture
-def property_table(table_factory, temp_db_conn):
-    table_factory('nominatim_properties', 'property TEXT, value TEXT')
-
-    return mocks.MockPropertyTable(temp_db_conn)
+def country_table(table_factory):
+    table_factory('country_name', 'partition INT, country_code varchar(2), name hstore')
 
 
 @pytest.fixture
-def country_table(table_factory):
-    table_factory('country_name', 'partition INT', ((0, ), (1, ), (2, )))
+def country_row(country_table, temp_db_cursor):
+    def _add(partition=None, country=None, names=None):
+        temp_db_cursor.insert_row('country_name', partition=partition,
+                                  country_code=country, name=names)
+
+    return _add
+
+
+@pytest.fixture
+def load_sql(temp_db_conn, country_row):
+    for part in range(2):
+        country_row(partition=part)
+
+    config = Configuration(None)
+
+    def _run(filename):
+        SQLPreprocessor(temp_db_conn, config).run_sql_file(temp_db_conn, filename)
+
+    return _run
+
+
+@pytest.fixture
+def property_table(table_factory, temp_db_conn, load_sql):
+    load_sql('tables/nominatim_properties.sql')
+
+    class _PropTable:
+        def set(self, name, value):
+            properties.set_property(temp_db_conn, name, value)
+
+        def get(self, name):
+            return properties.get_property(temp_db_conn, name)
+
+    return _PropTable()
 
 
 @pytest.fixture
@@ -224,11 +252,10 @@ def place_postcode_row(place_postcode_table, temp_db_cursor):
 
 
 @pytest.fixture
-def placex_table(temp_db_with_extensions, temp_db_conn, country_table, place_table):
+def placex_table(temp_db_with_extensions, temp_db_conn, load_sql, place_table):
     """ Create an empty version of the placex table.
     """
-    SQLPreprocessor(temp_db_conn, Configuration(None))\
-        .run_sql_file(temp_db_conn, 'tables/placex.sql')
+    load_sql('tables/placex.sql')
     temp_db_conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_place START 1")
 
 
@@ -278,7 +305,9 @@ def osmline_table(temp_db_with_extensions, table_factory):
 
 
 @pytest.fixture
-def sql_preprocessor_cfg(tmp_path, country_table, temp_db_with_extensions):
+def sql_preprocessor_cfg(tmp_path, country_row, temp_db_with_extensions):
+    for part in range(3):
+        country_row(partition=part)
     cfg = Configuration(None)
     cfg.set_libdirs(sql=tmp_path)
     return cfg

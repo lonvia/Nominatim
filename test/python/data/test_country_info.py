@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Tests for function that handle country properties.
@@ -53,13 +53,12 @@ def test_setup_country_tables(src_dir, temp_db_with_extensions, dsn, temp_db_cur
 
 @pytest.mark.parametrize("languages", (None, ['fr', 'en']))
 def test_create_country_names(temp_db_with_extensions, temp_db_conn, temp_db_cursor,
-                              table_factory, tokenizer_mock, languages, loaded_country):
+                              country_row, tokenizer_mock, languages, loaded_country):
+    temp_db_cursor.execute('TRUNCATE country_name')
+    country_row(country='us', names={"name": "us1", "name:af": "us2"})
+    country_row(country='fr', names={"name": "Fra", "name:en": "Fren"})
 
-    table_factory('country_name', 'country_code varchar(2), name hstore',
-                  content=(('us', '"name"=>"us1","name:af"=>"us2"'),
-                           ('fr', '"name"=>"Fra", "name:en"=>"Fren"')))
-
-    assert temp_db_cursor.scalar("SELECT count(*) FROM country_name") == 2
+    assert temp_db_cursor.table_rows('country_name') == 2
 
     tokenizer = tokenizer_mock()
 
