@@ -172,28 +172,40 @@ async def test_load_data(dsn, place_row, placex_table, osmline_table,
     for oid in range(100, 130):
         place_row(osm_id=oid)
     place_row(osm_type='W', osm_id=342, cls='place', typ='houses',
-              geom='SRID=4326;LINESTRING(0 0, 10 10)')
+              geom='LINESTRING(0 0, 10 10)')
 
     temp_db_conn.execute("""
-        CREATE OR REPLACE FUNCTION placex_insert()
-        RETURNS TRIGGER
-        AS $$
+        CREATE OR REPLACE FUNCTION placex_insert() RETURNS TRIGGER AS $$
         BEGIN
-        NEW.place_id := nextval('seq_place');
-        NEW.indexed_status := 1;
-        NEW.centroid := ST_Centroid(NEW.geometry);
-        NEW.partition := 0;
-        NEW.geometry_sector := 2424;
-        NEW.rank_address := 30;
-        NEW.rank_search := 30;
+          NEW.place_id := nextval('seq_place');
+          NEW.indexed_status := 1;
+          NEW.centroid := ST_Centroid(NEW.geometry);
+          NEW.partition := 0;
+          NEW.geometry_sector := 2424;
+          NEW.rank_address := 30;
+          NEW.rank_search := 30;
         RETURN NEW;
-        END;
-        $$
-        LANGUAGE plpgsql STABLE PARALLEL SAFE;
+        END; $$ LANGUAGE plpgsql STABLE PARALLEL SAFE;
+        """)
+    temp_db_conn.execute("""
+        CREATE OR REPLACE FUNCTION osmline_insert() RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.place_id := nextval('seq_place');
+          IF NEW.indexed_status IS NULL THEN
+            NEW.indexed_status := 1;
+            NEW.partition := 0;
+            NEW.geometry_sector := 2424;
+          END IF;
+        RETURN NEW;
+        END; $$ LANGUAGE plpgsql STABLE PARALLEL SAFE;
         """)
     temp_db_conn.execute("""
         CREATE TRIGGER placex_before_insert BEFORE INSERT ON placex
         FOR EACH ROW EXECUTE PROCEDURE placex_insert()""")
+    temp_db_conn.execute("""
+        CREATE TRIGGER osmline_before_insert BEFORE INSERT ON location_property_osmline
+        FOR EACH ROW EXECUTE PROCEDURE osmline_insert()""")
+
     await database_import.load_data(dsn, threads)
 
     assert temp_db_cursor.table_rows('placex') == 30
