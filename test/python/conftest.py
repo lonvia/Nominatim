@@ -259,13 +259,13 @@ def placex_row(placex_table, temp_db_cursor):
 
     def _add(osm_type='N', osm_id=None, cls='amenity', typ='cafe', names=None,
              admin_level=None, address=None, extratags=None, geom='POINT(10 4)',
-             country=None, housenumber=None, rank_search=30, centroid='POINT(10 4)',
-             indexed_status=0, indexed_date=None):
+             country=None, housenumber=None, rank_search=30, rank_address=30,
+             centroid='POINT(10 4)', indexed_status=0, indexed_date=None):
         args = {'place_id': pysql.SQL("nextval('seq_place')"),
                 'osm_type': osm_type, 'osm_id': osm_id or next(idseq),
                 'class': cls, 'type': typ, 'name': names, 'admin_level': admin_level,
                 'address': address, 'housenumber': housenumber,
-                'rank_search': rank_search, 'rank_address': rank_search,
+                'rank_search': rank_search, 'rank_address': rank_address,
                 'extratags': extratags,
                 'centroid': _with_srid(centroid), 'geometry': _with_srid(geom),
                 'country_code': country,
@@ -282,13 +282,30 @@ def osmline_table(temp_db_with_extensions, load_sql):
 
 
 @pytest.fixture
+def osmline_row(osmline_table, temp_db_cursor):
+    idseq = itertools.count(20001)
+
+    def _add(osm_id=None, geom='LINESTRING(12.0 11.0, 12.003 11.0)'):
+        return temp_db_cursor.insert_row(
+            'location_property_osmline',
+            place_id=pysql.SQL("nextval('seq_place')"),
+            osm_id=osm_id or next(idseq),
+            geometry_sector=pysql.Literal(20),
+            partition=pysql.Literal(0),
+            indexed_status=1,
+            linegeo=_with_srid(geom))
+
+    return _add
+
+
+@pytest.fixture
 def postcode_table(temp_db_with_extensions, load_sql):
     load_sql('tables/postcodes.sql')
 
 
 @pytest.fixture
 def postcode_row(postcode_table, temp_db_cursor):
-    def _add(country, postcode, x, y):
+    def _add(country, postcode, x=34.5, y=-9.33):
         geom = _with_srid(f"POINT({x} {y})")
         return temp_db_cursor.insert_row(
             'location_postcodes',
