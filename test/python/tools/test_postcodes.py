@@ -13,7 +13,6 @@ import pytest
 
 from nominatim_db.tools import postcodes
 from nominatim_db.data import country_info
-from nominatim_db.db.sql_preprocessor import SQLPreprocessor
 
 import dummy_tokenizer
 
@@ -23,7 +22,6 @@ class MockPostcodeTable:
     """
     def __init__(self, conn, config):
         self.conn = conn
-        SQLPreprocessor(conn, config).run_sql_file(conn, 'functions/postcode_triggers.sql')
         with conn.cursor() as cur:
             cur.execute("""CREATE TABLE location_postcodes (
                                place_id BIGINT,
@@ -73,8 +71,9 @@ class MockPostcodeTable:
 
 
 @pytest.fixture
-def postcode_table(def_config, temp_db_conn, placex_table, table_factory):
+def postcode_table(def_config, temp_db_conn, placex_table, table_factory, load_sql):
     country_info.setup_country_config(def_config)
+    load_sql('functions/postcode_triggers.sql')
     return MockPostcodeTable(temp_db_conn, def_config)
 
 
