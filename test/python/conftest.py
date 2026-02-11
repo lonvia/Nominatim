@@ -202,11 +202,12 @@ def place_row(place_table, temp_db_cursor):
     """
     idseq = itertools.count(1001)
     def _insert(osm_type='N', osm_id=None, cls='amenity', typ='cafe', names=None,
-                admin_level=None, address=None, extratags=None, geom=None):
-        temp_db_cursor.execute("INSERT INTO place VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                               (osm_id or next(idseq), osm_type, cls, typ, names,
-                                admin_level, address, extratags,
-                                geom or 'SRID=4326;POINT(0 0)'))
+                admin_level=None, address=None, extratags=None, geom='POINT(0 0)'):
+        args = {'osm_type': osm_type, 'osm_id': osm_id or next(idseq),
+                'class': cls, 'type': typ, 'name': names, 'admin_level': admin_level,
+                'address': address, 'extratags': extratags,
+                'geometry': _with_srid(geom)}
+        temp_db_cursor.insert_row('place', **args)
 
     return _insert
 
@@ -231,12 +232,12 @@ def place_postcode_row(place_postcode_table, temp_db_cursor):
     """
     idseq = itertools.count(5001)
     def _insert(osm_type='N', osm_id=None, postcode=None, country=None,
-                centroid=None, geom=None):
-        temp_db_cursor.execute("INSERT INTO place_postcode VALUES (%s, %s, %s, %s, %s, %s)",
-                               (osm_type, osm_id or next(idseq),
-                                postcode, country,
-                                _with_srid(centroid, 'POINT(12.0 4.0)'),
-                                _with_srid(geom)))
+                centroid='POINT(12.0 4.0)', geom=None):
+        temp_db_cursor.insert_row('place_postcode',
+                                  osm_type=osm_type, osm_id=osm_id or next(idseq),
+                                  postcode=postcode, country_code=country,
+                                  centroid=_with_srid(centroid),
+                                  geometry=_with_srid(geom))
 
     return _insert
 
