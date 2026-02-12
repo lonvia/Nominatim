@@ -61,6 +61,20 @@ class CursorForTesting(psycopg.Cursor):
                                         pysql.SQL(where)))
 
     def insert_row(self, table, **data):
+        """ Insert a row into the given table.
+
+            'data' is a dictionary of column names and associated values.
+            When the value is a pysql.Literal or pysql.SQL, then the expression
+            will be inserted as is instead of loading the value. When the
+            value is a tuple, then the first element will be added as an
+            SQL expression for the value and the second element is treated
+            as the actual value to insert. The SQL expression must contain
+            a %s placeholder in that case.
+
+            If data contains a 'place_id' column, then the value of the
+            place_id column after insert is returned. Otherwise the function
+            returns nothing.
+        """
         columns = []
         placeholders = []
         values = []
