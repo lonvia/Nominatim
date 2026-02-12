@@ -151,8 +151,8 @@ def load_sql(temp_db_conn, country_row):
 
     config = Configuration(None)
 
-    def _run(filename):
-        SQLPreprocessor(temp_db_conn, config).run_sql_file(temp_db_conn, filename)
+    def _run(filename, **kwargs):
+        SQLPreprocessor(temp_db_conn, config).run_sql_file(temp_db_conn, filename, **kwargs)
 
     return _run
 
