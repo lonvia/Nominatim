@@ -5,127 +5,21 @@
 -- Copyright (C) 2026 by the Nominatim developer community.
 -- For a full list of authors see the git log.
 
-{% include('tables/status.sql') %}
-{% include('tables/nominatim_properties.sql') %}
-
-drop table IF EXISTS location_area CASCADE;
-CREATE TABLE location_area (
-  place_id BIGINT NOT NULL,
-  keywords INTEGER[] NOT NULL,
-  partition SMALLINT NOT NULL,
-  rank_search SMALLINT NOT NULL,
-  rank_address SMALLINT NOT NULL,
-  country_code VARCHAR(2),
-  isguess BOOL NOT NULL,
-  postcode TEXT,
-  centroid GEOMETRY(Point, 4326) NOT NULL,
-  geometry GEOMETRY(Geometry, 4326) NOT NULL
-  );
-
-CREATE TABLE location_area_large () INHERITS (location_area);
-
-DROP TABLE IF EXISTS location_area_country;
-CREATE TABLE location_area_country (
-  place_id BIGINT NOT NULL,
-  country_code varchar(2) NOT NULL,
-  geometry GEOMETRY(Geometry, 4326) NOT NULL
-  ) {{db.tablespace.address_data}};
-CREATE INDEX idx_location_area_country_geometry ON location_area_country USING GIST (geometry) {{db.tablespace.address_index}};
-
-
-CREATE TABLE location_property_tiger (
-  place_id BIGINT NOT NULL,
-  parent_place_id BIGINT,
-  startnumber INTEGER NOT NULL,
-  endnumber INTEGER NOT NULL,
-  step SMALLINT NOT NULL,
-  partition SMALLINT NOT NULL,
-  linegeo GEOMETRY NOT NULL,
-  postcode TEXT);
-
-{% include('tables/interpolation.sql') %}
-
-drop table IF EXISTS search_name;
-{% if not db.reverse_only %}
-CREATE TABLE search_name (
-  place_id BIGINT NOT NULL,
-  importance FLOAT NOT NULL,
-  search_rank SMALLINT NOT NULL,
-  address_rank SMALLINT NOT NULL,
-  name_vector integer[] NOT NULL,
-  nameaddress_vector integer[] NOT NULL,
-  country_code varchar(2),
-  centroid GEOMETRY(Geometry, 4326) NOT NULL
-  ) {{db.tablespace.search_data}};
-CREATE UNIQUE INDEX idx_search_name_place_id
-  ON search_name USING BTREE (place_id) {{db.tablespace.search_index}};
-{% endif %}
-
-drop table IF EXISTS place_addressline;
-CREATE TABLE place_addressline (
-  place_id BIGINT NOT NULL,
-  address_place_id BIGINT NOT NULL,
-  distance FLOAT NOT NULL,
-  cached_rank_address SMALLINT NOT NULL,
-  fromarea boolean NOT NULL,
-  isaddress boolean NOT NULL
-  ) {{db.tablespace.search_data}};
-CREATE INDEX idx_place_addressline_place_id on place_addressline USING BTREE (place_id) {{db.tablespace.search_index}};
-
-{% include('tables/placex.sql') %}
-
-
 DROP SEQUENCE IF EXISTS seq_place;
 CREATE SEQUENCE seq_place start 1;
 
-
+{% include('tables/status.sql') %}
+{% include('tables/nominatim_properties.sql') %}
+{% include('tables/location_area.sql') %}
+{% include('tables/tiger.sql') %}
+{% include('tables/interpolation.sql') %}
+{% include('tables/search_name.sql') %}
+{% include('tables/addressline.sql') %}
+{% include('tables/placex.sql') %}
 {% include('tables/postcodes.sql') %}
-
--- Table to store location of entrance nodes
-DROP TABLE IF EXISTS placex_entrance;
-CREATE TABLE placex_entrance (
-  place_id BIGINT NOT NULL,
-  osm_id BIGINT NOT NULL,
-  type TEXT NOT NULL,
-  location GEOMETRY(Point, 4326) NOT NULL,
-  extratags HSTORE
-  );
-CREATE UNIQUE INDEX idx_placex_entrance_place_id_osm_id ON placex_entrance
-  USING BTREE (place_id, osm_id) {{db.tablespace.search_index}};
-
-DROP TABLE IF EXISTS import_polygon_error;
-CREATE TABLE import_polygon_error (
-  osm_id BIGINT,
-  osm_type CHAR(1),
-  class TEXT NOT NULL,
-  type TEXT NOT NULL,
-  name HSTORE,
-  country_code varchar(2),
-  updated timestamp,
-  errormessage text,
-  prevgeometry GEOMETRY(Geometry, 4326),
-  newgeometry GEOMETRY(Geometry, 4326)
-  );
-CREATE INDEX idx_import_polygon_error_osmid ON import_polygon_error USING BTREE (osm_type, osm_id);
-
-DROP TABLE IF EXISTS import_polygon_delete;
-CREATE TABLE import_polygon_delete (
-  osm_id BIGINT,
-  osm_type CHAR(1),
-  class TEXT NOT NULL,
-  type TEXT NOT NULL
-  );
-CREATE INDEX idx_import_polygon_delete_osmid ON import_polygon_delete USING BTREE (osm_type, osm_id);
-
-{% if 'wikimedia_importance' not in db.tables and 'wikipedia_article' not in db.tables %}
--- create dummy tables here, if nothing was imported
-CREATE TABLE wikimedia_importance (
-  language TEXT NOT NULL,
-  title TEXT NOT NULL,
-  importance double precision NOT NULL,
-  wikidata TEXT
-)  {{db.tablespace.address_data}};
-{% endif %}
+{% include('tables/entrance.sql') %}
+{% include('tables/import_reports.sql') %}
+{% include('tables/importance_tables.sql') %}
 
 -- osm2pgsql does not create indexes on the middle tables for Nominatim
 -- Add one for lookup of associated street relations.
