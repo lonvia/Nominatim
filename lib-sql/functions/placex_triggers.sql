@@ -863,10 +863,8 @@ BEGIN
     parent_address_level := 3;
     FOR location IN
       SELECT rank_address,
-             (CASE WHEN extratags ? 'wikidata' and NEW.extratags ? 'wikidata'
-                        and extratags->'wikidata' = NEW.extratags->'wikidata'
-                   THEN ST_Equals(geometry, NEW.geometry)
-                   ELSE false END) as is_same
+             (extratags ? 'wikidata' and NEW.extratags ? 'wikidata'
+              and extratags->'wikidata' = NEW.extratags->'wikidata') as is_same
       FROM placex
       WHERE osm_type = 'R' and class = 'boundary' and type = 'administrative'
             and admin_level < NEW.admin_level and admin_level > 3
