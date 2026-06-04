@@ -95,22 +95,44 @@ class FuzzyAnalyzer(AbstractAnalyzer):
     def process_place(self, place: PlaceInfo) -> Any:
         token_info = _TokenInfo()
 
-        names, address = self.sanitizer.process_names(place)
+        if place.searchable_names:
+            full_tokens = self._compute_name_tokens(place.searchable_names)
+            token_info.set_names(self._compute_name_tokens(place.searchable_names))
 
-        if names:
-            token_info.set_names(self._compute_name_tokens(names))
+            # TODO add to country names table
 
-        if address:
-            self._process_place_address(token_info, address)
+        if place.searchable_address:
+            self._process_place_address(token_info, place.searchable_address)
 
         return token_info.get_dict()
+
+    def _compute_name_tokens(self, names: Sequence[PlaceName]) -> dict[int, str]:
+        """ Process the given names and return a dictionary of
+            word token to word.
+        """
+
+
+def _mk_array(tokens: Iterable[Any]) -> str:
+    """ Create an array string suitable for Postgres array input.
+    """
+    return '{' + ','.join((str(s) for s in tokens)) + '}'
 
 
 class _TokenInfo:
     """ Collect the token information being sent back to the database.
     """
     def __init__(self) -> None:
-        self._data: dict[str, Any] = {}
+        # Token IDs for the full names of the place
+        self.full_names: set[int] = set()
+        # Partial tokens as normalized strings
+        self.partials: set[str] = set()
 
     def get_dict(self) -> dict[str, Any]:
-        return self._data
+        out: dict[str, Any] = {}
+
+        if self.full_names:
+            out['full_names'] = _mk_array(self.full_names)
+        if self.partials:
+            out['partials'] = list(self.partials)
+
+        return out
