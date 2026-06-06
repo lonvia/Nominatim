@@ -13,13 +13,15 @@ from ...db.connection import connect, Connection
 from ..base import AbstractAnalyzer
 from ...config import Configuration
 from ...data.place_info import PlaceInfo
+from ...data.place_name import PlaceNames
+from .name_processor import FuzzyNameProcessor
 
 class FuzzyAnalyzer(AbstractAnalyzer):
 
-    def __init__(self, dsn: str, sanitizer: PlaceSanitizer) -> None:
+    def __init__(self, dsn: str, name_processor: FuzzyNameProcessor) -> None:
         self.conn: Optional[Connection] = connect(dsn)
         self.conn.autocommit = True
-        self.sanitizer = sanitizer
+        self.name_proc = name_processor
 
 
     def close(self) -> None:
@@ -41,13 +43,14 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                                should_replace: bool) -> None:
         pass
 
-    def add_country_names(self, country_code: str, names: dict[str, str]) -> None:
+    def add_country_names(self, country_code: str, names: PlaceNames) -> None:
         pass
 
     def process_place(self, place: PlaceInfo) -> Any:
         token_info = _TokenInfo()
 
         if place.searchable_names:
+            self.name_proc.normalize_name_list(place.searchable_names)
             full_tokens = self._compute_name_tokens(place.searchable_names)
             token_info.set_names(self._compute_name_tokens(place.searchable_names))
 
