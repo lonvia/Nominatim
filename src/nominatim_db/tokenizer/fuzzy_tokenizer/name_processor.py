@@ -11,6 +11,7 @@ Encapsulates word processing for the fuzzy tokenizer.
 import icu
 
 from .config import FuzzyTokenizerConfig
+from ...data.place_name import PlaceNames
 
 class FuzzyNameProcessor:
     """ Provides functions for normalizing and tokenizing names.
@@ -43,3 +44,6 @@ class FuzzyNameProcessor:
         return ' '.join(parts)
 
 
+    def normalize_name_list(self, names: PlaceNames) -> None:
+        for name in names:
+            name.name = self.normalize(name.name)
