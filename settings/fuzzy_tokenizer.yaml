@@ -1,0 +1,85 @@
+normalization:
+    - ":: lower ()"
+    - ":: Hans-Hant"
+    - !include icu-rules/unicode-digits-to-decimal.yaml
+    - "'№' > 'no'"
+    - "'n°' > 'no'"
+    - "'nº' > 'no'"
+    - "ª > a"
+    - "º > o"
+    - "[[:Punctuation:][:Symbol:][\u02bc] - [-:]]+  > '-'"
+    - "ß > 'ss'" # German szet is unambiguously equal to double ss
+    - "[^[:alnum:] [:Canonical_Combining_Class=Virama:] [:Space:] [-:]] >"
+    - "[:Lm:] >"
+    - ":: [[:Number:]] Latin ()"
+    - ":: [[:Number:]] Ascii ()"
+    - ":: [[:Number:]] NFD ()"
+    - "[[:Nonspacing Mark:] [:Cf:]] >"
+    - "[:Letter:] } {([:Number:]) > '-'"
+    - "[:Number:] } {([:Letter:]) > '-'"
+    - "[-:]?[:Space:]+[-:]? > ' '"
+transliteration:
+    - "[-:]  > ' '"
+    - ":: Latin ()"
+    - !include icu-rules/extended-unicode-to-asccii.yaml
+    - ":: Ascii ()"
+    - ":: NFD ()"
+    - ":: lower ()"
+    - "[^a-z0-9[:Space:]] >"
+    - ":: NFC ()"
+    - "[:Space:]+ > ' '"
+token-analysis:
+    variants:
+        - applies-to: name
+          filter-attribute: lang
+          variants: language-abbreviations
+        - applies-to: name
+          filter-attribute: lang
+          variants: language-mutations
+        - applies-to: postcode
+          variants: optional-space
+variant-sets:
+    language-abbreviations:
+        type: abbreviation
+        rules:
+            bg: !include icu-rules/variants-bg.yaml
+            ca: !include icu-rules/variants-ca.yaml
+            cs: !include icu-rules/variants-cs.yaml
+            da: !include icu-rules/variants-da.yaml
+            de: !include icu-rules/variants-de.yaml
+            el: !include icu-rules/variants-el.yaml
+            en: !include icu-rules/variants-en.yaml
+            es: !include icu-rules/variants-es.yaml
+            et: !include icu-rules/variants-et.yaml
+            eu: !include icu-rules/variants-eu.yaml
+            fi: !include icu-rules/variants-fi.yaml
+            fr: !include icu-rules/variants-fr.yaml
+            gl: !include icu-rules/variants-gl.yaml
+            hu: !include icu-rules/variants-hu.yaml
+            it: !include icu-rules/variants-it.yaml
+            mg: !include icu-rules/variants-mg.yaml
+            ms: !include icu-rules/variants-ms.yaml
+            nl: !include icu-rules/variants-nl.yaml
+            "no": !include icu-rules/variants-no.yaml
+            pl: !include icu-rules/variants-pl.yaml
+            pt: !include icu-rules/variants-pt.yaml
+            ro: !include icu-rules/variants-ro.yaml
+            ru: !include icu-rules/variants-ru.yaml
+            sk: !include icu-rules/variants-sk.yaml
+            sl: !include icu-rules/variants-sl.yaml
+            sv: !include icu-rules/variants-sv.yaml
+            tr: !include icu-rules/variants-tr.yaml
+            uk: !include icu-rules/variants-uk.yaml
+            vi: !include icu-rules/variants-vi.yaml
+    language-mutations:
+        type: mutation
+        rules:
+            de:
+                - pattern: "([äöü])"
+                  replacements: ["\1", "\1e"]
+    optional-space:
+        type: mutation
+        rules:
+            _:
+                - pattern: ' '
+                - replacements: [' ', '']
