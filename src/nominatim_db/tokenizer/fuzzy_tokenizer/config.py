@@ -9,6 +9,7 @@ Helper class managing the configuration of the fuzzy tokenizer.
 """
 from typing import Mapping, Any, cast, Optional
 import logging
+from dataclasses import dataclass
 
 import icu
 
@@ -23,19 +24,20 @@ DBCFG_NORM_RULES = "tokenizer_normalisation_rules"
 DBCFG_TRANS_RULES = "tokenizer_transliteration_rules"
 DBCFG_BREAKER_RULES = "tokenizer_breaker_rules"
 
-
-def _get_section(rules: Mapping[str, Any], section: str, dtype: type) -> Any:
+def _get_section(rules: Mapping[str, Any], section: str, dtype: Any,
+                 base_section: str = 'tokenizer config') -> Any:
     """ Get the section named 'section' from the rules. If the section does
         not exist, raise a usage error with a meaningful message.
     """
     if section not in rules:
-        LOG.fatal("Section '%s' not found in tokenizer config.", section)
+        LOG.fatal("Section '%s' not found in %s.", section, base_section)
         raise UsageError("Syntax error in tokenizer configuration file.")
 
     section = rules[section]
 
     if not isinstance(section, dtype):
-        LOG.fatal("Setion '%s' should be of type %s", section, dtype.__name__)
+        LOG.fatal("Section '%s' should be of type %s", section, dtype.__name__)
+        raise UsageError("Syntax error in tokenizer configuration file.")
 
     return rules[section]
 
@@ -72,6 +74,14 @@ def _create_breaker_rules(conn: Optional[Connection], prop: str) -> str:
     return cast(str, icu.BreakIterator.createWordInstance((icu.Locale.getUS())).getRules())
 
 
+@dataclass
+class FuzzyVariantConfig:
+    applies_to: list[str]
+    rule_type: str
+    config: dict[str, Any]
+    rules: dict[str, Any]
+
+
 class FuzzyTokenizerConfig:
     """ Container class managing the configuration of the Fuzzy tokenizer.
 
@@ -89,7 +99,44 @@ class FuzzyTokenizerConfig:
                                                        conn, DBCFG_TRANS_RULES)
         self.breaker_rules = _create_breaker_rules(conn, DBCFG_BREAKER_RULES)
 
+        self.variant_rules = []
+        if 'variants' in rules:
+            for vconfig in _get_section(analysis_rules, 'variants', list):
+                if not isinstance(vconfig, dict):
+                    LOG.fatal("Variant config excpected to be a dict")
+                    raise UsageError("Syntax error in tokenizer configuration file.")
+
+                if (cfg := vconfig.get('applies-to')):
+                    if isinstance(cfg, str):
+                        applies_to = [cfg]
+                    else:
+                        if not isinstance(cfg, list) and \
+                                any(not isinstance(cfg, str) for v in cfg):
+                            LOG.fatal("'applies-to' needs to be a string or list of strings.")
+                            raise UsageError("Syntax error in tokenizer configuration file.")
+                        applies_to = cfg
+                else:
+                    applies_to = []
+
+                rule_type = _get_section(vconfig, 'type', str, 'variants configuration')
+                rule_config = {k: v for k,v in vconfig.items()
+                               if k not in ('rules', 'applies-to', 'type')}
+
+                for rule in flatten_config_list(_get_section(vconfig, 'rules', list,
+                                                             'rules section for variants')):
+                    self.variant_rules.append(FuzzyVariantConfig(
+                        applies_to, rule_type, rule_config, rule))
+
     def save_to_db(self, conn: Connection) -> None:
+        """ Save all parts of the configuration to the database that
+            need to be persistent, i.e. not changed after import.
+        """
         set_property(conn, DBCFG_NORM_RULES, self.normalization_rules)
         set_property(conn, DBCFG_TRANS_RULES, self.transliteration_rules)
         set_property(conn, DBCFG_BREAKER_RULES, self.breaker_rules)
+
+    def get_variant_rules_for(self, analysis_type: str) -> list[dict[str, Any]]:
+        """ Return all variant rules that apply to the given type of analysis.
+        """
+        return [r for r in self.analysis_variants
+                if 'applies-to' not in r or analysis_type in r['applies-to']]
