@@ -28,58 +28,52 @@ transliteration:
     - "[^a-z0-9[:Space:]] >"
     - ":: NFC ()"
     - "[:Space:]+ > ' '"
-token-analysis:
-    variants:
-        - applies-to: name
-          filter-attribute: lang
-          variants: language-abbreviations
-        - applies-to: name
-          filter-attribute: lang
-          variants: language-mutations
-        - applies-to: postcode
-          variants: optional-space
-variant-sets:
-    language-abbreviations:
-        type: abbreviation
-        rules:
-            bg: !include icu-rules/variants-bg.yaml
-            ca: !include icu-rules/variants-ca.yaml
-            cs: !include icu-rules/variants-cs.yaml
-            da: !include icu-rules/variants-da.yaml
-            de: !include icu-rules/variants-de.yaml
-            el: !include icu-rules/variants-el.yaml
-            en: !include icu-rules/variants-en.yaml
-            es: !include icu-rules/variants-es.yaml
-            et: !include icu-rules/variants-et.yaml
-            eu: !include icu-rules/variants-eu.yaml
-            fi: !include icu-rules/variants-fi.yaml
-            fr: !include icu-rules/variants-fr.yaml
-            gl: !include icu-rules/variants-gl.yaml
-            hu: !include icu-rules/variants-hu.yaml
-            it: !include icu-rules/variants-it.yaml
-            mg: !include icu-rules/variants-mg.yaml
-            ms: !include icu-rules/variants-ms.yaml
-            nl: !include icu-rules/variants-nl.yaml
-            "no": !include icu-rules/variants-no.yaml
-            pl: !include icu-rules/variants-pl.yaml
-            pt: !include icu-rules/variants-pt.yaml
-            ro: !include icu-rules/variants-ro.yaml
-            ru: !include icu-rules/variants-ru.yaml
-            sk: !include icu-rules/variants-sk.yaml
-            sl: !include icu-rules/variants-sl.yaml
-            sv: !include icu-rules/variants-sv.yaml
-            tr: !include icu-rules/variants-tr.yaml
-            uk: !include icu-rules/variants-uk.yaml
-            vi: !include icu-rules/variants-vi.yaml
-    language-mutations:
-        type: mutation
-        rules:
-            de:
-                - pattern: "([äöü])"
-                  replacements: ["\1", "\1e"]
-    optional-space:
-        type: mutation
-        rules:
-            _:
-                - pattern: ' '
-                - replacements: [' ', '']
+variants:
+    - applies-to: name
+      type: lexical
+      rules:
+          - !include icu-rules/variants-bg.yaml
+          - !include icu-rules/variants-ca.yaml
+          - !include icu-rules/variants-cs.yaml
+          - !include icu-rules/variants-da.yaml
+          - !include icu-rules/variants-de.yaml
+          - !include icu-rules/variants-el.yaml
+          - !include icu-rules/variants-en.yaml
+          - !include icu-rules/variants-es.yaml
+          - !include icu-rules/variants-et.yaml
+          - !include icu-rules/variants-eu.yaml
+          - !include icu-rules/variants-fi.yaml
+          - !include icu-rules/variants-fr.yaml
+          - !include icu-rules/variants-gl.yaml
+          - !include icu-rules/variants-hu.yaml
+          - !include icu-rules/variants-it.yaml
+          - !include icu-rules/variants-mg.yaml
+          - !include icu-rules/variants-ms.yaml
+          - !include icu-rules/variants-nl.yaml
+          - !include icu-rules/variants-no.yaml
+          - !include icu-rules/variants-pl.yaml
+          - !include icu-rules/variants-pt.yaml
+          - !include icu-rules/variants-ro.yaml
+          - !include icu-rules/variants-ru.yaml
+          - !include icu-rules/variants-sk.yaml
+          - !include icu-rules/variants-sl.yaml
+          - !include icu-rules/variants-sv.yaml
+          - !include icu-rules/variants-tr.yaml
+          - !include icu-rules/variants-uk.yaml
+          - !include icu-rules/variants-vi.yaml
+    - applies-to: name
+      type: mutation
+      mode: replace-all
+      rules:
+        - lang: de
+          mutation:
+              pattern: "([äöü])"
+              replacements: ["\1", "\1e"]
+      rules:
+    - applies-to: postcode
+      type: mutation
+      mode: permutate
+      rules:
+          mutation:
+              pattern: ' '
+              replacements: [' ', '']
