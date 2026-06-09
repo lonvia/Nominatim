@@ -61,10 +61,12 @@ class FuzzyAnalyzer(AbstractAnalyzer):
 
         return token_info.get_dict()
 
-    def _compute_name_tokens(self, names: PlaceNames) -> dict[int, str]:
+    def _compute_name_tokens(self, place_names: PlaceNames) -> dict[int, str]:
         """ Process the given names and return a dictionary of
             word token to word.
         """
+        names = self.name_proc.normalize_place_names(place_names)
+        names = self.name_proc.create_variants('name', names)
 
 
 def _mk_array(tokens: Iterable[Any]) -> str:
