@@ -7,12 +7,14 @@
 """
 Encapsulates word processing for the fuzzy tokenizer.
 """
+from typing import Optional
 import logging
 import icu
+from dataclasses import dataclass
 
 from ...errors import UsageError
 from .config import FuzzyTokenizerConfig, FuzzyVariantConfig
-from ...data.place_name import PlaceNames
+from ...data.place_name import PlaceNames, PlaceName
 
 LOG = logging.getLogger()
 
@@ -21,6 +23,16 @@ TOKEN_TYPES = {
     'housenumber': 1,
     'postcode': 2
 }
+
+
+@dataclass
+class FuzzyName:
+    source: PlaceName
+    name: str
+    subtype: Optional[tuple[str, ...]] = None
+
+
+FuzzyNames = list[FuzzyName]
 
 
 class FuzzyNameProcessor:
@@ -87,8 +99,7 @@ class FuzzyNameProcessor:
 
         return ' '.join(parts)
 
-    def normalize_name_list(self, names: PlaceNames) -> None:
-        for name in names:
-            name.name = self.normalize(name.name)
+    def normalized_name_list(self, names: PlaceNames) -> FuzzyNames:
+        return [FuzzyName(n, self.normalize(name.name)) for n in names]
 
-    def apply_variants(self, names: PlaceNames) -> None:
+    def apply_variants(self, names: FuzzyNames) -> None:
