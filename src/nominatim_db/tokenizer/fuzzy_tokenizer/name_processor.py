@@ -60,6 +60,8 @@ class FuzzyNameProcessor:
     def _create_variant_processors(self, in_rules: list[FuzzyVariantConfig]) -> None:
         self.variant_processors = [[] for _ in range(max(TOKEN_TYPES.values()))]
 
+        self.filter_attributes
+
         for vconfig in in_rules:
             if in_rules.applies_to:
                 apply_to = list({TOKEN_TYPES[n] for n in in_rules.applies_to
@@ -99,7 +101,16 @@ class FuzzyNameProcessor:
 
         return ' '.join(parts)
 
-    def normalized_name_list(self, names: PlaceNames) -> FuzzyNames:
+    def normalized_place_names(self, names: PlaceNames) -> FuzzyNames:
+        """ Takes a list of PlaceName items and converts it into the
+            internally used FuzzyName list, normalizing the names
+            on the way.
+        """
         return [FuzzyName(n, self.normalize(name.name)) for n in names]
 
-    def apply_variants(self, names: FuzzyNames) -> None:
+
+    def apply_variants(self, token_type: str, names: FuzzyNames) -> FuzzyNames:
+        """ Apply variant processing for the given type of tokens to
+            the name list and return the extended name list.
+        """
+        varproc = self.variant_processors[TOKEN_TYPES[token_type]]
