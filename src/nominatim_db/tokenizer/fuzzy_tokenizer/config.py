@@ -101,7 +101,7 @@ class FuzzyTokenizerConfig:
 
         self.variant_rules = []
         if 'variants' in rules:
-            for vconfig in _get_section(analysis_rules, 'variants', list):
+            for vconfig in _get_section(rules, 'variants', list):
                 if not isinstance(vconfig, dict):
                     LOG.fatal("Variant config excpected to be a dict")
                     raise UsageError("Syntax error in tokenizer configuration file.")
@@ -134,9 +134,3 @@ class FuzzyTokenizerConfig:
         set_property(conn, DBCFG_NORM_RULES, self.normalization_rules)
         set_property(conn, DBCFG_TRANS_RULES, self.transliteration_rules)
         set_property(conn, DBCFG_BREAKER_RULES, self.breaker_rules)
-
-    def get_variant_rules_for(self, analysis_type: str) -> list[dict[str, Any]]:
-        """ Return all variant rules that apply to the given type of analysis.
-        """
-        return [r for r in self.analysis_variants
-                if 'applies-to' not in r or analysis_type in r['applies-to']]
