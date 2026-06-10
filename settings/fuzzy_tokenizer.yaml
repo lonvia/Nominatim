@@ -28,6 +28,8 @@ transliteration:
     - "[^a-z0-9[:Space:]] >"
     - ":: NFC ()"
     - "[:Space:]+ > ' '"
+token-analysis:
+    default-variant-grouping: by-attribute
 variants:
     - applies-to: name
       type: lexical
