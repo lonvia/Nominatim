@@ -7,14 +7,18 @@
 """
 Encapsulates word processing for the fuzzy tokenizer.
 """
-from typing import Optional
+from typing import Optional, Iterable, cast
 import logging
 import icu
 import dataclasses
+from collections import defaultdict
 
+from psycopg import sql as pysql
+
+from . import config
 from ...errors import UsageError
-from .config import FuzzyTokenizerConfig, FuzzyVariantConfig
 from ...data.place_name import PlaceNames, PlaceName
+from ...db.connection import Connection
 
 LOG = logging.getLogger()
 
@@ -26,19 +30,26 @@ TOKEN_TYPES = {
 
 
 @dataclasses.dataclass
+class FuzzyToken:
+    token_id: int
+    token: str
+
+
+FuzzyTokens = list[FuzzyToken]
+
+
+@dataclasses.dataclass
 class FuzzyName:
     name_attr: dict[str, str]
     token: str
-    token_id: Optional[int] = None
-    attr_idxs: set[int] = frozenset()
+    attr_idxs: set[int] = cast(set[int], frozenset())
 
 
 FuzzyNames = list[FuzzyName]
-AttributeValueTuple = tuple[Optional[str], ...]
 
 class VariantProcessor:
 
-    def __init__(self, vconfig: FuzzyVariantConfig, normalizer: icu.Transliterator) -> None:
+    def __init__(self, vconfig: config.FuzzyVariantConfig, normalizer: icu.Transliterator) -> None:
         pass
 
     def get_filter_attributes(self) -> tuple[tuple[str, str], ...]:
@@ -49,9 +60,11 @@ class VariantProcessor:
 
 
 class LexicalProcessor(VariantProcessor):
+    # TODO: implement
     pass
 
 class MutationProcessor(VariantProcessor):
+    # TODO: implement
     pass
 
 
@@ -63,7 +76,7 @@ class FilteredVariantProcessor:
         self.filter_idxs = {f[0] for f in self.filters}
 
 
-    def process(self, attr_values: AttributeValueTuple, in_names: FuzzyNames) -> FuzzyNames:
+    def process(self, attr_values: tuple[Optional[str], ...], in_names: FuzzyNames) -> FuzzyNames:
         if self.filters and any(attr_values[i] != val for i, val in self.filters):
             return in_names
 
@@ -83,13 +96,150 @@ class FilteredVariantProcessor:
 
         return []
 
+
+
 class FuzzyNameProcessor:
     """ Provides functions for normalizing and tokenizing names.
 
         This processor is not thread-safe.
     """
 
-    def __init__(self, config: FuzzyTokenizerConfig) -> None:
+    def _save_by_name(self, conn: Connection, token: str, attr_keys: tuple[str, ...],
+                      attr_values: tuple[Optional[str], ...],
+                      names: FuzzyNames) -> FuzzyTokens:
+        """ Adds the token to the database if it doesn't exist and sets
+            the token ID saved in the DB for all names.
+        """
+        attr_idxs: set[int] = set()
+        for name in names:
+            attr_idxs.union(name.attr_idxs)
+        attr_dict = {attr_keys[i]: attr_values[i] for i in attr_idxs
+                     if attr_values[i] is not None}
+
+        variants = {n.token for n in names}
+        variants.discard(token)
+        sql_variant_list = sorted(variants) if variants else None
+        variants.add(token)
+
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO token_source (type, token, attributes, variants)
+                             VALUES (%s, %s, %s, %s)
+                             ON CONFLICT (type, token, attributes)
+                             DO NOTHING
+                             RETURNING OLD.id as old_id, NEW.id as new_id, OLD.variants
+                        """,
+                        ('W', token, attr_dict if attr_dict else None, sql_variant_list))
+            result = cur.fetchone()
+            if result is None:
+                return []
+
+            old_id, tuple_id, old_variants = result
+            if old_id is None:
+                self._insert_tokens_into_word(conn, tuple_id, 'W', variants)
+            else:
+                assert old_variants is None or isinstance(old_variants, list)
+                if old_variants != sql_variant_list:
+                    if old_variants is None:
+                        old_variants = [token]
+                    else:
+                        old_variants.append(token)
+                    self._update_tokens_in_word(conn, tuple_id, 'W', old_variants, variants)
+
+        return [FuzzyToken(tuple_id, v) for v in variants]
+
+    def _save_by_attribute(self, conn: Connection, token: str, attr_keys: tuple[str, ...],
+                           attr_values: tuple[Optional[str], ...],
+                           names: FuzzyNames) -> FuzzyTokens:
+        """ Add the token to the database giving each attribute combination
+            a different token ID.
+        """
+        # First group variants by attribute types
+        subtokens: dict[tuple[int, ...], FuzzyNames] = defaultdict(list)
+        for name in names:
+            subtokens[tuple(sorted(name.attr_idxs))].append(name)
+
+        variantlist = []
+        for idxs, subnames in subtokens.items():
+            attr_dict = {attr_keys[i]: attr_values[i] for i in idxs
+                         if attr_values[i] is not None}
+            variants = {n.token for n in subnames}
+            if variants:
+                variantlist.append(('W', token, attr_dict if attr_dict else None,
+                                    sorted(variants)))
+
+        results: FuzzyTokens = []
+        with conn.cursor() as cur:
+            cur.executemany("""
+                INSERT INTO token_source (type, token, attributes, variants)
+                             VALUES (%s, %s, %s, %s)
+                             ON CONFLICT (type, token, attributes)
+                             DO NOTHING
+                             RETURNING OLD.id as old_id, NEW.id as new_id, OLD.variants
+                """, variantlist, returning=True)
+
+            for i, (old_id, tuple_id, old_variants) in enumerate(cur.results()):
+                new_variants = variantlist[i][3]
+                if old_id is None:
+                    self._insert_tokens_into_word(conn, tuple_id, 'W', new_variants)
+                else:
+                    assert old_variants is None or isinstance(old_variants, list)
+                    if old_variants != new_variants:
+                        self._update_tokens_in_word(conn, tuple_id, 'W',
+                                                    old_variants, new_variants)
+                results.extend(FuzzyToken(tuple_id, v) for v in new_variants)
+
+        return results
+
+    def _insert_tokens_into_word(self, conn: Connection, word_id: int,
+                                 wtype: str, tokens: Iterable[str],
+                                 counts: tuple[int, int] = (1, 1) ) -> None:
+        """ Insert the given normalized words into the word table.
+
+            The token list is assumed to be unique.
+        """
+        params = []
+        for token in tokens:
+            trans = cast(str, self.transliteration.transliterate(token)).strip()
+            if trans:
+                params.append((word_id, wtype, trans, token, *counts))`
+
+        if params:
+            with conn.cursor() as cur:
+                cur.executemany("""INSERT INTO word (word_id, type, word, src,
+                                                     name_count, address_count)
+                                     VALUES (%s, %s, %s, %s, %s, %s)
+                                """, params)
+
+    def _update_tokens_in_word(self, conn: Connection, word_id: int,
+                                 wtype: str, old_tokens: Optional[Iterable[str]],
+                                 new_tokens: Optional[Iterable[str]]) -> None:
+        """ The list of words for a certain word type has changed.
+            Update the entries in word accordingly.
+        """
+        with conn.cursor() as cur:
+            cur.execute("""UPDATE token_source SET variants = %s
+                           WHERE id = %s AND variants != %s""")
+            # It is possible here that another thread was faster here updating
+            # the words. Thus only modify the word table when the token_source
+            # table was actually changed.
+            if cur.rowcount > 0:
+                # Be lazy here and simply replace all values.
+                # Carry over name and address counts, though.
+                counts = (1, 1)
+                if old_tokens:
+                    cur.execute("""DELETE FROM word WHERE word_id = %s
+                                   RETURNING name_count, address_count""", (word_id, ))
+                    if cur.rowcount > 0:
+                        counts = cast(tuple[int, int], cur.fetchone())
+                if new_tokens:
+                    self._insert_tokens_into_word(conn, word_id, wtype, new_tokens,
+                                                  counts=counts)
+
+    def __init__(self, config: config.FuzzyTokenizerConfig) -> None:
+        if config.word_grouping == 'by-name':
+            self.save_by_group = self._save_by_name
+        else:
+            self.save_by_group = self._save_by_attribute
         # Ignore boundary types for name analysis
         self.normalizer = icu.Transliterator.createFromRules(
             "fuzzy_normalization",
@@ -97,13 +247,13 @@ class FuzzyNameProcessor:
         self.breaker = icu.RuleBasedBreakIterator(config.breaker_rules)
         self.transliteration = icu.Transliterator.createFromRules(
             "fuzzy_transliteration",
-            config.transliteration_rules)
+            config.transliteration_rules + ";[[:Space:][-:]]+ > '';")
 
         self._create_variant_processors(config.variant_rules)
 
-        self._name_cache: dict[tuple[str, tuple[str, ...]], FuzzyNames] = {}
+        self._name_cache: dict[tuple[str, tuple[Optional[str], ...]], FuzzyTokens] = {}
 
-    def _create_variant_processors(self, in_rules: list[FuzzyVariantConfig]) -> None:
+    def _create_variant_processors(self, in_rules: list[config.FuzzyVariantConfig]) -> None:
         varprocs: list[list[VariantProcessor]] = [[] for _ in range(max(TOKEN_TYPES.values()))]
 
         filtersets: list[set[str]] = [set() for _ in range(max(TOKEN_TYPES.values()))]
@@ -153,14 +303,14 @@ class FuzzyNameProcessor:
 
         return ' '.join(parts)
 
-    def normalized_place_names(self, names: PlaceNames) -> FuzzyNames:
+    def normalize_place_names(self, names: PlaceNames) -> FuzzyNames:
         """ Takes a list of PlaceName items and converts it into the
             internally used FuzzyName list, normalizing the names
             on the way.
         """
         return [FuzzyName(name_attr=n.attr, token=self.normalize(n.name)) for n in names]
 
-    def apply_variants(self, token_type: str, names: FuzzyNames) -> FuzzyNames:
+    def apply_variants(self, token_type: str, names: FuzzyNames, conn: Connection) -> FuzzyTokens:
         """ Apply variant processing for the given type of tokens to
             the name list and return the extended name list.
         """
@@ -168,20 +318,19 @@ class FuzzyNameProcessor:
         varprocs = self.variant_processors[token_type_id]
         attr_keys = self.filter_attributes[token_type_id]
 
-        out_names: FuzzyNames = []
+        out_tokens: FuzzyTokens = []
         for name in names:
             attr_values = tuple(name.name_attr.get(a) for a in attr_keys)
-            cache_key = (name, attr_values)
+            cache_key = (name.token, attr_values)
             if (cached := self._name_cache.get(cache_key)) is not None:
-                variants = cached
+                out_tokens.extend(cached)
             else:
-                # TODO: add caching here
                 variants = [name]
                 for varproc in varprocs:
                     variants = varproc.process(attr_values, variants)
-                # TODO save to word table here
-                out_names.extend(variants)
 
-                self._name_cache[cache_key] = variants
+                tokens = self.save_by_group(conn, name.token, attr_keys, attr_values, variants)
+                self._name_cache[cache_key] = tokens
+                out_tokens.extend(tokens)
 
-        return out_names
+        return out_tokens

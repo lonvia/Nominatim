@@ -14,7 +14,7 @@ from ..base import AbstractAnalyzer
 from ...config import Configuration
 from ...data.place_info import PlaceInfo
 from ...data.place_name import PlaceNames
-from .name_processor import FuzzyNameProcessor
+from .name_processor import FuzzyNameProcessor, FuzzyTokens
 
 class FuzzyAnalyzer(AbstractAnalyzer):
 
@@ -30,10 +30,12 @@ class FuzzyAnalyzer(AbstractAnalyzer):
             self.conn = None
 
     def get_word_token_info(self, words: list[str]) -> list[tuple[str, str, Optional[int]]]:
-        pass
+        # TODO: implement
+        return []
 
     def normalize_postcode(self, postcode: str) -> str:
-        pass
+        # TODO: implement
+        return ''
 
     def update_postcodes_from_db(self) -> None:
         pass
@@ -50,23 +52,26 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         token_info = _TokenInfo()
 
         if place.searchable_names:
-            self.name_proc.normalize_name_list(place.searchable_names)
             full_tokens = self._compute_name_tokens(place.searchable_names)
             token_info.set_names(self._compute_name_tokens(place.searchable_names))
 
             # TODO add to country names table
 
         if place.searchable_address:
-            self._process_place_address(token_info, place.searchable_address)
+            pass
+            # TODO: self._process_place_address(token_info, place.searchable_address)
 
         return token_info.get_dict()
 
-    def _compute_name_tokens(self, place_names: PlaceNames) -> dict[int, str]:
+    def _compute_name_tokens(self, place_names: PlaceNames) -> FuzzyTokens:
         """ Process the given names and return a dictionary of
             word token to word.
         """
+        assert self.conn is not None
         names = self.name_proc.normalize_place_names(place_names)
-        names = self.name_proc.create_variants('name', names)
+        tokens = self.name_proc.apply_variants('name', names, self.conn)
+
+        return tokens
 
 
 def _mk_array(tokens: Iterable[Any]) -> str:
@@ -93,3 +98,7 @@ class _TokenInfo:
             out['partials'] = list(self.partials)
 
         return out
+
+    def set_names(self, tokens: FuzzyTokens) -> None:
+        # TODO: implement
+        pass
