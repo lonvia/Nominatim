@@ -39,6 +39,12 @@ FuzzyTokens = list[FuzzyToken]
 
 
 @dataclasses.dataclass
+class AnalyzedWord:
+    tokens: set[int]
+    partials: set[str]
+
+
+@dataclasses.dataclass
 class FuzzyName:
     name_attr: dict[str, str]
     token: str
@@ -199,9 +205,9 @@ class FuzzyNameProcessor:
         """
         params = []
         for token in tokens:
-            trans = cast(str, self.transliteration.transliterate(token)).strip()
+            trans = ' '.join(self.get_word_partials(token))
             if trans:
-                params.append((word_id, wtype, trans, token, *counts))`
+                params.append((word_id, wtype, trans, token, *counts))
 
         if params:
             with conn.cursor() as cur:
@@ -251,7 +257,7 @@ class FuzzyNameProcessor:
 
         self._create_variant_processors(config.variant_rules)
 
-        self._name_cache: dict[tuple[str, tuple[Optional[str], ...]], FuzzyTokens] = {}
+        self._name_cache: dict[tuple[str, tuple[Optional[str], ...]], AnalyzedWord] = {}
 
     def _create_variant_processors(self, in_rules: list[config.FuzzyVariantConfig]) -> None:
         varprocs: list[list[VariantProcessor]] = [[] for _ in range(max(TOKEN_TYPES.values()))]
@@ -303,6 +309,10 @@ class FuzzyNameProcessor:
 
         return ' '.join(parts)
 
+    def get_word_partials(self, normalized_name: str) -> Iterable[str]:
+        return filter(None, (self.transliteration.transliterate(s).strip()
+                             for s in normalized_name.split()))
+
     def normalize_place_names(self, names: PlaceNames) -> FuzzyNames:
         """ Takes a list of PlaceName items and converts it into the
             internally used FuzzyName list, normalizing the names
@@ -310,7 +320,7 @@ class FuzzyNameProcessor:
         """
         return [FuzzyName(name_attr=n.attr, token=self.normalize(n.name)) for n in names]
 
-    def apply_variants(self, token_type: str, names: FuzzyNames, conn: Connection) -> FuzzyTokens:
+    def apply_variants(self, token_type: str, names: FuzzyNames, conn: Connection) -> AnalyzedWord:
         """ Apply variant processing for the given type of tokens to
             the name list and return the extended name list.
         """
@@ -318,19 +328,35 @@ class FuzzyNameProcessor:
         varprocs = self.variant_processors[token_type_id]
         attr_keys = self.filter_attributes[token_type_id]
 
-        out_tokens: FuzzyTokens = []
+        out_tokens: set[int] = set()
+        out_partials: set[str] = set()
         for name in names:
             attr_values = tuple(name.name_attr.get(a) for a in attr_keys)
             cache_key = (name.token, attr_values)
             if (cached := self._name_cache.get(cache_key)) is not None:
-                out_tokens.extend(cached)
+                analysed = cached
             else:
                 variants = [name]
                 for varproc in varprocs:
                     variants = varproc.process(attr_values, variants)
 
                 tokens = self.save_by_group(conn, name.token, attr_keys, attr_values, variants)
-                self._name_cache[cache_key] = tokens
-                out_tokens.extend(tokens)
+                analysed = AnalyzedWord({t.token_id for t in tokens}, self.create_partials(tokens))
+                self._name_cache[cache_key] = analysed
 
-        return out_tokens
+            out_tokens.update(analysed.tokens)
+            out_partials.update(analysed.partials)
+
+        return AnalyzedWord(out_tokens, out_partials)
+
+    def create_partials(self, tokens: FuzzyTokens) -> set[str]:
+        partials: set[str] = set()
+        for token in tokens:
+            partials.update(s.strip() for s in token.token.split())
+
+        trans = {self.transliteration.transliterate(s) for s in partials}
+
+        partials.update(trans)
+        partials.discard('')
+
+        return partials
