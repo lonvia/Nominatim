@@ -23,6 +23,7 @@ LOG = logging.getLogger()
 DBCFG_NORM_RULES = "tokenizer_normalisation_rules"
 DBCFG_TRANS_RULES = "tokenizer_transliteration_rules"
 DBCFG_BREAKER_RULES = "tokenizer_breaker_rules"
+DBCFG_VARIANT_GROUPING = "tokenizer_variant_grouping"
 
 def _get_section(rules: Mapping[str, Any], section: str, dtype: Any,
                  base_section: str = 'tokenizer config') -> Any:
@@ -127,6 +128,19 @@ class FuzzyTokenizerConfig:
                     self.variant_rules.append(FuzzyVariantConfig(
                         applies_to, rule_type, rule_config, rule))
 
+        if conn is None:
+            if 'token-analysis' in rules:
+                analysis_rules = _get_section(rules, 'variants', dict)
+                self.word_grouping = analysis_rules.get('variant-grouping', 'by-attribute')
+                if not isinstance(self.word_grouping, str) \
+                        or self.word_grouping not in ('by-attribute', 'by-name'):
+                    raise UsageError('Unknown value for token-analysis:variant-grouping.')
+            else:
+                self.word_grouping = 'by-attribute'
+        else:
+            self.word_grouping = get_property(conn, DBCFG_VARIANT_GROUPING)
+
+
     def save_to_db(self, conn: Connection) -> None:
         """ Save all parts of the configuration to the database that
             need to be persistent, i.e. not changed after import.
@@ -134,3 +148,4 @@ class FuzzyTokenizerConfig:
         set_property(conn, DBCFG_NORM_RULES, self.normalization_rules)
         set_property(conn, DBCFG_TRANS_RULES, self.transliteration_rules)
         set_property(conn, DBCFG_BREAKER_RULES, self.breaker_rules)
+        set_property(conn, DBCFG_VARIANT_GROUPING, self.word_grouping)
