@@ -9,7 +9,8 @@ Tokenizer using pg_search to allow for fuzzy search.
 """
 from typing import Optional, Iterable, Any
 
-from ...db.connection import connect, Connection
+from ...db.connection import connect, Connection, drop_tables
+from ...db.sql_preprocessor import SQLPreprocessor
 from ..base import AbstractAnalyzer, AbstractTokenizer
 from ...config import Configuration
 from ...data.place_info import PlaceInfo
@@ -34,6 +35,7 @@ class FuzzyTokenizer(AbstractTokenizer):
 
         with connect(self.dsn) as conn:
             conn.execute('CREATE EXTENSION IF NOT EXISTS pg_search')
+            self._setup_db_tables(conn, config)
 
     def init_from_project(self, config: Configuration) -> None:
         with connect(self.dsn) as conn:
@@ -59,4 +61,33 @@ class FuzzyTokenizer(AbstractTokenizer):
         return FuzzyAnalyzer(self.dsn, FuzzyNameProcessor(self.config))
 
     def most_frequent_words(self, conn: Connection, num: int) -> list[str]:
-        pass
+        # TODO: implement
+        return []
+
+    def _setup_db_tables(self, conn: Connection, config: Configuration) -> None:
+        drop_tables(conn, 'word', 'token_source')
+        sqlp = SQLPreprocessor(conn, config)
+        sqlp.run_string(conn, """
+            CREATE TABLE token_source (
+                id SERIAL PRIMARY KEY,
+                type VARCHAR NOT NULL,
+                token TEXT NOT NULL,
+                attributes HSTORE,
+                variants TEXT[],
+                info JSONB)
+        """)
+        sqlp.run_string(conn, """CREATE UNIQUE INDEX idx_token_source_token
+                                 ON token_source
+                                 USING btree(type, token, attributes)
+                              """)
+        sqlp.run_string(conn, """
+            CREATE TABLE word (
+                word_id INTEGER NOT NULL,
+                type VARCHAR NOT NULL,
+                word TEXT NOT NULL,
+                src TEXT NOT NULL,
+                name_count INTEGER NOT NULL DEFAULT 1,
+                address_count INTEGER NOT NULL DEFAULT 1
+        """)
+        sqlp.run_string(conn, 'GRANT SELECT ON token_source TO "{{config.DATABASE_WEBUSER}}"')
+        sqlp.run_string(conn, 'GRANT SELECT ON word TO "{{config.DATABASE_WEBUSER}}"')
