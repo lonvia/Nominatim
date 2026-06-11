@@ -8,6 +8,7 @@
 Tokenizer using pg_search to allow for fuzzy search.
 """
 from typing import Optional, Iterable, Any
+import dataclasses
 
 from ...db.connection import connect, Connection
 from ..base import AbstractAnalyzer
@@ -49,29 +50,23 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         pass
 
     def process_place(self, place: PlaceInfo) -> Any:
-        token_info = _TokenInfo()
-
+        assert self.conn is not None
         if place.searchable_names:
-            full_tokens = self._compute_name_tokens(place.searchable_names)
-            token_info.set_names(self._compute_name_tokens(place.searchable_names))
+            names = self.name_proc.normalize_place_names(place.searchable_names)
+            analyzed = self.name_proc.apply_variants('name', names, self.conn)
+            token_info = _TokenInfo(full_names=analyzed.tokens,
+                                    partials=analyzed.partials)
 
             # TODO add to country names table
+        else:
+            token_info = _TokenInfo()
+
 
         if place.searchable_address:
             pass
             # TODO: self._process_place_address(token_info, place.searchable_address)
 
         return token_info.get_dict()
-
-    def _compute_name_tokens(self, place_names: PlaceNames) -> FuzzyTokens:
-        """ Process the given names and return a dictionary of
-            word token to word.
-        """
-        assert self.conn is not None
-        names = self.name_proc.normalize_place_names(place_names)
-        tokens = self.name_proc.apply_variants('name', names, self.conn)
-
-        return tokens
 
 
 def _mk_array(tokens: Iterable[Any]) -> str:
@@ -80,14 +75,12 @@ def _mk_array(tokens: Iterable[Any]) -> str:
     return '{' + ','.join((str(s) for s in tokens)) + '}'
 
 
+@dataclasses.dataclass
 class _TokenInfo:
-    """ Collect the token information being sent back to the database.
-    """
-    def __init__(self) -> None:
-        # Token IDs for the full names of the place
-        self.full_names: set[int] = set()
-        # Partial tokens as normalized strings
-        self.partials: set[str] = set()
+    # Token IDs for the full names of the place
+    full_names: set[int] = set()
+    # Partial tokens as normalized strings
+    partials: set[str] = set()
 
     def get_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {}
@@ -98,7 +91,3 @@ class _TokenInfo:
             out['partials'] = list(self.partials)
 
         return out
-
-    def set_names(self, tokens: FuzzyTokens) -> None:
-        # TODO: implement
-        pass
