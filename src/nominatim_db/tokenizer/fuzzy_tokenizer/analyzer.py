@@ -14,7 +14,7 @@ from ...db.connection import connect, Connection
 from ..base import AbstractAnalyzer
 from ...config import Configuration
 from ...data.place_info import PlaceInfo
-from ...data.place_name import PlaceNames
+from ...data.place_name import PlaceName, PlaceNames
 from .name_processor import FuzzyNameProcessor, FuzzyTokens
 
 class FuzzyAnalyzer(AbstractAnalyzer):
@@ -23,7 +23,6 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         self.conn: Optional[Connection] = connect(dsn)
         self.conn.autocommit = True
         self.name_proc = name_processor
-
 
     def close(self) -> None:
         if self.conn:
@@ -35,11 +34,10 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         return []
 
     def normalize_postcode(self, postcode: str) -> str:
-        # TODO: implement
-        return ''
+        return postcode.strip().upper()
 
     def update_postcodes_from_db(self) -> None:
-        pass
+        pass # not needed
 
     def update_special_phrases(self,
                                phrases: Iterable[tuple[str, str, str, str]],
@@ -52,7 +50,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
     def process_place(self, place: PlaceInfo) -> Any:
         assert self.conn is not None
         if place.searchable_names:
-            names = self.name_proc.normalize_place_names(place.searchable_names)
+            names = [self.name_proc.normalize_place_name(n) for n in place.searchable_names]
             analyzed = self.name_proc.apply_variants('name', names, self.conn)
             token_info = _TokenInfo(full_names=analyzed.tokens,
                                     partials=analyzed.partials)
@@ -63,14 +61,33 @@ class FuzzyAnalyzer(AbstractAnalyzer):
 
 
         if place.searchable_address:
-            pass
-            # TODO: self._process_place_address(token_info, place.searchable_address)
+            for item in place.searchable_address:
+                if item.kind == 'postcode':
+                    token_info.postcode = self.normalize_postcode(item.name)
+                elif item.kind == 'housenumber':
+                    token_info.housenumbers.update(self._housenumber_to_tokens(item))
+
 
         return token_info.get_dict()
 
+    def _housenumber_to_tokens(self, name: PlaceName) -> Iterable[int]:
+        """ Computes the token ID(s) for the given house number.
 
-def _mk_array(tokens: Iterable[Any]) -> str:
-    """ Create an array string suitable for Postgres array input.
+            Numeric house numbers up to 9999 have a fixed token ID that
+            corresponds to the house number. This should avoid expensive
+            lookups for a majority of house numbers.
+        """
+        if len(name.name) <= 4 and name.name.isdecimal():
+            return [int(name.name)]
+
+        norm = self.name_proc.normalize_place_name(name)
+
+        assert self.conn is not None
+        return self.name_proc.apply_variants('housenumber', [norm], self.conn).tokens
+
+
+def _mk_array(tokens: Iterable[int]) -> str:
+    """ Create an int array string suitable for Postgres array input.
     """
     return '{' + ','.join((str(s) for s in tokens)) + '}'
 
@@ -81,13 +98,22 @@ class _TokenInfo:
     full_names: set[int] = set()
     # Partial tokens as normalized strings
     partials: set[str] = set()
+    # Postcode, normalized with special function
+    postcode: Optional[str] = None
+    # Token IDs of housenumbers
+    housenumbers: set[int] = dataclasses.field(default_factory=set)
+
 
     def get_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {}
 
         if self.full_names:
-            out['full_names'] = _mk_array(self.full_names)
+            out['full'] = _mk_array(self.full_names)
         if self.partials:
-            out['partials'] = list(self.partials)
+            out['part'] = ' '.join(self.partials)
+        if self.postcode:
+            out['pc'] = self.postcode
+        if self.housenumbers:
+            out['hnr'] = _mk_array(self.housenumbers)
 
         return out

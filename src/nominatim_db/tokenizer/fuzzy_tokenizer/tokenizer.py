@@ -67,20 +67,22 @@ class FuzzyTokenizer(AbstractTokenizer):
     def _setup_db_tables(self, conn: Connection, config: Configuration) -> None:
         drop_tables(conn, 'word', 'token_source')
         sqlp = SQLPreprocessor(conn, config)
+        # token_source contains meta-info on the token.
+        # Token IDs up to 9999 are reserved for numeric housenumbers.
         sqlp.run_string(conn, """
+            CREATE SEQUENCE word_id_seq AS integer MINVALUE 10000;
             CREATE TABLE token_source (
-                id SERIAL PRIMARY KEY,
+                id INTEGER NOT NULL DEFAULT nextval('word_id_seq') PRIMARY KEY,
                 type VARCHAR NOT NULL,
                 token TEXT NOT NULL,
                 attributes HSTORE,
                 variants TEXT[],
-                info JSONB)
-        """)
-        sqlp.run_string(conn, """CREATE UNIQUE INDEX idx_token_source_token
+                info JSONB);
+            CREATE UNIQUE INDEX idx_token_source_token
                                  ON token_source
-                                 USING btree(type, token, attributes)
-                              """)
-        sqlp.run_string(conn, """
+                                 USING btree(type, token, attributes);
+            ALTER SEQUENCE word_id_seq OWNED BY token_source;
+
             CREATE TABLE word (
                 word_id INTEGER NOT NULL,
                 type VARCHAR NOT NULL,
