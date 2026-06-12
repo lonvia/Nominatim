@@ -52,6 +52,8 @@ class FuzzyName:
 
 
 FuzzyNames = list[FuzzyName]
+# Cache key: tuple of token base name and an attribute tuple
+TokenCacheKey = tuple[str, tuple[Optional[str], ...]]
 
 class VariantProcessor:
 
@@ -257,7 +259,8 @@ class FuzzyNameProcessor:
 
         self._create_variant_processors(config.variant_rules)
 
-        self._name_cache: dict[tuple[str, tuple[Optional[str], ...]], AnalyzedWord] = {}
+        self._cache: list[dict[TokenCacheKey, AnalyzedWord]] = \
+            [{} for _ in range(max(TOKEN_TYPES.values()))]
 
     def _create_variant_processors(self, in_rules: list[config.FuzzyVariantConfig]) -> None:
         varprocs: list[list[VariantProcessor]] = [[] for _ in range(max(TOKEN_TYPES.values()))]
@@ -313,12 +316,12 @@ class FuzzyNameProcessor:
         return filter(None, (self.transliteration.transliterate(s).strip()
                              for s in normalized_name.split()))
 
-    def normalize_place_names(self, names: PlaceNames) -> FuzzyNames:
+    def normalize_place_name(self, name: PlaceName) -> FuzzyName:
         """ Takes a list of PlaceName items and converts it into the
             internally used FuzzyName list, normalizing the names
             on the way.
         """
-        return [FuzzyName(name_attr=n.attr, token=self.normalize(n.name)) for n in names]
+        return FuzzyName(name_attr=name.attr, token=self.normalize(name.name))
 
     def apply_variants(self, token_type: str, names: FuzzyNames, conn: Connection) -> AnalyzedWord:
         """ Apply variant processing for the given type of tokens to
@@ -327,13 +330,14 @@ class FuzzyNameProcessor:
         token_type_id = TOKEN_TYPES[token_type]
         varprocs = self.variant_processors[token_type_id]
         attr_keys = self.filter_attributes[token_type_id]
+        cache = self._cache[token_type_id]
 
         out_tokens: set[int] = set()
         out_partials: set[str] = set()
         for name in names:
             attr_values = tuple(name.name_attr.get(a) for a in attr_keys)
             cache_key = (name.token, attr_values)
-            if (cached := self._name_cache.get(cache_key)) is not None:
+            if (cached := cache.get(cache_key)) is not None:
                 analysed = cached
             else:
                 variants = [name]
@@ -342,7 +346,7 @@ class FuzzyNameProcessor:
 
                 tokens = self.save_by_group(conn, name.token, attr_keys, attr_values, variants)
                 analysed = AnalyzedWord({t.token_id for t in tokens}, self.create_partials(tokens))
-                self._name_cache[cache_key] = analysed
+                cache[cache_key] = analysed
 
             out_tokens.update(analysed.tokens)
             out_partials.update(analysed.partials)
