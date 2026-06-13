@@ -9,13 +9,14 @@ Tokenizer using pg_search to allow for fuzzy search.
 """
 from typing import Optional, Iterable, Any
 import dataclasses
+from collections import defaultdict
 
 from ...db.connection import connect, Connection
 from ..base import AbstractAnalyzer
 from ...config import Configuration
 from ...data.place_info import PlaceInfo
 from ...data.place_name import PlaceName, PlaceNames
-from .name_processor import FuzzyNameProcessor, FuzzyTokens
+from .name_processor import FuzzyNameProcessor, FuzzyTokens, FuzzyNames
 from . import types as ttyp
 
 class FuzzyAnalyzer(AbstractAnalyzer):
@@ -40,12 +41,13 @@ class FuzzyAnalyzer(AbstractAnalyzer):
     def update_postcodes_from_db(self) -> None:
         pass # not needed
 
-    def update_special_phrases(self,
-                               phrases: Iterable[tuple[str, str, str, str]],
+    def update_special_phrases(self, phrases: Iterable[tuple[str, str, str, str]],
                                should_replace: bool) -> None:
+        # TODO: implement
         pass
 
     def add_country_names(self, country_code: str, names: PlaceNames) -> None:
+        # TODO: implement
         pass
 
     def process_place(self, place: PlaceInfo) -> Any:
@@ -62,33 +64,45 @@ class FuzzyAnalyzer(AbstractAnalyzer):
 
 
         if place.searchable_address:
+            address_names: dict[str, FuzzyNames] = defaultdict(list)
             for item in place.searchable_address:
                 if item.kind == 'postcode':
                     token_info.postcode = self.normalize_postcode(item.name)
                 elif item.kind == 'housenumber':
-                    token_info.housenumbers.update(self._housenumber_to_tokens(item))
+                    norm, tokens = self._housenumber_to_tokens(item)
+                    token_info.housenumbers.add(norm)
+                    token_info.hnr_tokens.update(tokens)
                 elif item.kind == 'street':
-                    token_info.street.update(self._lookup_street_tokens(item))
+                    tokens = self._lookup_street_tokens(item)
+                    if token_info.street is None:
+                        token_info.street = tokens
+                    else:
+                        token_info.street.update(tokens)
+                else:
+                    address_names[item.kind].append(self.name_proc.normalize_place_name(item))
 
+            for k, names in address_names.items():
+                token_info.address[k] = self._create_address_part_info(names)
 
         return token_info.get_dict()
 
-    def _housenumber_to_tokens(self, name: PlaceName) -> Iterable[int]:
-        """ Computes the token ID(s) for the given house number.
+    def _housenumber_to_tokens(self, name: PlaceName) -> tuple[str, Iterable[int]]:
+        """ Computes the normalized name and token ID(s) for the given house number.
 
             Numeric house numbers up to 9999 have a fixed token ID that
             corresponds to the house number. This should avoid expensive
             lookups for a majority of house numbers.
         """
         if len(name.name) <= 4 and name.name.isdecimal():
-            return [int(name.name)]
+            return name.name, [int(name.name)]
 
         norm = self.name_proc.normalize_place_name(name)
 
         assert self.conn is not None
-        return self.name_proc.apply_variants(ttyp.TOKEN_HOUSENUMBER, [norm], self.conn).tokens
+        return norm.token, self.name_proc.apply_variants(ttyp.TOKEN_HOUSENUMBER,
+                                                         [norm], self.conn).tokens
 
-    def _lookup_street_tokens(self, name: PlaceName) -> Iterable[int]:
+    def _lookup_street_tokens(self, name: PlaceName) -> set[int]:
         """ Look up all tokens that cover a given name.
 
             addr:street requires a matching street. Thus the full name
@@ -98,9 +112,22 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         assert self.conn is not None
         return self.name_proc.lookup_tokens(ttyp.TOKEN_WORD, norm, self.conn)
 
+    def _create_address_part_info(self, names: FuzzyNames) -> dict[str, Any]:
+        assert self.conn is not None
+        lookup: set[int] = set()
+        for n in names:
+            lookup.update(self.name_proc.lookup_tokens(ttyp.TOKEN_WORD, n, self.conn))
+        analysed = self.name_proc.apply_variants(ttyp.TOKEN_WORD, names, self.conn)
+
+        return {
+            'match': _mk_array(lookup),
+            'full': _mk_array(analysed.tokens),
+            'part': ' '.join(analysed.partials)
+        }
+
 
 def _mk_array(tokens: Iterable[int]) -> str:
-    """ Create an int array string suitable for Postgres array input.
+    """ Create an int array string suitable for PostgreSOL array input.
     """
     return '{' + ','.join((str(s) for s in tokens)) + '}'
 
@@ -113,11 +140,14 @@ class _TokenInfo:
     partials: set[str] = set()
     # Postcode, normalized with special function
     postcode: Optional[str] = None
-    # Token IDs of housenumbers
-    housenumbers: set[int] = dataclasses.field(default_factory=set)
+    # Normalized house numbers
+    housenumbers: set[str] = set()
+    # Token IDs of house numbers
+    hnr_tokens: set[int] = dataclasses.field(default_factory=set)
     # Token IDs for full name matches on street name
-    street: set[int] = set()
-
+    street: Optional[set[int]] = None
+    # Token details for address parts by their function
+    address: dict[str, dict[str, Any]] = {}
 
     def get_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {}
@@ -129,6 +159,12 @@ class _TokenInfo:
         if self.postcode:
             out['pc'] = self.postcode
         if self.housenumbers:
-            out['hnr'] = _mk_array(self.housenumbers)
+            out['hnr'] = ';'.join(self.housenumbers)
+        if self.hnr_tokens:
+            out['hnrt'] = _mk_array(self.hnr_tokens)
+        if self.street is not None:
+            out['st'] = _mk_array(self.street)
+        if self.address:
+            out['addr'] = self.address
 
         return out
