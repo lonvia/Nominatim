@@ -66,6 +66,10 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                     token_info.postcode = self.normalize_postcode(item.name)
                 elif item.kind == 'housenumber':
                     token_info.housenumbers.update(self._housenumber_to_tokens(item))
+                elif item.kind == 'street':
+                    norm = self.name_proc.normalize_place_name(item)
+                    token_info.street.update(
+                        self.name_proc.lookup_tokens('name', norm, self.conn))
 
 
         return token_info.get_dict()
@@ -84,6 +88,13 @@ class FuzzyAnalyzer(AbstractAnalyzer):
 
         assert self.conn is not None
         return self.name_proc.apply_variants('housenumber', [norm], self.conn).tokens
+
+    def _lookup_street_tokens(self, name: PlaceName) -> Iterable[int]:
+        """ Look up all tokens that cover a given name.
+
+            addr:street requires a matching street. Thus the full name
+            must already have been indexed.
+        """
 
 
 def _mk_array(tokens: Iterable[int]) -> str:

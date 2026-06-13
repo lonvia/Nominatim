@@ -89,7 +89,7 @@ class FuzzyTokenizer(AbstractTokenizer):
                 word TEXT NOT NULL,
                 src TEXT NOT NULL,
                 name_count INTEGER NOT NULL DEFAULT 1,
-                address_count INTEGER NOT NULL DEFAULT 1
-        """)
-        sqlp.run_string(conn, 'GRANT SELECT ON token_source TO "{{config.DATABASE_WEBUSER}}"')
-        sqlp.run_string(conn, 'GRANT SELECT ON word TO "{{config.DATABASE_WEBUSER}}"')
+                address_count INTEGER NOT NULL DEFAULT 1;
+
+            GRANT SELECT ON token_source TO "{{config.DATABASE_WEBUSER}}";
+            GRANT SELECT ON word TO "{{config.DATABASE_WEBUSER}}";
