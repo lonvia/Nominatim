@@ -344,6 +344,7 @@ class FuzzyNameProcessor:
                 for varproc in varprocs:
                     variants = varproc.process(attr_values, variants)
 
+                # TODO: this must preserve the token_type
                 tokens = self.save_by_group(conn, name.token, attr_keys, attr_values, variants)
                 analysed = AnalyzedWord({t.token_id for t in tokens}, self.create_partials(tokens))
                 cache[cache_key] = analysed
