@@ -72,10 +72,3 @@ variants:
               pattern: "([äöü])"
               replacements: ["\1", "\1e"]
       rules:
-    - applies-to: postcode
-      type: mutation
-      mode: permutate
-      rules:
-          mutation:
-              pattern: ' '
-              replacements: [' ', '']

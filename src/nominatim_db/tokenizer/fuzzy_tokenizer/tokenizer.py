@@ -17,6 +17,7 @@ from ...data.place_info import PlaceInfo
 from .analyzer import FuzzyAnalyzer
 from .config import FuzzyTokenizerConfig
 from  .name_processor import FuzzyNameProcessor
+from . import types as ttyp
 
 def create(dsn: str) -> AbstractTokenizer:
     """ Create a new instance of the tokenizer provided by this module.
@@ -91,6 +92,11 @@ class FuzzyTokenizer(AbstractTokenizer):
 
             CREATE INDEX idx_word_word ON word USING btree(word);
 
-            GRANT SELECT ON token_source TO "{{config.DATABASE_WEBUSER}}";
             GRANT SELECT ON word TO "{{config.DATABASE_WEBUSER}}";
         """)
+
+        for token_type, type_name in ttyp.TOKEN_LABELS.items():
+            sqlp.run_string(conn, f"""
+                CREATE INDEX idx_word_{type_name} ON word USING btree(src)
+                    WHERE type = '{token_type}'
+                """)

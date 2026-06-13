@@ -16,6 +16,7 @@ from ...config import Configuration
 from ...data.place_info import PlaceInfo
 from ...data.place_name import PlaceName, PlaceNames
 from .name_processor import FuzzyNameProcessor, FuzzyTokens
+from . import types as ttyp
 
 class FuzzyAnalyzer(AbstractAnalyzer):
 
@@ -51,7 +52,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         assert self.conn is not None
         if place.searchable_names:
             names = [self.name_proc.normalize_place_name(n) for n in place.searchable_names]
-            analyzed = self.name_proc.apply_variants('name', names, self.conn)
+            analyzed = self.name_proc.apply_variants(ttyp.TOKEN_WORD, names, self.conn)
             token_info = _TokenInfo(full_names=analyzed.tokens,
                                     partials=analyzed.partials)
 
@@ -67,9 +68,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                 elif item.kind == 'housenumber':
                     token_info.housenumbers.update(self._housenumber_to_tokens(item))
                 elif item.kind == 'street':
-                    norm = self.name_proc.normalize_place_name(item)
-                    token_info.street.update(
-                        self.name_proc.lookup_tokens('name', norm, self.conn))
+                    token_info.street.update(self._lookup_street_tokens(item))
 
 
         return token_info.get_dict()
@@ -87,7 +86,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         norm = self.name_proc.normalize_place_name(name)
 
         assert self.conn is not None
-        return self.name_proc.apply_variants('housenumber', [norm], self.conn).tokens
+        return self.name_proc.apply_variants(ttyp.TOKEN_HOUSENUMBER, [norm], self.conn).tokens
 
     def _lookup_street_tokens(self, name: PlaceName) -> Iterable[int]:
         """ Look up all tokens that cover a given name.
@@ -95,6 +94,9 @@ class FuzzyAnalyzer(AbstractAnalyzer):
             addr:street requires a matching street. Thus the full name
             must already have been indexed.
         """
+        norm = self.name_proc.normalize_place_name(name)
+        assert self.conn is not None
+        return self.name_proc.lookup_tokens(ttyp.TOKEN_WORD, norm, self.conn)
 
 
 def _mk_array(tokens: Iterable[int]) -> str:
@@ -113,6 +115,8 @@ class _TokenInfo:
     postcode: Optional[str] = None
     # Token IDs of housenumbers
     housenumbers: set[int] = dataclasses.field(default_factory=set)
+    # Token IDs for full name matches on street name
+    street: set[int] = set()
 
 
     def get_dict(self) -> dict[str, Any]:
