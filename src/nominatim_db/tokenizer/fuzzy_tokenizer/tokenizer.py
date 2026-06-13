@@ -70,9 +70,8 @@ class FuzzyTokenizer(AbstractTokenizer):
         # token_source contains meta-info on the token.
         # Token IDs up to 9999 are reserved for numeric housenumbers.
         sqlp.run_string(conn, """
-            CREATE SEQUENCE word_id_seq AS integer MINVALUE 10000;
             CREATE TABLE token_source (
-                id INTEGER NOT NULL DEFAULT nextval('word_id_seq') PRIMARY KEY,
+                id INTEGER GENERATED ALWAYS AS IDENTITY (MINVALUE 10000) PRIMARY KEY,
                 type VARCHAR NOT NULL,
                 token TEXT NOT NULL,
                 attributes HSTORE,
@@ -81,7 +80,6 @@ class FuzzyTokenizer(AbstractTokenizer):
             CREATE UNIQUE INDEX idx_token_source_token
                                  ON token_source
                                  USING btree(type, token, attributes);
-            ALTER SEQUENCE word_id_seq OWNED BY token_source;
 
             CREATE TABLE word (
                 word_id INTEGER NOT NULL,
@@ -91,5 +89,8 @@ class FuzzyTokenizer(AbstractTokenizer):
                 name_count INTEGER NOT NULL DEFAULT 1,
                 address_count INTEGER NOT NULL DEFAULT 1;
 
+            CREATE INDEX idx_word_word ON word USING btree(word);
+
             GRANT SELECT ON token_source TO "{{config.DATABASE_WEBUSER}}";
             GRANT SELECT ON word TO "{{config.DATABASE_WEBUSER}}";
+        """)
