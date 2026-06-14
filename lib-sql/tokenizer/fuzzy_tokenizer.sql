@@ -119,3 +119,28 @@ AS $$
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 --------------- private functions ----------------------------------------------
+
+-- Can be replaced with INSERT ... ON CONFLICT DO NOTHING RETURNING OLD... NEW
+-- in Postgres 18.
+CREATE OR REPLACE FUNCTION getorcreate_token_source(typ VARCHAR, tok TEXT,
+                                                    attr HSTORE, variants TEXT[],
+                                                    OUT created BOOLEAN,
+                                                    OUT token_id INTEGER,
+                                                    OUT actual_variants TEXT[])
+AS $$
+BEGIN
+  SELECT id, variants INTO token_id, actual_variants
+    FROM token_source
+    WHERE type = typ AND token = tok AND attributes = attr;
+
+  created := token_id is NULL;
+
+  IF created THEN
+    SELECT id INTO token_id FROM (
+      INSERT INTO token_source (type, token, attributes, variants)
+        VALUES (typ, tok, attr, variants)
+        RETURNING id) x;
+  END IF;
+END;
+$$
+LANGUAGE plpgsql;
