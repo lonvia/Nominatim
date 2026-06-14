@@ -25,7 +25,8 @@ LOG = logging.getLogger()
 
 TOKEN_TYPES = {
     ttyp.TOKEN_WORD: 0,
-    ttyp.TOKEN_HOUSENUMBER: 1
+    ttyp.TOKEN_HOUSENUMBER: 1,
+    ttyp.TOKEN_COUNTRY: 2
 }
 
 
@@ -33,9 +34,6 @@ TOKEN_TYPES = {
 class FuzzyToken:
     token_id: int
     token: str
-
-
-FuzzyTokens = list[FuzzyToken]
 
 
 @dataclasses.dataclass
@@ -51,6 +49,7 @@ class FuzzyName:
     attr_idxs: set[int] = cast(set[int], frozenset())
 
 
+FuzzyTokens = list[FuzzyToken]
 FuzzyNames = list[FuzzyName]
 # Cache key: tuple of token base name and an attribute tuple
 TokenCacheKey = tuple[str, tuple[Optional[str], ...]]
@@ -143,19 +142,14 @@ class FuzzyNameProcessor:
         variants.add(token)
 
         with conn.cursor() as cur:
-            cur.execute("""INSERT INTO token_source (type, token, attributes, variants)
-                             VALUES (%s, %s, %s, %s)
-                             ON CONFLICT (type, token, attributes)
-                             DO NOTHING
-                             RETURNING OLD.id as old_id, NEW.id as new_id, OLD.variants
-                        """,
+            cur.execute("getorcreate_token_source(%s, %s, %s, %s)",
                         (token_type, token, attr_dict if attr_dict else None, sql_variant_list))
             result = cur.fetchone()
             if result is None:
                 return []
 
-            old_id, tuple_id, old_variants = result
-            if old_id is None:
+            created, tuple_id, old_variants = result
+            if created:
                 self._insert_tokens_into_word(conn, tuple_id, token_type, variants)
             else:
                 assert old_variants is None or isinstance(old_variants, list)
@@ -191,17 +185,12 @@ class FuzzyNameProcessor:
 
         results: FuzzyTokens = []
         with conn.cursor() as cur:
-            cur.executemany("""
-                INSERT INTO token_source (type, token, attributes, variants)
-                             VALUES (%s, %s, %s, %s)
-                             ON CONFLICT (type, token, attributes)
-                             DO NOTHING
-                             RETURNING OLD.id as old_id, NEW.id as new_id, OLD.variants
-                """, variantlist, returning=True)
+            cur.executemany("getorcreate_token_source(%s, %s, %s, %s)",
+                            variantlist, returning=True)
 
-            for i, (old_id, tuple_id, old_variants) in enumerate(cur.results()):
+            for i, (created, tuple_id, old_variants) in enumerate(cur.results()):
                 new_variants = variantlist[i][3]
-                if old_id is None:
+                if created:
                     self._insert_tokens_into_word(conn, tuple_id, token_type, new_variants)
                 else:
                     assert old_variants is None or isinstance(old_variants, list)
@@ -231,6 +220,16 @@ class FuzzyNameProcessor:
                                                      name_count, address_count)
                                      VALUES (%s, %s, %s, %s, %s, %s)
                                 """, params)
+
+    def _delete_tokens_from_word(self, conn: Connection, word_id: int,
+                                 wtype: str, tokens: Iterable[str]) -> None:
+        """ Delete the given normalized words from the word table.
+        """
+        # Word type must be given as a literal or the index won't work!
+        conn.execute(
+            pysql.SQL("DELETE FROM WORD WHERE type = {} and src = ANY(%s)")
+                 .format(pysql.Literal(wtype)),
+            (list(tokens), ))
 
     def _update_tokens_in_word(self, conn: Connection, word_id: int,
                                  wtype: str, old_tokens: Optional[Iterable[str]],
@@ -336,8 +335,11 @@ class FuzzyNameProcessor:
     def apply_variants(self, token_type: str, names: FuzzyNames, conn: Connection) -> AnalyzedWord:
         """ Apply variant processing for the given type of tokens to
             the name list and return the extended name list.
+
+            Partial tokens are only computed for word types.
         """
         tdata = self.token_type_data[TOKEN_TYPES[token_type]]
+        with_partials = token_type = ttyp.TOKEN_WORD
 
         out_tokens: set[int] = set()
         out_partials: set[str] = set()
@@ -351,14 +353,15 @@ class FuzzyNameProcessor:
                 for varproc in tdata.variant_processors:
                     variants = varproc.process(attr_values, variants)
 
-                # TODO: this must preserve the token_type
                 tokens = self.save_by_group(conn, name.token, token_type,
                                             tdata.filter_attributes, attr_values, variants)
-                analysed = AnalyzedWord({t.token_id for t in tokens}, self.create_partials(tokens))
+                analysed = AnalyzedWord({t.token_id for t in tokens},
+                                        self.create_partials(tokens) if with_partials else set())
                 tdata.analyse_cache[cache_key] = analysed
 
             out_tokens.update(analysed.tokens)
-            out_partials.update(analysed.partials)
+            if with_partials:
+                out_partials.update(analysed.partials)
 
         return AnalyzedWord(out_tokens, out_partials)
 
@@ -389,3 +392,78 @@ class FuzzyNameProcessor:
             tdata.token_lookup_cache[name.token] = tlist
 
         return tlist
+
+    def update_country_names(self, country_code: str, names: FuzzyNames,
+                             internal: bool, conn: Connection) -> None:
+        """ Country names are added with two tokens per country: one for internal
+            names and one for names imported from OSM.
+
+            Names from OSM are handled as addition: they are only added when
+            the same name does not exist internally.
+        """
+        tdata = self.token_type_data[TOKEN_TYPES[ttyp.TOKEN_COUNTRY]]
+
+        if not tdata.variant_processors:
+            # Shortcut: just used the names as given
+            variants = {n.token for n in names}
+        else:
+            # Otherwise do full variant processor processing.
+            variants = set()
+            for name in names:
+                attr_values = tuple(name.name_attr.get(a) for a in tdata.filter_attributes)
+                name_vars = [name]
+                for varproc in tdata.variant_processors:
+                    name_vars = varproc.process(attr_values, name_vars)
+                variants.update(t.token for t in name_vars)
+
+        my_attr = {'int': 'yes'} if internal else None
+
+        with conn.cursor() as cur:
+            cur.execute("getorcreate_token_source('C', %s, %s, NULL)",
+                        (country_code, my_attr))
+            result = cur.fetchone()
+            if result is None:
+                LOG.warn('Inserting country names did not yield a result. Bailing out.')
+                return
+
+            created, my_token_id, _ = result
+            if not created:
+                cur.execute("SELECT src FROM word WHERE word_id = %s", (my_token_id, ))
+                my_old_names = {cast(str, r[0]) for r in cur}
+                if variants == my_old_names:
+                    # Nothing has changed, no further processing necessary.
+                    return
+            else:
+                my_old_names = set()
+
+            other_attr = None if internal else {'int': 'yes'}
+
+            cur.execute("getorcreate_token_source('C', %s, %s, NULL)",
+                        (country_code, other_attr))
+            result = cur.fetchone()
+            if result is None:
+                LOG.warn('Inserting country names did not yield a result. Bailing out.')
+                return
+
+            created, other_token_id, _ = result
+            if not created:
+                cur.execute("SELECT src FROM word WHERE word_id = %s", (other_token_id, ))
+                other_old_names = {cast(str, r[0]) for r in cur}
+            else:
+                other_old_names = set()
+
+        if internal:
+            if (added := variants - my_old_names):
+                self._insert_tokens_into_word(conn, my_token_id, 'C', added)
+            if (deleted := my_old_names - variants):
+                self._delete_tokens_from_word(conn, my_token_id, 'C', deleted)
+            # Also remove OSM-generated names that are now duplicats.
+            if (other_deleted := other_old_names & variants):
+                self._delete_tokens_from_word(conn, other_token_id, 'C', other_deleted)
+        else:
+            if (added := variants - my_old_names - other_old_names):
+                self._insert_tokens_into_word(conn, my_token_id, 'C', added)
+            if (deleted := my_old_names - variants):
+                self._delete_tokens_from_word(conn, my_token_id, 'C', deleted)
+
+

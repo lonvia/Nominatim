@@ -5,7 +5,7 @@
 # Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
-Tokenizer using pg_search to allow for fuzzy search.
+Analyzer which works with full word tokens as ints and partial tokens as str.
 """
 from typing import Optional, Iterable, Any
 import dataclasses
@@ -47,8 +47,14 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         pass
 
     def add_country_names(self, country_code: str, names: PlaceNames) -> None:
-        # TODO: implement
-        pass
+        """ Add internal names of countries. These will always available,
+            independently of what is imported via OSM.
+        """
+        assert self.conn is not None
+        self.name_proc.update_country_names(
+            country_code,
+            [self.name_proc.normalize_place_name(n) for n in names],
+            True, self.conn)
 
     def process_place(self, place: PlaceInfo) -> Any:
         assert self.conn is not None
@@ -58,7 +64,10 @@ class FuzzyAnalyzer(AbstractAnalyzer):
             token_info = _TokenInfo(full_names=analyzed.tokens,
                                     partials=analyzed.partials)
 
-            # TODO add to country names table
+            if place.is_country():
+                assert place.country_code is not None
+                self.name_proc.update_country_names(place.country_code, names,
+                                                    False, self.conn)
         else:
             token_info = _TokenInfo()
 
