@@ -36,26 +36,39 @@ class FuzzyTokenizer(AbstractTokenizer):
 
         with connect(self.dsn) as conn:
             conn.execute('CREATE EXTENSION IF NOT EXISTS pg_search')
+            self.update_sql_functions(config)
             self._setup_db_tables(conn, config)
+            self._create_base_indices(config, 'word')
 
     def init_from_project(self, config: Configuration) -> None:
         with connect(self.dsn) as conn:
             self.config = FuzzyTokenizerConfig(config, conn)
 
-    def finalize_import(self, config: Configuration) -> None:
-        pass
+    def finalize_import(self, config: Configuration, threads: int = 1) -> None:
+        """ Finalize the word table by creating lookup indexes
+            and computing word statistics if necessary.
+        """
+        self._create_lookup_indices(config)
+        self.update_statistics(config, threads)
 
     def update_sql_functions(self, config: Configuration) -> None:
-        pass
+        """ Reimport the SQL functions for this tokenizer.
+        """
+        with connect(self.dsn) as conn:
+            sqlp = SQLPreprocessor(conn, config)
+            sqlp.run_sql_file(conn, 'tokenizer/fuzzy_tokenizer.sql')
 
     def check_database(self, config: Configuration) -> Optional[str]:
-        pass
+        pass # no other checks at the moment
 
     def update_statistics(self, config: Configuration, threads: int = 1) -> None:
         pass
+        # TODO: implement word counting
 
     def update_word_tokens(self) -> None:
-        pass
+        """ Remove unused tokens.
+        """
+        #TODO: clean housenumbers at least
 
     def name_analyzer(self) -> AbstractAnalyzer:
         assert self.config is not None
@@ -72,7 +85,7 @@ class FuzzyTokenizer(AbstractTokenizer):
         # Token IDs up to 9999 are reserved for numeric housenumbers.
         sqlp.run_string(conn, """
             CREATE TABLE token_source (
-                id INTEGER GENERATED ALWAYS AS IDENTITY (MINVALUE 10000) PRIMARY KEY,
+                id INTEGER GENERATED ALWAYS AS IDENTITY (MINVALUE 10000),
                 type VARCHAR NOT NULL,
                 token TEXT NOT NULL,
                 attributes HSTORE,
@@ -89,14 +102,29 @@ class FuzzyTokenizer(AbstractTokenizer):
                 src TEXT NOT NULL,
                 name_count INTEGER NOT NULL DEFAULT 1,
                 address_count INTEGER NOT NULL DEFAULT 1;
-
-            CREATE INDEX idx_word_word ON word USING btree(word);
-
-            GRANT SELECT ON word TO "{{config.DATABASE_WEBUSER}}";
         """)
 
-        for token_type, type_name in ttyp.TOKEN_LABELS.items():
-            sqlp.run_string(conn, f"""
-                CREATE INDEX idx_word_{type_name} ON word USING btree(src)
-                    WHERE type = '{token_type}'
-                """)
+    def _create_base_indices(self, config: Configuration, table_name: str) -> None:
+        with connect(self.dsn) as conn:
+            sqlp = SQLPreprocessor(conn, config)
+            sqlp.run_string(conn,
+                            """CREATE INDEX idx_{{tbl}}_word
+                               ON {{tbl}} USING BTREE (word) {{db.tablespace.search_index}};
+
+                               GRANT SELECT ON {{tbl}} TO "{{config.DATABASE_WEBUSER}}""",
+                            tbl=table_name)
+            for token_type, type_name in ttyp.TOKEN_LABELS.items():
+                sqlp.run_string(conn,
+                                """CREATE INDEX idx_{{tbl}}_{{sub}}
+                                     ON {{tbl}} USING BTREE (src) {{db.tablespace.address_index}}
+                                     WHERE type = '{{ttype}}'""",
+                                tbl=table_name, sub=type_name, ttype=token_type)
+
+    def _create_lookup_indices(self, config: Configuration) -> None:
+        with connect(self.dsn) as conn:
+            sqlp = SQLPreprocessor(conn, config)
+            sqlp.run_string(conn,
+                            """CREATE UNIQUE INDEX idx_token_source_id
+                               ON token_source USING BTREE (word_id)
+                               {{db.tablespace.search_index}}""")
+
