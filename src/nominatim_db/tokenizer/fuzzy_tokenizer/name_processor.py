@@ -74,8 +74,8 @@ class VariantProcessor:
     def get_filter_attributes(self) -> tuple[tuple[str, str], ...]:
         return tuple()
 
-    def process_name(self, name: str) -> list[str]:
-        return []
+    def process_name(self, name: str) -> Optional[list[str]]:
+        return None
 
 
 class LexicalProcessor(VariantProcessor):
@@ -113,7 +113,7 @@ class FilteredVariantProcessor:
             else:
                 out_names.append(name)
 
-        return []
+        return out_names
 
 
 
