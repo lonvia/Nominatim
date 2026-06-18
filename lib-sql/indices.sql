@@ -85,8 +85,11 @@ CREATE INDEX IF NOT EXISTS idx_osmline_parent_osm_id
 -- Indices only needed for search.
 {% if 'search_name' in db.tables %}
 ---
-  CREATE INDEX IF NOT EXISTS idx_search_name_nameaddress_vector
-    ON search_name USING GIN (nameaddress_vector) WITH (fastupdate = off) {{db.tablespace.search_index}};
+  CREATE INDEX IF NOT EXISTS idx_search_name_nameaddress_partials
+    ON search_name USING GIN (nameaddress_partials) {{db.tablespace.search_index}};
+---
+  CREATE INDEX IF NOT EXISTS idx_search_name_name_partials
+    ON search_name USING GIN (name_partials) {{db.tablespace.search_index}};
 ---
   CREATE INDEX IF NOT EXISTS idx_search_name_name_vector
     ON search_name USING GIN (name_vector) WITH (fastupdate = off) {{db.tablespace.search_index}};

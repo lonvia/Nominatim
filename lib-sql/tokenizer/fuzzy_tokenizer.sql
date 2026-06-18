@@ -41,7 +41,7 @@ $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION token_is_street_address(info JSONB)
   RETURNS BOOLEAN
 AS $$
-  SELECT info->>'street' is not null or info->'addr'->>'place' is null;
+  SELECT info->>'st' is not null or info->'addr'->>'place' is null;
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 
@@ -55,7 +55,7 @@ $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION token_has_addr_place(info JSONB)
   RETURNS BOOLEAN
 AS $$
-  SELECT info->'addr'->>'place' is not null;
+  SELECT info->'addr'->'place' is not null;
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 
@@ -76,7 +76,7 @@ $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION token_matches_place(info JSONB, tokens INTEGER[])
   RETURNS BOOLEAN
 AS $$
-  SELECT (info->'addr'->'place'->>'match')::INTEGER[] <@ tokens;
+  SELECT (info->'addr'->'place'->>'match')::INTEGER[] && tokens;
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
@@ -102,13 +102,6 @@ AS $$
          (addr.value->>'full')::INTEGER[] as full_tokens,
          (addr.value->>'part')::tsvector as partials
     FROM jsonb_each(info->'addr') as addr WHERE addr.key != 'place';
-$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
-
-
-CREATE OR REPLACE FUNCTION token_matches_address(info JSONB, key TEXT, tokens INTEGER[])
-  RETURNS BOOLEAN
-AS $$
-  SELECT (info->'addr'->key->>'match')::INTEGER[] <@ tokens;
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 

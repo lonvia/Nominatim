@@ -143,7 +143,7 @@ class FuzzyNameProcessor:
 
         with conn.cursor() as cur:
             cur.execute("getorcreate_token_source(%s, %s, %s, %s)",
-                        (token_type, token, attr_dict if attr_dict else None, sql_variant_list))
+                        (token_type, token, attr_dict, sql_variant_list))
             result = cur.fetchone()
             if result is None:
                 return []
@@ -180,7 +180,7 @@ class FuzzyNameProcessor:
                          if attr_values[i] is not None}
             variants = {n.token for n in subnames}
             if variants:
-                variantlist.append((token_type, token, attr_dict if attr_dict else None,
+                variantlist.append((token_type, token, attr_dict,
                                     sorted(variants)))
 
         results: FuzzyTokens = []
@@ -421,7 +421,7 @@ class FuzzyNameProcessor:
                     name_vars = varproc.process(attr_values, name_vars)
                 variants.update(t.token for t in name_vars)
 
-        my_attr = {'int': 'yes'} if internal else None
+        my_attr = {'int': 'yes'} if internal else {}
 
         with conn.cursor() as cur:
             cur.execute("SELECT (getorcreate_token_source('C', %s, %s, NULL)).*",
@@ -440,7 +440,7 @@ class FuzzyNameProcessor:
             else:
                 my_old_names = set()
 
-            other_attr = None if internal else {'int': 'yes'}
+            other_attr = {} if internal else {'int': 'yes'}
 
             cur.execute("SELECT (getorcreate_token_source('C', %s, %s, NULL)).*",
                         (country_code, other_attr))

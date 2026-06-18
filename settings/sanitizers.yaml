@@ -13,6 +13,9 @@
     - unit
     - floor
     - flats
+    - country
+    - full
+    - inclusion
 - step: clean-housenumbers
   filter-kind:
     - housenumber
