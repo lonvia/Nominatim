@@ -9,6 +9,7 @@ DROP TABLE IF EXISTS location_area CASCADE;
 CREATE TABLE location_area (
   place_id BIGINT NOT NULL,
   keywords INTEGER[] NOT NULL,
+  partials tsvector NOT NULL,
   partition SMALLINT NOT NULL,
   rank_search SMALLINT NOT NULL,
   rank_address SMALLINT NOT NULL,

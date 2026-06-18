@@ -15,9 +15,15 @@ CREATE TABLE search_name (
   address_rank SMALLINT NOT NULL,
   name_vector integer[] NOT NULL,
   nameaddress_vector integer[] NOT NULL,
+  name_partials tsvector NOT NULL,
+  nameaddress_partials tsvector NOT NULL,
   country_code varchar(2),
   centroid GEOMETRY(Geometry, 4326) NOT NULL
   ) {{db.tablespace.search_data}};
+
+ALTER TABLE search_name ALTER COLUMN name_vector SET STORAGE MAIN;
+ALTER TABLE search_name ALTER COLUMN nameaddress_vector SET STORAGE MAIN;
+ALTER TABLE search_name ALTER COLUMN country_code SET STORAGE PLAIN;
 
 CREATE UNIQUE INDEX idx_search_name_place_id
   ON search_name USING BTREE (place_id) {{db.tablespace.search_index}};

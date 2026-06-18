@@ -101,7 +101,7 @@ class FuzzyTokenizer(AbstractTokenizer):
                 word TEXT NOT NULL,
                 src TEXT NOT NULL,
                 name_count INTEGER NOT NULL DEFAULT 1,
-                address_count INTEGER NOT NULL DEFAULT 1;
+                address_count INTEGER NOT NULL DEFAULT 1);
         """)
 
     def _create_base_indices(self, config: Configuration, table_name: str) -> None:
@@ -111,8 +111,8 @@ class FuzzyTokenizer(AbstractTokenizer):
                             """CREATE INDEX idx_{{tbl}}_word
                                ON {{tbl}} USING BTREE (word) {{db.tablespace.search_index}};
 
-                               GRANT SELECT ON {{tbl}} TO "{{config.DATABASE_WEBUSER}}""",
-                            tbl=table_name)
+                               GRANT SELECT ON {{tbl}} TO "{{config.DATABASE_WEBUSER}}"
+                            """, tbl=table_name)
             for token_type, type_name in ttyp.TOKEN_LABELS.items():
                 sqlp.run_string(conn,
                                 """CREATE INDEX idx_{{tbl}}_{{sub}}
@@ -125,6 +125,6 @@ class FuzzyTokenizer(AbstractTokenizer):
             sqlp = SQLPreprocessor(conn, config)
             sqlp.run_string(conn,
                             """CREATE UNIQUE INDEX idx_token_source_id
-                               ON token_source USING BTREE (word_id)
+                               ON token_source USING BTREE (id)
                                {{db.tablespace.search_index}}""")
 

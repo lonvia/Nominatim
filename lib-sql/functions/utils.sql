@@ -358,7 +358,8 @@ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION add_location(place_id BIGINT, country_code varchar(2),
-                                        partition INTEGER, keywords INTEGER[],
+                                        partition INTEGER,
+                                        keywords INTEGER[], partials tsvector,
                                         rank_search INTEGER, rank_address INTEGER,
                                         in_postcode TEXT, geometry GEOMETRY,
                                         centroid GEOMETRY)
@@ -374,13 +375,13 @@ BEGIN
   END IF;
 
   IF ST_Dimension(geometry) = 2 THEN
-    RETURN insertLocationAreaLarge(partition, place_id, country_code, keywords,
+    RETURN insertLocationAreaLarge(partition, place_id, country_code, keywords, partials,
                                    rank_search, rank_address, false, postcode,
                                    centroid, geometry);
   END IF;
 
   IF ST_Dimension(geometry) = 0 THEN
-    RETURN insertLocationAreaLarge(partition, place_id, country_code, keywords,
+    RETURN insertLocationAreaLarge(partition, place_id, country_code, keywords, partials,
                                    rank_search, rank_address, true, postcode,
                                    centroid, place_node_fuzzy_area(geometry, rank_search));
   END IF;

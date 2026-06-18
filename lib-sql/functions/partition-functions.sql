@@ -9,6 +9,7 @@ DROP TYPE IF EXISTS nearfeaturecentr CASCADE;
 CREATE TYPE nearfeaturecentr AS (
   place_id BIGINT,
   keywords int[],
+  partials tsvector,
   rank_address smallint,
   rank_search smallint,
   distance float,
@@ -28,7 +29,7 @@ BEGIN
 {% for partition in db.partitions %}
   IF in_partition = {{ partition }} THEN
     FOR r IN
-      SELECT place_id, keywords, rank_address, rank_search,
+      SELECT place_id, keywords, partials, rank_address, rank_search,
              CASE WHEN isguess THEN ST_Distance(feature, centroid)
                   ELSE min(ST_Distance(feature_centroid, geometry))
                        -- tie breaker when distance is the same (i.e. way is on boundary)
@@ -47,7 +48,7 @@ BEGIN
             -- Postcodes currently still use rank_search to define for which
             -- features they are relevant.
         AND not (rank_address in (5, 11) and rank_search > maxrank)
-      GROUP BY place_id, keywords, rank_address, rank_search, isguess, postcode, centroid
+      GROUP BY place_id, keywords, partials, rank_address, rank_search, isguess, postcode, centroid
     LOOP
       RETURN NEXT r;
     END LOOP;
@@ -63,7 +64,7 @@ LANGUAGE plpgsql STABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION get_address_place(in_partition SMALLINT, feature GEOMETRY,
                                              from_rank SMALLINT, to_rank SMALLINT,
-                                             extent FLOAT, token_info JSONB, key TEXT)
+                                             extent FLOAT, match_tokens INTEGER[])
   RETURNS nearfeaturecentr
   AS $$
 DECLARE
@@ -71,14 +72,14 @@ DECLARE
 BEGIN
 {% for partition in db.partitions %}
   IF in_partition = {{ partition }} THEN
-      SELECT place_id, keywords, rank_address, rank_search,
+      SELECT place_id, keywords, partials, rank_address, rank_search,
              min(ST_Distance(feature, centroid)) as distance,
              isguess, postcode, centroid INTO r
         FROM location_area_large_{{ partition }}
         WHERE geometry && ST_Expand(feature, extent)
               AND rank_address between from_rank and to_rank
-              AND token_matches_address(token_info, key, keywords)
-        GROUP BY place_id, keywords, rank_address, rank_search, isguess, postcode, centroid
+              AND match_tokens <@ keywords
+        GROUP BY place_id, keywords, partials, rank_address, rank_search, isguess, postcode, centroid
         ORDER BY bool_or(ST_Intersects(geometry, feature)) DESC, distance LIMIT 1;
       RETURN r;
   END IF;
@@ -113,8 +114,9 @@ END
 $$
 LANGUAGE plpgsql;
 
-create or replace function insertLocationAreaLarge(
-  in_partition INTEGER, in_place_id BIGINT, in_country_code VARCHAR(2), in_keywords INTEGER[],
+CREATE OR REPLACE FUNCTION insertLocationAreaLarge(
+  in_partition INTEGER, in_place_id BIGINT, in_country_code VARCHAR(2),
+  in_keywords INTEGER[], in_partials tsvector,
   in_rank_search INTEGER, in_rank_address INTEGER, in_estimate BOOLEAN, postcode TEXT,
   in_centroid GEOMETRY, in_geometry GEOMETRY) RETURNS BOOLEAN AS $$
 DECLARE
@@ -134,8 +136,11 @@ BEGIN
 
 {% for partition in db.partitions %}
   IF in_partition = {{ partition }} THEN
-    INSERT INTO location_area_large_{{ partition }} (partition, place_id, country_code, keywords, rank_search, rank_address, isguess, postcode, centroid, geometry)
-      (SELECT in_partition, in_place_id, in_country_code, in_keywords, in_rank_search, in_rank_address, in_estimate, postcode, in_centroid, geom
+    INSERT INTO location_area_large_{{ partition }}
+                (partition, place_id, country_code, keywords, partials,
+                 rank_search, rank_address, isguess, postcode, centroid, geometry)
+      (SELECT in_partition, in_place_id, in_country_code, in_keywords, in_partials,
+              in_rank_search, in_rank_address, in_estimate, postcode, in_centroid, geom
        FROM split_geometry(in_geometry) as geom);
     RETURN TRUE;
   END IF;

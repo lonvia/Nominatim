@@ -55,17 +55,6 @@ FuzzyNames = list[FuzzyName]
 TokenCacheKey = tuple[str, tuple[Optional[str], ...]]
 
 
-class TokenTypeData:
-
-    def __init__(self, attr_set: set[str], varprocs: list[VariantProcessor]) -> None:
-        self.filter_attributes = tuple(sorted(attr_set))
-        self.variant_processors = [
-            FilteredVariantProcessor(p, self.filter_attributes) for p in varprocs]
-
-        self.analyse_cache: dict[TokenCacheKey, AnalyzedWord] = {}
-        self.token_lookup_cache: dict[str, set[int]] = {}
-
-
 class VariantProcessor:
 
     def __init__(self, vconfig: config.FuzzyVariantConfig, normalizer: icu.Transliterator) -> None:
@@ -76,6 +65,17 @@ class VariantProcessor:
 
     def process_name(self, name: str) -> Optional[list[str]]:
         return None
+
+
+class TokenTypeData:
+
+    def __init__(self, attr_set: set[str], varprocs: list[VariantProcessor]) -> None:
+        self.filter_attributes = tuple(sorted(attr_set))
+        self.variant_processors = [
+            FilteredVariantProcessor(p, self.filter_attributes) for p in varprocs]
+
+        self.analyse_cache: dict[TokenCacheKey, AnalyzedWord] = {}
+        self.token_lookup_cache: dict[str, set[int]] = {}
 
 
 class LexicalProcessor(VariantProcessor):
@@ -185,11 +185,17 @@ class FuzzyNameProcessor:
 
         results: FuzzyTokens = []
         with conn.cursor() as cur:
-            cur.executemany("getorcreate_token_source(%s, %s, %s, %s)",
+            cur.executemany("SELECT (getorcreate_token_source(%s, %s, %s, %s)).*",
                             variantlist, returning=True)
 
-            for i, (created, tuple_id, old_variants) in enumerate(cur.results()):
-                new_variants = variantlist[i][3]
+            for vl in variantlist:
+                result = cur.fetchone()
+                cur.nextset()
+                if result is None:
+                    raise RuntimeError('getorcreate_token_source() did not return results.')
+                (created, tuple_id, old_variants) = result
+
+                new_variants = vl[3]
                 if created:
                     self._insert_tokens_into_word(conn, tuple_id, token_type, new_variants)
                 else:
@@ -274,7 +280,7 @@ class FuzzyNameProcessor:
 
 
     def _create_token_type_data(self, in_rules: list[config.FuzzyVariantConfig]) -> None:
-        type_range = range(max(TOKEN_TYPES.values()))
+        type_range = range(max(TOKEN_TYPES.values()) + 1)
         varprocs: list[list[VariantProcessor]] = [[] for _ in type_range]
         filtersets: list[set[str]] = [set() for _ in type_range]
 
@@ -315,7 +321,7 @@ class FuzzyNameProcessor:
         lastpos = 0
         parts = []
         while (bnd := self.breaker.nextBoundary()) >= 0:
-            if not (part := normed[lastpos:bnd]).is_space():
+            if not (part := normed[lastpos:bnd]).isspace():
                 parts.append(part)
             lastpos = bnd
 
@@ -419,12 +425,11 @@ class FuzzyNameProcessor:
         my_attr = {'int': 'yes'} if internal else None
 
         with conn.cursor() as cur:
-            cur.execute("getorcreate_token_source('C', %s, %s, NULL)",
+            cur.execute("SELECT (getorcreate_token_source('C', %s, %s, NULL)).*",
                         (country_code, my_attr))
             result = cur.fetchone()
             if result is None:
-                LOG.warn('Inserting country names did not yield a result. Bailing out.')
-                return
+                raise RuntimeError('Inserting country names did not yield a result.')
 
             created, my_token_id, _ = result
             if not created:
@@ -438,12 +443,11 @@ class FuzzyNameProcessor:
 
             other_attr = None if internal else {'int': 'yes'}
 
-            cur.execute("getorcreate_token_source('C', %s, %s, NULL)",
+            cur.execute("SELECT (getorcreate_token_source('C', %s, %s, NULL)).*",
                         (country_code, other_attr))
             result = cur.fetchone()
             if result is None:
-                LOG.warn('Inserting country names did not yield a result. Bailing out.')
-                return
+                raise RuntimeError('Inserting country names did not yield a result.')
 
             created, other_token_id, _ = result
             if not created:
