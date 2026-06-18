@@ -69,7 +69,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                 self.name_proc.update_country_names(place.country_code, names,
                                                     False, self.conn)
         else:
-            token_info = _TokenInfo()
+            token_info = _TokenInfo(set(), set())
 
 
         if place.searchable_address:
@@ -144,19 +144,19 @@ def _mk_array(tokens: Iterable[int]) -> str:
 @dataclasses.dataclass
 class _TokenInfo:
     # Token IDs for the full names of the place
-    full_names: set[int] = set()
+    full_names: set[int]
     # Partial tokens as normalized strings
-    partials: set[str] = set()
+    partials: set[str]
     # Postcode, normalized with special function
     postcode: Optional[str] = None
     # Normalized house numbers
-    housenumbers: set[str] = set()
+    housenumbers: set[str] = dataclasses.field(default_factory=set)
     # Token IDs of house numbers
     hnr_tokens: set[int] = dataclasses.field(default_factory=set)
     # Token IDs for full name matches on street name
     street: Optional[set[int]] = None
     # Token details for address parts by their function
-    address: dict[str, dict[str, Any]] = {}
+    address: dict[str, dict[str, Any]] = dataclasses.field(default_factory=dict)
 
     def get_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {}

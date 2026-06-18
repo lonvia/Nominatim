@@ -69,6 +69,5 @@ variants:
       rules:
         - lang: de
           mutation:
-              pattern: "([äöü])"
-              replacements: ["\1", "\1e"]
-      rules:
+              pattern: '([äöü])'
+              replacements: ['\1', '\1e']

@@ -35,9 +35,11 @@ def _import_tokenizer(name: str) -> TokenizerModule:
     """
     src_file = Path(__file__).parent / (name + '_tokenizer.py')
     if not src_file.is_file():
-        LOG.fatal("No tokenizer named '%s' available. "
-                  "Check the setting of NOMINATIM_TOKENIZER.", name)
-        raise UsageError('Tokenizer not found')
+        src_file = Path(__file__).parent / (name + '_tokenizer') / '__init__.py'
+        if not src_file.is_file():
+            LOG.fatal("No tokenizer named '%s' available. "
+                      "Check the setting of NOMINATIM_TOKENIZER.", name)
+            raise UsageError('Tokenizer not found')
 
     return importlib.import_module('nominatim_db.tokenizer.' + name + '_tokenizer')
 
