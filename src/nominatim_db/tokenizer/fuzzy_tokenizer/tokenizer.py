@@ -88,7 +88,7 @@ class FuzzyTokenizer(AbstractTokenizer):
                 id INTEGER GENERATED ALWAYS AS IDENTITY (MINVALUE 10000),
                 type VARCHAR NOT NULL,
                 token TEXT NOT NULL,
-                attributes HSTORE,
+                attributes HSTORE NOT NULL,
                 variants TEXT[],
                 info JSONB);
             CREATE UNIQUE INDEX idx_token_source_token
