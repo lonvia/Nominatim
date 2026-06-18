@@ -378,10 +378,9 @@ class FuzzyNameProcessor:
 
         trans = {self.transliteration.transliterate(s) for s in partials}
 
-        partials.update(trans)
-        partials.discard('')
+        trans.discard('')
 
-        return partials
+        return trans
 
     def lookup_tokens(self, token_type: str, name: FuzzyName, conn: Connection) -> set[int]:
         """ Find all token IDs of the given type that resolve to a normalized
