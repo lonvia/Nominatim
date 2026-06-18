@@ -11,17 +11,14 @@
 CREATE OR REPLACE FUNCTION token_get_name_search_tokens(info JSONB)
   RETURNS INTEGER[]
 AS $$
-  SELECT (info->>'names')::INTEGER[]
+  SELECT (info->>'full')::INTEGER[]
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
--- Get tokens for matching the place name against others.
---
--- This should usually be restricted to full name tokens.
-CREATE OR REPLACE FUNCTION token_get_name_match_tokens(info JSONB)
-  RETURNS INTEGER[]
+CREATE OR REPLACE FUNCTION token_get_name_search_partials(info JSONB)
+  RETURNS tsvector
 AS $$
-  SELECT (info->>'names')::INTEGER[]
+  SELECT (info->>'part')::tsvector
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
@@ -29,7 +26,7 @@ $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION token_get_housenumber_search_tokens(info JSONB)
   RETURNS INTEGER[]
 AS $$
-  SELECT (info->>'hnr_tokens')::INTEGER[]
+  SELECT (info->>'hnrt')::INTEGER[]
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
@@ -44,70 +41,81 @@ $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 CREATE OR REPLACE FUNCTION token_is_street_address(info JSONB)
   RETURNS BOOLEAN
 AS $$
-  SELECT info->>'street' is not null or info->>'place' is null;
+  SELECT info->>'street' is not null or info->'addr'->>'place' is null;
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION token_has_addr_street(info JSONB)
   RETURNS BOOLEAN
 AS $$
-  SELECT info->>'street' is not null and info->>'street' != '{}';
+  SELECT info->>'st' is not null and info->>'st' != '{}';
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION token_has_addr_place(info JSONB)
   RETURNS BOOLEAN
 AS $$
-  SELECT info->>'place' is not null;
+  SELECT info->'addr'->>'place' is not null;
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION token_matches_street(info JSONB, street_tokens INTEGER[])
   RETURNS BOOLEAN
 AS $$
-  SELECT (info->>'street')::INTEGER[] && street_tokens
-$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
-
-
-CREATE OR REPLACE FUNCTION token_matches_place(info JSONB, place_tokens INTEGER[])
-  RETURNS BOOLEAN
-AS $$
-  SELECT (info->>'place')::INTEGER[] <@ place_tokens
+  SELECT (info->>'st')::INTEGER[] && street_tokens
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION token_addr_place_search_tokens(info JSONB)
   RETURNS INTEGER[]
 AS $$
-  SELECT (info->>'place')::INTEGER[]
+  SELECT (info->'addr'->'place'->>'full')::INTEGER[]
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
-CREATE OR REPLACE FUNCTION token_get_address_keys(info JSONB)
-  RETURNS SETOF TEXT
+CREATE OR REPLACE FUNCTION token_matches_place(info JSONB, tokens INTEGER[])
+  RETURNS BOOLEAN
 AS $$
-  SELECT * FROM jsonb_object_keys(info->'addr');
+  SELECT (info->'addr'->'place'->>'match')::INTEGER[] <@ tokens;
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
-CREATE OR REPLACE FUNCTION token_get_address_search_tokens(info JSONB, key TEXT)
-  RETURNS INTEGER[]
+CREATE OR REPLACE FUNCTION token_addr_place_search_partials(info JSONB)
+  RETURNS tsvector
 AS $$
-  SELECT (info->'addr'->>key)::INTEGER[];
+  SELECT (info->'addr'->'place'->>'part')::tsvector
+$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+DROP TYPE IF EXISTS TokenAddressInfo;
+CREATE TYPE TokenAddressInfo AS (
+  key TEXT,
+  match_tokens INTEGER[],
+  full_tokens INTEGER[],
+  partials tsvector
+);
+
+CREATE OR REPLACE FUNCTION token_get_address_info(info JSONB)
+  RETURNS SETOF TokenAddressInfo
+AS $$
+  SELECT addr.key as key,
+         (addr.value->>'match')::INTEGER[] as match_tokens,
+         (addr.value->>'full')::INTEGER[] as full_tokens,
+         (addr.value->>'part')::tsvector as partials
+    FROM jsonb_each(info->'addr') as addr WHERE addr.key != 'place';
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION token_matches_address(info JSONB, key TEXT, tokens INTEGER[])
   RETURNS BOOLEAN
 AS $$
-  SELECT (info->'addr'->>key)::INTEGER[] <@ tokens;
+  SELECT (info->'addr'->key->>'match')::INTEGER[] <@ tokens;
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION token_get_postcode(info JSONB)
   RETURNS TEXT
 AS $$
-  SELECT info->>'postcode';
+  SELECT info->>'pc';
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
@@ -128,18 +136,23 @@ CREATE OR REPLACE FUNCTION getorcreate_token_source(typ VARCHAR, tok TEXT,
                                                     OUT token_id INTEGER,
                                                     OUT actual_variants TEXT[])
 AS $$
+DECLARE
+  rec RECORD;
 BEGIN
-  SELECT id, variants INTO token_id, actual_variants
+  SELECT id, token_source.variants INTO token_id, actual_variants
     FROM token_source
     WHERE type = typ AND token = tok AND attributes = attr;
 
   created := token_id is NULL;
 
   IF created THEN
-    SELECT id INTO token_id FROM (
+    FOR rec IN
       INSERT INTO token_source (type, token, attributes, variants)
         VALUES (typ, tok, attr, variants)
-        RETURNING id) x;
+        RETURNING id
+    LOOP
+      token_id := rec.id;
+    END LOOP;
   END IF;
 END;
 $$

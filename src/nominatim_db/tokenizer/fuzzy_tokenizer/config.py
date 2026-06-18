@@ -34,13 +34,14 @@ def _get_section(rules: Mapping[str, Any], section: str, dtype: Any,
         LOG.fatal("Section '%s' not found in %s.", section, base_section)
         raise UsageError("Syntax error in tokenizer configuration file.")
 
-    section = rules[section]
+    data = rules[section]
 
-    if not isinstance(section, dtype):
-        LOG.fatal("Section '%s' should be of type %s", section, dtype.__name__)
+    if not isinstance(data, dtype):
+        LOG.fatal("Section '%s' should be of type %s, got %s.",
+                  section, dtype.__name__, type(data).__name__)
         raise UsageError("Syntax error in tokenizer configuration file.")
 
-    return rules[section]
+    return data
 
 
 def _create_icu_rules(rules: Mapping[str, Any], section: str,
@@ -130,7 +131,7 @@ class FuzzyTokenizerConfig:
 
         if conn is None:
             if 'token-analysis' in rules:
-                analysis_rules = _get_section(rules, 'variants', dict)
+                analysis_rules = _get_section(rules, 'token-analysis', dict)
                 self.word_grouping = analysis_rules.get('variant-grouping', 'by-attribute')
                 if not isinstance(self.word_grouping, str) \
                         or self.word_grouping not in ('by-attribute', 'by-name'):
