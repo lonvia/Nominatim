@@ -112,3 +112,21 @@ def _default_restrict(element: Restrict,
 def _sqlite_restrict(element: Restrict,
                      compiler: 'sa.Compiled', **kw: Any) -> str:
     return "array_contains(%s)" % compiler.process(element.clauses, **kw)
+
+
+class PartialLookup(LookupType):
+    """ Find entries in a tsvector.
+    """
+    inherit_cache = True
+
+    def __init__(self, table: SaFromClause, column: str, tokens: List[str]) -> None:
+        super().__init__(getattr(table.c, column), ' & '.join(tokens))
+
+@compiles(PartialLookup)
+def _default_partial_lookup(element: PartialLookup,
+                            compiler: 'sa.Compiled', **kw: Any) -> str:
+    arg1, arg2 = list(element.clauses)
+    return "%s && to_tsquery(%s)" % (compiler.process(arg1, **kw),
+                                     compiler.process(arg2, **kw))
+
+
