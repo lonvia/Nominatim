@@ -384,6 +384,9 @@ class QueryStruct:
         """ Recompute the direction probability from the partial tokens
             of each node.
         """
+        if self.nodes[0].partial is None:
+            return
+
         n = len(self.nodes) - 1
         if n <= 1 or n >= 50:
             self.dir_penalty = 0
@@ -425,6 +428,11 @@ class QueryStruct:
         return self.nodes[trange.start].partial.penalty + \
             sum(n.partial.penalty + n.word_break_penalty
                 for n in self.nodes[trange.start + 1:trange.end])
+
+    def iter_partials_trans(self, trange: TokenRange) -> Iterator[str]:
+        """ Iterate over the transliterated form of the partial tokens.
+        """
+        return (n.term_lookup for n in self.nodes[trange.start:trange.end])
 
     def iter_tokens_by_edge(self) -> Iterator[Tuple[int, int, Dict[TokenType, List[Token]]]]:
         """ Iterator over all tokens except partial ones grouped by edge.

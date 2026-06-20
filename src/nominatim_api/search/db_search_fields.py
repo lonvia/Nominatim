@@ -2,12 +2,12 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2024 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Data structures for more complex fields in abstract search descriptions.
 """
-from typing import List, Tuple, Iterator, Dict, Type, cast
+from typing import List, Tuple, Iterator, Dict, Type, cast, Union
 import dataclasses
 
 import sqlalchemy as sa
@@ -207,7 +207,7 @@ class FieldLookup:
         but avoids the use of indexes.
     """
     column: str
-    tokens: List[int]
+    tokens: Union[list[int], list[str]]
     lookup_type: Type[lookups.LookupType]
 
     def sql_condition(self, table: SaFromClause) -> SaColumn:
