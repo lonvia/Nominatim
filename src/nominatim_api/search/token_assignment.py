@@ -421,12 +421,11 @@ def yield_token_assignments(query: qmod.QueryStruct) -> Iterator[TokenAssignment
                 state.advance(tlist.ttype, tlist.end,
                               True, node.word_break_penalty))
 
-        if node.partial is not None:
-            yield from _append_state_to_todo(
-                query, todo,
-                state.advance(qmod.TOKEN_PARTIAL, state.end_pos + 1,
-                              node.btype == qmod.BREAK_PHRASE,
-                              node.word_break_penalty))
+        yield from _append_state_to_todo(
+            query, todo,
+            state.advance(qmod.TOKEN_PARTIAL, state.end_pos + 1,
+                          node.btype == qmod.BREAK_PHRASE,
+                          node.word_break_penalty))
 
 
 def _append_state_to_todo(query: qmod.QueryStruct, todo: List[_TokenSequence],
