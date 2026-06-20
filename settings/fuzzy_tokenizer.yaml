@@ -7,9 +7,10 @@ normalization:
     - "'nº' > 'no'"
     - "ª > a"
     - "º > o"
-    - "[[:Punctuation:][:Symbol:][\u02bc] - [-:]]+  > '-'"
+    - "[’‘׳] > \\'"
+    - "[[:Punctuation:][:Symbol:][\u02bc] - ['-:]]+  > '-'"
     - "ß > 'ss'" # German szet is unambiguously equal to double ss
-    - "[^[:alnum:] [:Canonical_Combining_Class=Virama:] [:Space:] [-:]] >"
+    - "[^[:alnum:] [:Canonical_Combining_Class=Virama:] [:Space:] ['-:]] >"
     - "[:Lm:] >"
     - ":: [[:Number:]] Latin ()"
     - ":: [[:Number:]] Ascii ()"
@@ -25,7 +26,7 @@ transliteration:
     - ":: Ascii ()"
     - ":: NFD ()"
     - ":: lower ()"
-    - "[^a-z0-9[:Space:]] >"
+    - "[^a-z0-9'[:Space:]] >"
     - ":: NFC ()"
     - "[:Space:]+ > ' '"
 token-analysis:
@@ -65,9 +66,15 @@ variants:
           - !include icu-rules/variants-vi.yaml
     - applies-to: name
       type: mutation
-      mode: replace-all
+      mode: variant-replace-all
       rules:
         - lang: de
           mutation:
-              pattern: '([äöü])'
-              replacements: ['\1', '\1e']
+              - pattern: '([äöü])'
+                replacement: '\1e'
+        - mutation:
+              - pattern: "'s\\b"
+                replacement: "s"
+        - mutation:
+              - pattern: "'"
+              - replacement: " "
