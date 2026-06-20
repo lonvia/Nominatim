@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple, Optional, Iterator
 from abc import ABC, abstractmethod
 from collections import defaultdict
 import dataclasses
+import difflib
 
 # Precomputed denominator for the computation of the linear regression slope
 # used to determine the query direction.
@@ -132,6 +133,24 @@ class Token(ABC):
         """ Return the country code this token is associated with
             (currently for country tokens only).
         """
+
+    def match_penalty(self, norm: str) -> float:
+        """ Check how well the token matches the given normalized string
+            and add a penalty, if necessary.
+        """
+        if not self.lookup_word:
+            return 0.0
+
+        seq = difflib.SequenceMatcher(a=self.lookup_word, b=norm)
+        distance = 0
+        for tag, afrom, ato, bfrom, bto in seq.get_opcodes():
+            if tag in ('delete', 'insert') and (afrom == 0 or ato == len(self.lookup_word)):
+                distance += 1
+            elif tag == 'replace':
+                distance += max((ato-afrom), (bto-bfrom))
+            elif tag != 'equal':
+                distance += abs((ato-afrom) - (bto-bfrom))
+        return (distance/len(self.lookup_word))
 
 
 @dataclasses.dataclass
