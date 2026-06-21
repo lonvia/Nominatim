@@ -259,8 +259,7 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
                             for token in tokens:
                                 token.penalty += 0.39
                         if (start + 1 == end):
-                            if partial := query.nodes[start].partial:
-                                partial.penalty += 0.39
+                            query.nodes[end].term_penalty += 0.39
 
                 # If it looks like a simple housenumber, prefer that.
                 if qmod.TOKEN_HOUSENUMBER in tlist:
@@ -272,8 +271,7 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
                                 for token in tokens:
                                     token.penalty += penalty
                         if (start + 1 == end):
-                            if partial := query.nodes[start].partial:
-                                partial.penalty += penalty
+                            query.nodes[end].term_penalty += penalty
 
             # rerank tokens against the normalized form
             norm = ''.join(f"{n.term_normalized}{'' if n.btype == qmod.BREAK_TOKEN else ' '}"
