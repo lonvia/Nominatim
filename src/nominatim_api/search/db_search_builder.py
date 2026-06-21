@@ -17,7 +17,6 @@ from . import db_search_fields as dbf
 from . import db_searches as dbs
 from . import db_search_lookups as lookups
 
-PARTIAL_PENALTY = 0.3
 
 def wrap_near_search(categories: List[Tuple[str, str]],
                      search: dbs.AbstractSearch) -> dbs.NearSearch:
