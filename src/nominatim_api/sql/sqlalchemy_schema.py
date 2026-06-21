@@ -10,6 +10,7 @@ SQLAlchemy definitions for all tables used by the frontend.
 import sqlalchemy as sa
 
 from .sqlalchemy_types import Geometry, KeyValueStore, IntArray, CategoryArray
+from sqlalchemy.dialects.postgresql import TSVECTOR
 
 
 class SearchTables:
@@ -117,6 +118,8 @@ class SearchTables:
             sa.Column('address_rank', sa.SmallInteger, nullable=False),
             sa.Column('name_vector', IntArray, nullable=False),
             sa.Column('nameaddress_vector', IntArray, nullable=False),
+            sa.Column('name_partials', TSVECTOR, nullable=False),
+            sa.Column('nameaddress_partials', TSVECTOR, nullable=False),
             sa.Column('country_code', sa.String(2)),
             sa.Column('centroid', Geometry, nullable=False))
 
