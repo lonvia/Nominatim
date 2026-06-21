@@ -8,8 +8,11 @@
 Tokenizer using pg_search to allow for fuzzy search.
 """
 from typing import Optional, Iterable, Any
+import logging
 
-from ...db.connection import connect, Connection, drop_tables
+from psycopg import sql as pysql
+
+from ...db.connection import connect, Connection, drop_tables, table_exists
 from ...db.sql_preprocessor import SQLPreprocessor
 from ..base import AbstractAnalyzer, AbstractTokenizer
 from ...config import Configuration
@@ -18,6 +21,9 @@ from .analyzer import FuzzyAnalyzer
 from .config import FuzzyTokenizerConfig
 from  .name_processor import FuzzyNameProcessor
 from . import types as ttyp
+
+LOG = logging.getLogger()
+
 
 def create(dsn: str) -> AbstractTokenizer:
     """ Create a new instance of the tokenizer provided by this module.
@@ -63,8 +69,53 @@ class FuzzyTokenizer(AbstractTokenizer):
         pass # no other checks at the moment
 
     def update_statistics(self, config: Configuration, threads: int = 1) -> None:
-        pass
-        # TODO: implement word counting
+        """ Recompute frequencies of full words.
+        """
+        with connect(self.dsn) as conn:
+            if not table_exists(conn, 'search_name'):
+                return
+
+            conn.execute('ANALYSE search_name')
+            if threads > 1:
+                    conn.execute(pysql.SQL('SET max_parallel_workers_per_gather TO {}')
+                                     .format(pysql.Literal(min(threads, 6),)))
+
+            LOG.info('Computing word frequencies')
+            drop_tables(conn, 'word_frequencies')
+            conn.execute("""
+                CREATE TEMP TABLE word_frequencies AS
+                WITH word_freq AS MATERIALIZED (
+                       SELECT unnest(name_vector) as id, count(*)
+                             FROM search_name GROUP BY id),
+                   addr_freq AS MATERIALIZED (
+                       SELECT unnest(nameaddress_vector) as id, count(*)
+                             FROM search_name GROUP BY id)
+                SELECT coalesce(a.id, w.id) as id,
+                       w.count as name_count,
+                       a.count as addr_count
+                FROM word_freq w FULL JOIN addr_freq a ON a.id = w.id;
+                """)
+            conn.execute('CREATE UNIQUE INDEX ON word_frequencies(id)')
+            drop_tables(conn, 'tmp_word')
+            conn.execute("CREATE TABLE tmp_word (LIKE word INCLUDING DEFAULTS)")
+            conn.execute("""
+                INSERT INTO tmp_word (word_id, type, word, src, name_count, address_count)
+                  SELECT word_id, type, word, src,
+                         COALESCE(wf.name_count, 1),
+                         COALESCE(wf.addr_count, 1)
+                  FROM word LEFT JOIN word_frequencies wf ON word_id = wf.id
+                  """)
+            drop_tables(conn, 'word_frequencies')
+            conn.execute('SET max_parallel_workers_per_gather TO 0')
+
+            sqlp = SQLPreprocessor(conn, config)
+            sqlp.run_string(conn,
+                            'GRANT SELECT ON tmp_word TO "{{config.DATABASE_WEBUSER}}"')
+
+            conn.commit()
+
+        self._create_base_indices(config, 'tmp_word')
+        self._move_temporary_word_table('tmp_word')
 
     def update_word_tokens(self) -> None:
         """ Remove unused tokens.
@@ -129,3 +180,16 @@ class FuzzyTokenizer(AbstractTokenizer):
                                ON token_source USING BTREE (id)
                                {{db.tablespace.search_index}}""")
 
+    def _move_temporary_word_table(self, old: str) -> None:
+        """ Rename all tables and indexes used by the tokenizer.
+        """
+        with connect(self.dsn) as conn:
+            drop_tables(conn, 'word')
+            with conn.cursor() as cur:
+                cur.execute(pysql.SQL("ALTER TABLE {} RENAME TO word")
+                                 .format(pysql.Identifier(old)))
+                for idx in ['word'] + list(ttyp.TOKEN_LABELS.values()):
+                    cur.execute(pysql.SQL("ALTER INDEX {} RENAME TO {}")
+                                     .format(pysql.Identifier(f"idx_{old}_{idx}"),
+                                             pysql.Identifier(f"idx_word_{idx}")))
+            conn.commit()
