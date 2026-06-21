@@ -7,7 +7,7 @@
 """
 Implementation of query analysis for the Fuzzy tokenizer.
 """
-from typing import Optional, Any, cast
+from typing import Optional, Any, cast, Iterator
 import dataclasses
 import re
 from itertools import zip_longest
@@ -169,6 +169,7 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
                 # penalty can vary depending on the position in the query.
                 # (See rerank_tokens() below.)
                 token = FuzzyToken.from_db_row(row)
+                log().var_dump('Token', token)
                 if row.type == 'S':
                     catinfo = fuzzy_category_tokens.get(row.word_id, MISSING_CATEGORY_INFO)
                     if catinfo.operator in ('in', 'near'):
@@ -187,6 +188,8 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
         # Set the break penalties for the nodes in the query.
         for node in query.nodes:
             node.penalty = PENALTY_BREAK[node.btype]
+
+        log().table_dump('Word tokens', _dump_word_tokens(query))
 
         return query
 
@@ -324,3 +327,26 @@ async def create_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer
     config = await conn.get_cached_value('FUZZYTOK', 'config', _get_config)
 
     return FuzzyQueryAnalyzer(conn, config)
+
+
+def _dump_word_tokens(query: qmod.QueryStruct) -> Iterator[list[Any]]:
+    yield ['type', 'from', 'to', 'token', 'word', 'src', 'penalty', 'name_count', 'addr_count', 'extra']
+    for i, node in enumerate(query.nodes):
+        if node.term_lookup:
+            yield [qmod.TOKEN_PARTIAL, i - 1, i, '-', node.term_lookup,
+                   node.term_normalized, '-', '-', '-', '']
+    for i, node in enumerate(query.nodes):
+        for tlist in node.starting:
+            lookup = ' '.join(query.iter_partials_trans(qmod.TokenRange(i, tlist.end)))
+            for t in tlist.tokens:
+                if tlist.ttype == qmod.TOKEN_COUNTRY:
+                    extra = f"country code: {fuzzy_country_tokens.get(t.token, '')}"
+                elif tlist.ttype in (qmod.TOKEN_QUALIFIER, qmod.TOKEN_NEAR_ITEM):
+                    info = fuzzy_category_tokens.get(t.token, MISSING_CATEGORY_INFO)
+                    extra = f"category: {info.classtype[0]}.{info.classtype[1]}, " \
+                            f"operator: {info.operator}"
+                else:
+                    extra = ''
+                yield [tlist.ttype, i, tlist.end, t.token, lookup,
+                       t.lookup_word or '', t.penalty, t.count, t.addr_count, extra]
+
