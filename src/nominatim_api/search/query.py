@@ -341,7 +341,7 @@ class QueryStruct:
 
     def add_node(self, btype: BreakType, ptype: PhraseType, partial: PartialToken) -> None:
         """ Append a new break node with the given break type.
-            The phrase type denotes the type for any tokens starting
+            The phrase type denotes the type for any tokens ending
             at the node.
         """
         self.nodes.append(QueryNode(btype, ptype, PENALTY_BREAK[btype], partial))
@@ -364,6 +364,7 @@ class QueryStruct:
             be added to, then the token is silently dropped.
         """
         snode = self.nodes[trange.start]
+        enode = self.nodes[trange.end]
         if ttype == TOKEN_PARTIAL:
             if _phrase_compatible_with(snode.ptype, TOKEN_PARTIAL, False):
                 snode.partial.penalty = token.penalty
@@ -372,8 +373,8 @@ class QueryStruct:
                 snode.partial.addr_count = token.addr_count
         else:
             full_phrase = snode.btype in (BREAK_START, BREAK_PHRASE)\
-                and self.nodes[trange.end].btype in (BREAK_PHRASE, BREAK_END)
-            if _phrase_compatible_with(snode.ptype, ttype, full_phrase):
+                and enode.btype in (BREAK_PHRASE, BREAK_END)
+            if _phrase_compatible_with(enode.ptype, ttype, full_phrase):
                 tlist = snode.get_tokens(trange.end, ttype)
                 if tlist is None:
                     snode.starting.append(TokenList(trange.end, ttype, [token]))
