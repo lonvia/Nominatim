@@ -39,6 +39,7 @@ class FuzzyTokenizer(AbstractTokenizer):
             self.update_sql_functions(config)
             self._setup_db_tables(conn, config)
             self._create_base_indices(config, 'word')
+            self.config.save_to_db(conn)
 
     def init_from_project(self, config: Configuration) -> None:
         with connect(self.dsn) as conn:
