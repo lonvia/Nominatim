@@ -16,7 +16,7 @@ from ..base import AbstractAnalyzer
 from ...config import Configuration
 from ...data.place_info import PlaceInfo
 from ...data.place_name import PlaceName, PlaceNames
-from .name_processor import FuzzyNameProcessor, FuzzyTokens, FuzzyNames
+from .name_processor import FuzzyNameProcessor
 from . import types as ttyp
 
 class FuzzyAnalyzer(AbstractAnalyzer):
@@ -73,7 +73,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
 
 
         if place.searchable_address:
-            address_names: dict[str, FuzzyNames] = defaultdict(list)
+            address_names: dict[str, ttyp.FuzzyNames] = defaultdict(list)
             for item in place.searchable_address:
                 if item.kind == 'postcode':
                     token_info.postcode = self.normalize_postcode(item.name)
@@ -121,7 +121,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         assert self.conn is not None
         return self.name_proc.lookup_tokens(ttyp.TOKEN_WORD, norm, self.conn)
 
-    def _create_address_part_info(self, names: FuzzyNames) -> dict[str, Any]:
+    def _create_address_part_info(self, names: ttyp.FuzzyNames) -> dict[str, Any]:
         assert self.conn is not None
         lookup: set[int] = set()
         for n in names:
