@@ -20,6 +20,8 @@ from ...errors import UsageError
 from ...data.place_name import PlaceNames, PlaceName
 from ...db.connection import Connection
 from . import types as ttyp
+from .variants_lexical import LexicalProcessor
+from .variants_mutate import MutationProcessor
 
 LOG = logging.getLogger()
 
@@ -30,72 +32,19 @@ TOKEN_TYPES = {
 }
 
 
-@dataclasses.dataclass
-class FuzzyToken:
-    token_id: int
-    token: str
-
-
-@dataclasses.dataclass
-class AnalyzedWord:
-    tokens: set[int]
-    partials: set[str]
-
-
-@dataclasses.dataclass
-class FuzzyName:
-    name_attr: dict[str, str]
-    token: str
-    attr_idxs: set[int] = cast(set[int], frozenset())
-
-
-FuzzyTokens = list[FuzzyToken]
-FuzzyNames = list[FuzzyName]
 # Cache key: tuple of token base name and an attribute tuple
 TokenCacheKey = tuple[str, tuple[Optional[str], ...]]
 
 
-class VariantProcessor:
-
-    def __init__(self, vconfig: config.FuzzyVariantConfig, normalizer: icu.Transliterator) -> None:
-        pass
-
-    def get_filter_attributes(self) -> tuple[tuple[str, str], ...]:
-        return tuple()
-
-    def process_name(self, name: str) -> Optional[list[str]]:
-        return None
-
-
-class TokenTypeData:
-
-    def __init__(self, attr_set: set[str], varprocs: list[VariantProcessor]) -> None:
-        self.filter_attributes = tuple(sorted(attr_set))
-        self.variant_processors = [
-            FilteredVariantProcessor(p, self.filter_attributes) for p in varprocs]
-
-        self.analyse_cache: dict[TokenCacheKey, AnalyzedWord] = {}
-        self.token_lookup_cache: dict[str, set[int]] = {}
-
-
-class LexicalProcessor(VariantProcessor):
-    # TODO: implement
-    pass
-
-class MutationProcessor(VariantProcessor):
-    # TODO: implement
-    pass
-
-
 class FilteredVariantProcessor:
 
-    def __init__(self, proc: VariantProcessor, filt_attr: tuple[str, ...]) -> None:
+    def __init__(self, proc: ttyp.VariantProcessor, filt_attr: tuple[str, ...]) -> None:
         self.proc = proc
         self.filters = tuple((filt_attr.index(a), val) for a, val in proc.get_filter_attributes())
         self.filter_idxs = {f[0] for f in self.filters}
 
 
-    def process(self, attr_values: tuple[Optional[str], ...], in_names: FuzzyNames) -> FuzzyNames:
+    def process(self, attr_values: tuple[Optional[str], ...], in_names: ttyp.FuzzyNames) -> ttyp.FuzzyNames:
         if self.filters and any(attr_values[i] != val for i, val in self.filters):
             return in_names
 
@@ -108,12 +57,23 @@ class FilteredVariantProcessor:
                     else:
                         # A real variant. Tag our attributes.
                         out_names.append(
-                            FuzzyName(name.name_attr, variant,
+                            ttyp.FuzzyName(name.name_attr, variant,
                                       attr_idxs=name.attr_idxs | self.filter_idxs))
             else:
                 out_names.append(name)
 
         return out_names
+
+
+class TokenTypeData:
+
+    def __init__(self, attr_set: set[str], varprocs: list[ttyp.VariantProcessor]) -> None:
+        self.filter_attributes = tuple(sorted(attr_set))
+        self.variant_processors = [
+            FilteredVariantProcessor(p, self.filter_attributes) for p in varprocs]
+
+        self.analyse_cache: dict[TokenCacheKey, ttyp.AnalyzedWord] = {}
+        self.token_lookup_cache: dict[str, set[int]] = {}
 
 
 
@@ -126,7 +86,7 @@ class FuzzyNameProcessor:
     def _save_by_name(self, conn: Connection, token: str, token_type: str,
                       attr_keys: tuple[str, ...],
                       attr_values: tuple[Optional[str], ...],
-                      names: FuzzyNames) -> FuzzyTokens:
+                      names: ttyp.FuzzyNames) -> ttyp.FuzzyTokens:
         """ Adds the token to the database if it doesn't exist and sets
             the token ID saved in the DB for all names.
         """
@@ -160,17 +120,17 @@ class FuzzyNameProcessor:
                         old_variants.append(token)
                     self._update_tokens_in_word(conn, tuple_id, token_type, old_variants, variants)
 
-        return [FuzzyToken(tuple_id, v) for v in variants]
+        return [ttyp.FuzzyToken(tuple_id, v) for v in variants]
 
     def _save_by_attribute(self, conn: Connection, token: str, token_type: str,
                            attr_keys: tuple[str, ...],
                            attr_values: tuple[Optional[str], ...],
-                           names: FuzzyNames) -> FuzzyTokens:
+                           names: ttyp.FuzzyNames) -> ttyp.FuzzyTokens:
         """ Add the token to the database giving each attribute combination
             a different token ID.
         """
         # First group variants by attribute types
-        subtokens: dict[tuple[int, ...], FuzzyNames] = defaultdict(list)
+        subtokens: dict[tuple[int, ...], ttyp.FuzzyNames] = defaultdict(list)
         for name in names:
             subtokens[tuple(sorted(name.attr_idxs))].append(name)
 
@@ -183,7 +143,7 @@ class FuzzyNameProcessor:
                 variantlist.append((token_type, token, attr_dict,
                                     sorted(variants)))
 
-        results: FuzzyTokens = []
+        results: ttyp.FuzzyTokens = []
         with conn.cursor() as cur:
             cur.executemany("SELECT (getorcreate_token_source(%s, %s, %s, %s)).*",
                             variantlist, returning=True)
@@ -203,7 +163,7 @@ class FuzzyNameProcessor:
                     if old_variants != new_variants:
                         self._update_tokens_in_word(conn, tuple_id, token_type,
                                                     old_variants, new_variants)
-                results.extend(FuzzyToken(tuple_id, v) for v in new_variants)
+                results.extend(ttyp.FuzzyToken(tuple_id, v) for v in new_variants)
 
         return results
 
@@ -281,7 +241,7 @@ class FuzzyNameProcessor:
 
     def _create_token_type_data(self, in_rules: list[config.FuzzyVariantConfig]) -> None:
         type_range = range(max(TOKEN_TYPES.values()) + 1)
-        varprocs: list[list[VariantProcessor]] = [[] for _ in type_range]
+        varprocs: list[list[ttyp.VariantProcessor]] = [[] for _ in type_range]
         filtersets: list[set[str]] = [set() for _ in type_range]
 
         apply_lookup = {v: TOKEN_TYPES[k] for k,v in ttyp.TOKEN_LABELS.items()
@@ -298,7 +258,7 @@ class FuzzyNameProcessor:
                 LOG.warn('Variant processor skipped. Unknown applies-to: %s', vconfig.applies_to)
                 continue
 
-            proc: VariantProcessor
+            proc: ttyp.VariantProcessor
             if vconfig.rule_type == 'lexical':
                 proc = LexicalProcessor(vconfig, self.normalizer)
             elif vconfig.rule_type == 'mutation':
@@ -331,14 +291,14 @@ class FuzzyNameProcessor:
         return filter(None, (self.transliteration.transliterate(s).strip()
                              for s in normalized_name.split()))
 
-    def normalize_place_name(self, name: PlaceName) -> FuzzyName:
+    def normalize_place_name(self, name: PlaceName) -> ttyp.FuzzyName:
         """ Takes a list of PlaceName items and converts it into the
             internally used FuzzyName list, normalizing the names
             on the way.
         """
-        return FuzzyName(name_attr=name.attr, token=self.normalize(name.name))
+        return ttyp.FuzzyName(name_attr=name.attr, token=self.normalize(name.name))
 
-    def apply_variants(self, token_type: str, names: FuzzyNames, conn: Connection) -> AnalyzedWord:
+    def apply_variants(self, token_type: str, names: ttyp.FuzzyNames, conn: Connection) -> ttyp.AnalyzedWord:
         """ Apply variant processing for the given type of tokens to
             the name list and return the extended name list.
 
@@ -361,7 +321,7 @@ class FuzzyNameProcessor:
 
                 tokens = self.save_by_group(conn, name.token, token_type,
                                             tdata.filter_attributes, attr_values, variants)
-                analysed = AnalyzedWord({t.token_id for t in tokens},
+                analysed = ttyp.AnalyzedWord({t.token_id for t in tokens},
                                         self.create_partials(tokens) if with_partials else set())
                 tdata.analyse_cache[cache_key] = analysed
 
@@ -369,9 +329,9 @@ class FuzzyNameProcessor:
             if with_partials:
                 out_partials.update(analysed.partials)
 
-        return AnalyzedWord(out_tokens, out_partials)
+        return ttyp.AnalyzedWord(out_tokens, out_partials)
 
-    def create_partials(self, tokens: FuzzyTokens) -> set[str]:
+    def create_partials(self, tokens: ttyp.FuzzyTokens) -> set[str]:
         partials: set[str] = set()
         for token in tokens:
             partials.update(s.strip() for s in token.token.split())
@@ -382,7 +342,7 @@ class FuzzyNameProcessor:
 
         return trans
 
-    def lookup_tokens(self, token_type: str, name: FuzzyName, conn: Connection) -> set[int]:
+    def lookup_tokens(self, token_type: str, name: ttyp.FuzzyName, conn: Connection) -> set[int]:
         """ Find all token IDs of the given type that resolve to a normalized
             name as given. Works against variants as well.
         """
@@ -398,7 +358,7 @@ class FuzzyNameProcessor:
 
         return tlist
 
-    def update_country_names(self, country_code: str, names: FuzzyNames,
+    def update_country_names(self, country_code: str, names: ttyp.FuzzyNames,
                              internal: bool, conn: Connection) -> None:
         """ Country names are added with two tokens per country: one for internal
             names and one for names imported from OSM.
