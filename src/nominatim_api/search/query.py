@@ -393,7 +393,7 @@ class QueryStruct:
     def iter_partials_trans(self, trange: TokenRange) -> Iterator[str]:
         """ Iterate over the transliterated form of the partial tokens.
         """
-        return (n.term_lookup for n in self.nodes[trange.start:trange.end])
+        return (n.term_lookup for n in self.nodes[trange.start + 1:trange.end + 1])
 
     def iter_tokens_by_edge(self) -> Iterator[Tuple[int, int, Dict[TokenType, List[Token]]]]:
         """ Iterator over all tokens except partial ones grouped by edge.

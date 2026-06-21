@@ -13,6 +13,8 @@ from typing import Optional, Mapping, Any, List, cast
 from pathlib import Path
 import asyncio
 import datetime as dt
+import traceback
+import logging
 
 from falcon.asgi import App, Request, Response
 
@@ -24,6 +26,7 @@ from ...result_formatting import FormatDispatcher, load_format_dispatcher
 from ... import logging as loglib
 from ..asgi_adaptor import ASGIAdaptor, EndpointFunc
 
+LOG = logging.getLogger()
 
 class HTTPNominatimError(Exception):
     """ A special exception class for errors raised during processing.
@@ -60,6 +63,26 @@ async def timeout_error_handler(req: Request, resp: Response,
         resp.content_type = 'text/html; charset=utf-8'
     else:
         resp.text = "Query took too long to process."
+        resp.content_type = 'text/plain; charset=utf-8'
+
+
+async def generic_error_handler(req: Request, resp: Response,
+                                exception: Exception,
+                                _: Any) -> None:
+    """ Special error handler that passes message and content type as
+        per exception info.
+    """
+    #LOG.error(''.join(traceback.format_exception(exception)))
+    LOG.error('Internal server error.', exception)
+    resp.status = 500
+
+    loglib.log().comment('Internal server error.')
+    logdata = loglib.get_and_disable()
+    if logdata:
+        resp.text = logdata
+        resp.content_type = 'text/html; charset=utf-8'
+    else:
+        resp.text = "Internal server error."
         resp.content_type = 'text/plain; charset=utf-8'
 
 
@@ -116,8 +139,8 @@ class EndpointWrapper:
     async def on_get(self, req: Request, resp: Response) -> None:
         """ Implementation of the endpoint.
         """
-        await self.func(self.api, ParamWrapper(req, resp, self.api.config,
-                                               self.formatter))
+        wrapper = ParamWrapper(req, resp, self.api.config, self.formatter)
+        await self.func(self.api, wrapper)
 
 
 class FileLoggingMiddleware:
@@ -215,6 +238,7 @@ def get_application(project_dir: Path,
     apimw.set_app(app)
     app.add_error_handler(HTTPNominatimError, nominatim_error_handler)
     app.add_error_handler(TimeoutError, timeout_error_handler)
+    app.add_error_handler(Exception, generic_error_handler)
     # different from TimeoutError in Python <= 3.10
     app.add_error_handler(asyncio.TimeoutError, timeout_error_handler)  # type: ignore[arg-type]
 
