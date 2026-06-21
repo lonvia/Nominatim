@@ -17,7 +17,6 @@ from . import db_search_fields as dbf
 from . import db_searches as dbs
 from . import db_search_lookups as lookups
 
-PARTIAL_PENALTY = 0.3
 
 def wrap_near_search(categories: List[Tuple[str, str]],
                      search: dbs.AbstractSearch) -> dbs.NearSearch:
@@ -213,8 +212,7 @@ class SearchBuilder:
                  for t in name_fulls]
         ranks.sort(key=lambda r: r.penalty)
         # Fallback, sum of penalty for partials
-        # TODO: partial penalty?
-        default = sum(PARTIAL_PENALTY for _ in self.query.iter_partials(trange)) + 0.2
+        default = self.query.get_partial_penalty(trange) + 0.2
         default += sum(n.word_break_penalty
                        for n in self.query.nodes[trange.start + 1:trange.end])
         return dbf.FieldRanking(db_field, default, ranks)
@@ -230,13 +228,14 @@ class SearchBuilder:
         while todo:
             _, pos, rank = heapq.heappop(todo)
             # partial node
+            next_node = self.query.nodes[pos + 1]
             if pos + 1 < trange.end:
-                penalty = rank.penalty + PARTIAL_PENALTY \
-                          + self.query.nodes[pos + 1].word_break_penalty
+                penalty = rank.penalty + next_node.term_penalty \
+                          + next_node.word_break_penalty
                 heapq.heappush(todo, (-(pos + 1), pos + 1,
                                dbf.RankedTokens(penalty, rank.tokens)))
             else:
-                ranks.append(dbf.RankedTokens(rank.penalty + PARTIAL_PENALTY,
+                ranks.append(dbf.RankedTokens(rank.penalty + next_node.term_penalty,
                                               rank.tokens))
             # full words
             for tlist in self.query.nodes[pos].starting:
@@ -257,7 +256,7 @@ class SearchBuilder:
             if len(ranks) >= 10:
                 # Too many variants, bail out and only add
                 # Worst-case Fallback: sum of penalty of partials
-                default = sum(PARTIAL_PENALTY for t in self.query.iter_partials(trange)) + 0.2
+                default = self.query.get_partial_penalty(trange) + 0.2
                 default += sum(n.word_break_penalty
                                for n in self.query.nodes[trange.start + 1:trange.end])
                 ranks.append(dbf.RankedTokens(rank.penalty + default, []))

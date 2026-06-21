@@ -227,6 +227,9 @@ class QueryNode:
     term_normalized: str
     """ Normalised form of term starting at this node.
     """
+    term_penalty: float = 0.3
+    """ Base penalty for a partial word token ending at this position.
+    """
 
     starting: List[TokenList] = dataclasses.field(default_factory=list)
     """ List of all full tokens starting at this node.
@@ -255,10 +258,16 @@ class QueryNode:
         """ Return the probability that the partial token belonging to
             this node forms part of a name (as opposed of part of the address).
         """
-        if self.partial is None:
-            return 0.5
+        avg_sum = 0.0
+        num_words = 0
 
-        return self.partial.count / (self.partial.count + self.partial.addr_count)
+        for tlist in self.starting:
+            if tlist.ttype == TOKEN_WORD:
+                for token in tlist.tokens:
+                    avg_sum += token.count / (token.count + token.addr_count)
+                    num_words += 1
+
+        return 0.5 if num_words == 0 else avg_sum / num_words
 
     def has_tokens(self, end: int, *ttypes: TokenType) -> bool:
         """ Check if there are tokens of the given types ending at the
@@ -353,9 +362,6 @@ class QueryStruct:
         """ Recompute the direction probability from the partial tokens
             of each node.
         """
-        if self.nodes[0].partial is None:
-            return
-
         n = len(self.nodes) - 1
         if n <= 1 or n >= 50:
             self.dir_penalty = 0
@@ -395,6 +401,11 @@ class QueryStruct:
         """
         return (n.term_lookup for n in self.nodes[trange.start + 1:trange.end + 1])
 
+    def get_partial_penalty(self, trange: TokenRange) -> float:
+        """ Return the sumed up penalty of partial tokens in the given range
+        """
+        return sum(n.term_penalty for n in self.nodes[trange.start + 1:trange.end + 1])
+
     def iter_tokens_by_edge(self) -> Iterator[Tuple[int, int, Dict[TokenType, List[Token]]]]:
         """ Iterator over all tokens except partial ones grouped by edge.
 
@@ -415,8 +426,6 @@ class QueryStruct:
             debugging.
         """
         for node in self.nodes:
-            if node.partial is not None and node.partial.token == token:
-                return f"[P]{node.partial.lookup_word}"
             for tlist in node.starting:
                 for t in tlist.tokens:
                     if t.token == token:
