@@ -291,7 +291,7 @@ class _TokenSequence:
         #  * the containing phrase is strictly typed
         if (base.housenumber and first.end < base.housenumber.start)\
            or (base.qualifier and base.qualifier > first)\
-           or (query.nodes[first.start].ptype != qmod.PHRASE_ANY):
+           or (query.nodes[first.end].ptype != qmod.PHRASE_ANY):
             return
 
         # Penalty for:
@@ -337,7 +337,7 @@ class _TokenSequence:
         #  * the containing phrase is strictly typed
         if (base.housenumber and last.start > base.housenumber.end)\
            or (base.qualifier and base.qualifier < last)\
-           or (query.nodes[last.start].ptype != qmod.PHRASE_ANY):
+           or (query.nodes[last.end].ptype != qmod.PHRASE_ANY):
             return
 
         if base.housenumber and base.housenumber < last:

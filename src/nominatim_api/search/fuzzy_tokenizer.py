@@ -197,7 +197,6 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
         """ Transliterate the phrases and split them into tokens.
         """
         for phrase in query.source:
-            query.nodes[-1].ptype = phrase.ptype
             phrase_split = TOKEN_SPLIT_RE.split(phrase.text)
             # The zip construct will give us the pairs of word/break from
             # the regular expression split. As the split array ends on the
