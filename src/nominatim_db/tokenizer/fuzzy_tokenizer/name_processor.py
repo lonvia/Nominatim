@@ -204,8 +204,9 @@ class FuzzyNameProcessor:
             Update the entries in word accordingly.
         """
         with conn.cursor() as cur:
-            cur.execute("""UPDATE token_source SET variants = %s
-                           WHERE id = %s AND variants != %s""")
+            if new_tokens:
+                cur.execute("UPDATE token_source SET variants = %s WHERE id = %s",
+                            (list(new_tokens), word_id))
             # It is possible here that another thread was faster here updating
             # the words. Thus only modify the word table when the token_source
             # table was actually changed.
