@@ -30,6 +30,7 @@ Arguments:
     mode: Define how the variants are created and may be 'replace' or
           'append'. When set to 'append' the original name (without
           any analyzer tagged) is retained. (default: replace)
+    attribute: Attribute which will be set. (default: analyzer)
 
 """
 from typing import Callable, Dict, Optional, List
@@ -47,6 +48,7 @@ class _AnalyzerByLanguage:
         self.filter_kind = config.get_filter('filter-kind')
         self.replace = config.get('mode', 'replace') != 'append'
         self.suffix_ignore = set(config.get_string_list('suffix-ignore'))
+        self.out_attribute = str(config.get('attribute', 'analyzer'))
         whitelist = config.get('whitelist')
         self.suffix_matcher: Callable[[str], bool]
         if whitelist is None:
@@ -74,7 +76,7 @@ class _AnalyzerByLanguage:
         more_names = []
 
         for name in (n for n in obj.names
-                     if not n.has_attr('analyzer') and self.filter_kind(n.kind)):
+                     if not n.has_attr(self.out_attribute) and self.filter_kind(n.kind)):
             if name.suffix and name.suffix not in self.suffix_ignore:
                 langs = [name.suffix] if self.suffix_matcher(name.suffix) else None
             else:
@@ -82,11 +84,11 @@ class _AnalyzerByLanguage:
 
             if langs:
                 if self.replace:
-                    name.set_attr('analyzer', langs[0])
+                    name.set_attr(self.out_attribute, langs[0])
                 else:
-                    more_names.append(name.clone(attr={'analyzer': langs[0]}))
+                    more_names.append(name.clone(attr={self.out_attribute: langs[0]}))
 
-                more_names.extend(name.clone(attr={'analyzer': lg}) for lg in langs[1:])
+                more_names.extend(name.clone(attr={self.out_attribute: lg}) for lg in langs[1:])
 
         obj.names.extend(more_names)
 

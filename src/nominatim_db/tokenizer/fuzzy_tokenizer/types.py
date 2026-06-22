@@ -49,9 +49,6 @@ FuzzyNames = list[FuzzyName]
 
 class VariantProcessor(ABC):
 
-    def __init__(self, vconfig: FuzzyVariantConfig, normalizer: Transliterator) -> None:
-        pass
-
     @abstractmethod
     def get_filter_attributes(self) -> tuple[tuple[str, str], ...]:
         pass
