@@ -102,10 +102,10 @@ class FuzzyAnalyzer(AbstractAnalyzer):
             corresponds to the house number. This should avoid expensive
             lookups for a majority of house numbers.
         """
-        if len(name.name) <= 4 and name.name.isdecimal():
-            return name.name, [int(name.name)]
-
         norm = self.name_proc.normalize_place_name(name)
+
+        if len(norm.token) <= 4 and norm.token.isdecimal():
+            return norm.token, [int(norm.token)]
 
         assert self.conn is not None
         return norm.token, self.name_proc.apply_variants(ttyp.TOKEN_HOUSENUMBER,
