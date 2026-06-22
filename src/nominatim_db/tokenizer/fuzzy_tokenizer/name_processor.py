@@ -278,7 +278,7 @@ class FuzzyNameProcessor:
     def normalize(self, name: str) -> str:
         """ Runs normalization and word-breaking on the input name.
         """
-        normed = self.normalizer.transliterate(name)
+        normed = self.normalizer.transliterate(f" {name} ")
         self.breaker.setText(normed)
         lastpos = 0
         parts = []
@@ -308,7 +308,7 @@ class FuzzyNameProcessor:
             Partial tokens are only computed for word types.
         """
         tdata = self.token_type_data[TOKEN_TYPES[token_type]]
-        with_partials = token_type = ttyp.TOKEN_WORD
+        with_partials = token_type == ttyp.TOKEN_WORD
 
         out_tokens: set[int] = set()
         out_partials: set[str] = set()
