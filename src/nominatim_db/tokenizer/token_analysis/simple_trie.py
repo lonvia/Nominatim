@@ -2,12 +2,12 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Simple dict-based implementation of a trie structure.
 """
-from typing import TypeVar, Generic, Tuple, Optional, List, Dict
+from typing import TypeVar, Generic, Tuple, Optional, Iterable, Dict
 from collections import defaultdict
 
 T = TypeVar('T')
@@ -15,11 +15,11 @@ T = TypeVar('T')
 
 class SimpleTrie(Generic[T]):
     """ A simple read-only trie structure.
-        This structure supports examply one lookup operation,
+        This structure supports exactly one lookup operation,
         which is longest-prefix lookup.
     """
 
-    def __init__(self, data: Optional[List[Tuple[str, T]]] = None) -> None:
+    def __init__(self, data: Optional[Iterable[Tuple[str, T]]] = None) -> None:
         self._tree: Dict[str, 'SimpleTrie[T]'] = defaultdict(SimpleTrie[T])
         self._value: Optional[T] = None
         self._prefix = ''

@@ -7,16 +7,16 @@
 """
 Variant processor for regex mutations.
 """
-from typing import Optional
+from typing import Optional, Any
 
 from icu import Transliterator
 
-from .config import FuzzyVariantConfig
 from . import types as ttyp
 
 class MutationProcessor(ttyp.VariantProcessor):
 
-    def __init__(self, vconfig: FuzzyVariantConfig, normalizer: Transliterator) -> None:
+    def __init__(self, config: dict[str, Any], rules: dict[str, Any],
+                 normalizer: Transliterator) -> None:
         pass
 
     def get_filter_attributes(self) -> tuple[tuple[str, str], ...]:
