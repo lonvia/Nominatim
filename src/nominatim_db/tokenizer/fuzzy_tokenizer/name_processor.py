@@ -258,15 +258,16 @@ class FuzzyNameProcessor:
                 LOG.warn('Variant processor skipped. Unknown applies-to: %s', vconfig.applies_to)
                 continue
 
-            proc: ttyp.VariantProcessor
+            proc_class: type[ttyp.VariantProcessor]
             if vconfig.rule_type == 'lexical':
-                proc = LexicalProcessor(vconfig, self.normalizer)
+                proc_class = LexicalProcessor
             elif vconfig.rule_type == 'mutation':
-                proc = MutationProcessor(vconfig, self.normalizer)
+                proc_class = MutationProcessor
             else:
                 LOG.fatal("Unknown variant processor type '%s'.", vconfig.rule_type)
                 raise UsageError('Syntax error in tokenizer configuration file.')
 
+            proc = proc_class(vconfig.config, vconfig.rules, self.normalizer)
             for nr in apply_to:
                 varprocs[nr].append(proc)
                 filtersets[nr].update(k for k, _ in proc.get_filter_attributes())
@@ -281,7 +282,8 @@ class FuzzyNameProcessor:
         lastpos = 0
         parts = []
         while (bnd := self.breaker.nextBoundary()) >= 0:
-            if not (part := normed[lastpos:bnd]).isspace():
+            part = normed[lastpos:bnd]
+            if len(part) > 2 or (part and part[0] not in (' -:')):
                 parts.append(part)
             lastpos = bnd
 
