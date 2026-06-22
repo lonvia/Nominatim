@@ -8,9 +8,9 @@ normalization:
     - "ª > a"
     - "º > o"
     - "[’‘׳] > \\'"
-    - "[[:Punctuation:][:Symbol:][\u02bc] - ['-:]]+  > '-'"
+    - "[[:Punctuation:][:Symbol:][\u02bc] - [-:']]+  > '-'"
     - "ß > 'ss'" # German szet is unambiguously equal to double ss
-    - "[^[:alnum:] [:Canonical_Combining_Class=Virama:] [:Space:] ['-:]] >"
+    - "[^[:alnum:] [:Canonical_Combining_Class=Virama:] [:Space:] [-:']] >"
     - "[:Lm:] >"
     - ":: [[:Number:]] Latin ()"
     - ":: [[:Number:]] Ascii ()"
@@ -18,9 +18,8 @@ normalization:
     - "[[:Nonspacing Mark:] [:Cf:]] >"
     - "[:Letter:] } {([:Number:]) > '-'"
     - "[:Number:] } {([:Letter:]) > '-'"
-    - "[-:]?[:Space:]+[-:]? > ' '"
+    - "[-:']?[:Space:]+[-:']? > ' '"
 transliteration:
-    - "[-:]  > ' '"
     - ":: Latin ()"
     - !include icu-rules/extended-unicode-to-asccii.yaml
     - ":: Ascii ()"
