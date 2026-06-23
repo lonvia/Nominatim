@@ -48,12 +48,15 @@ FuzzyNames = list[FuzzyName]
 
 
 class VariantProcessor(ABC):
-
-    @abstractmethod
-    def get_filter_attributes(self) -> tuple[tuple[str, str], ...]:
-        pass
+    RESERVED_RULE_KEYS: tuple[str, ...]
 
     @abstractmethod
     def process_name(self, name: str) -> Optional[list[str]]:
         pass
 
+    def set_filter_idxs(self, idxs: set[int]) -> None:
+        self.filter_set = idxs
+
+    @property
+    def filter_idxs(self) -> set[int]:
+        return self.filter_set
