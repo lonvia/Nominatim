@@ -65,12 +65,21 @@ variants:
           - !include icu-rules/variants-vi.yaml
     - applies-to: name
       type: mutation
-      mode: variant-replace-all
+      mode: append
+      scope: global
       rules:
         - lang: de
-          mutation:
+          mutations:
               - pattern: '([äöü])'
                 replacement: '\1e'
-        - mutation:
+        - mutations:
               - pattern: "'"
-              - replacement: " "
+                replacement: ""
+    - applies-to: name
+      type: mutation
+      mode: replace
+      scope: global
+      rules:
+        - mutations:
+              - pattern: "'"
+                replacement: " "

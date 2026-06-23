@@ -47,5 +47,5 @@
   whitelist: [bg,ca,cs,da,de,el,en,es,et,eu,fi,fr,gl,hu,it,ja,mg,ms,nl,"no",pl,pt,ro,ru,sk,sl,sv,tr,uk,vi]
   use-defaults: all
   attribute: lang
-  mode: append
+  mode: replace
 - step: tag-japanese
