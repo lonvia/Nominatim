@@ -7,7 +7,7 @@
 """
 Encapsulates word processing for the fuzzy tokenizer.
 """
-from typing import Optional, Iterable, cast
+from typing import Optional, Iterable, cast, Any
 import logging
 import icu
 import dataclasses
@@ -35,47 +35,115 @@ TOKEN_TYPES = {
 # Cache key: tuple of token base name and an attribute tuple
 TokenCacheKey = tuple[str, tuple[Optional[str], ...]]
 
+class VariantProcessorInfo:
 
-class FilteredVariantProcessor:
-
-    def __init__(self, proc: ttyp.VariantProcessor, filt_attr: tuple[str, ...]) -> None:
+    def __init__(self, rules: dict[str, Any], proc: ttyp.VariantProcessor) -> None:
         self.proc = proc
-        self.filters = tuple((filt_attr.index(a), val) for a, val in proc.get_filter_attributes())
-        self.filter_idxs = {f[0] for f in self.filters}
+
+        self.filters: dict[str, str] = {}
+        for k, v in rules.items():
+            if k not in proc.RESERVED_RULE_KEYS:
+                if not isinstance(v, (str, int)):
+                    raise UsageError('Variant attributes must be strings')
+                self.filters[k] = str(v)
+
+    def get_filter_values(self, attr_keys: tuple[str, ...]) -> list[Optional[str]]:
+        return [self.filters.get(a) for a in attr_keys]
 
 
-    def process(self, attr_values: tuple[Optional[str], ...], in_names: ttyp.FuzzyNames) -> ttyp.FuzzyNames:
-        if self.filters and any(attr_values[i] != val for i, val in self.filters):
-            return in_names
+class VariantTree:
 
-        out_names = []
-        for name in in_names:
-            if (variants := self.proc.process_name(name.token)) is not None:
-                for variant in variants:
-                    if variant == name.token:
-                        out_names.append(name)
-                    else:
-                        # A real variant. Tag our attributes.
-                        out_names.append(
-                            ttyp.FuzzyName(name.name_attr, variant,
-                                      attr_idxs=name.attr_idxs | self.filter_idxs))
+    def __init__(self, attributes: list[list[Optional[str]]]) -> None:
+        self.default: Any
+        self.nodes: dict[str, Any] = {}
+
+        if not attributes:
+            self.default = []
+        elif len(attributes[0]) == 1:
+            self.default = []
+            for attr in {a[0] for a in attributes if a[0] is not None}:
+                self.nodes[attr] = []
+        else:
+            self.default = VariantTree([a[1:] for a in attributes])
+            for attr in {a[0] for a in attributes if a[0] is not None}:
+                self.nodes[attr] = VariantTree([a[1:] for a in attributes if a[0] == attr or a[0] is None])
+
+    def add_processor(self, attr_values: list[Optional[str]], proc: ttyp.VariantProcessor) -> None:
+        attr = attr_values[0]
+        if not attr_values:
+            self.default.append(proc)
+        elif len(attr_values) == 1:
+            assert isinstance(self.default, list)
+            if attr is None:
+                self.default.append(proc)
+                for proclist in self.nodes.values():
+                    proclist.append(proc)
             else:
-                out_names.append(name)
+                self.nodes[attr].append(proc)
+        else:
+            remain = attr_values[1:]
+            assert isinstance(self.default, VariantTree)
+            if attr is None:
+                self.default.add_processor(remain, proc)
+                for proclist in self.nodes.values():
+                    proclist.add_processor(remain, proc)
+            else:
+                self.nodes[attr].add_processor(remain, proc)
 
-        return out_names
+    def get(self, attr_values: list[Optional[str]]) -> list[ttyp.VariantProcessor]:
+        if not attr_values:
+            return self.default
+
+        next_node = self.nodes.get(attr_values[0], self.default)  # type: ignore[arg-type]
+        if len(attr_values) == 1:
+            return cast(list[ttyp.VariantProcessor], next_node)
+
+        return cast(VariantTree, next_node).get(attr_values[1:])
 
 
 class TokenTypeData:
 
-    def __init__(self, attr_set: set[str], varprocs: list[ttyp.VariantProcessor]) -> None:
+    def __init__(self, varprocs: list[VariantProcessorInfo]) -> None:
+        attr_set: set[str] = set()
+        for vp in varprocs:
+            attr_set.update(vp.filters.keys())
         self.filter_attributes = tuple(sorted(attr_set))
-        self.variant_processors = [
-            FilteredVariantProcessor(p, self.filter_attributes) for p in varprocs]
+
+        self.variant_processors = VariantTree(
+            [vp.get_filter_values(self.filter_attributes) for vp in varprocs])
+        for vp in varprocs:
+            filter_values = vp.get_filter_values(self.filter_attributes)
+            vp.proc.set_filter_idxs({i for i, v in enumerate(filter_values)
+                                     if v is not None})
+            self.variant_processors.add_processor(filter_values, vp.proc)
 
         self.analyse_cache: dict[TokenCacheKey, ttyp.AnalyzedWord] = {}
         self.token_lookup_cache: dict[str, set[int]] = {}
 
+    def apply_variants(self, attr_values: list[Optional[str]], name: ttyp.FuzzyName) -> ttyp.FuzzyNames:
+        in_names = [name]
 
+        vp_chain = self.variant_processors.get(attr_values)
+        if not vp_chain:
+            return in_names
+
+        for vp in vp_chain:
+            out_names = []
+            for name in in_names:
+                if (variants := vp.process_name(name.token)) is not None:
+                    for variant in variants:
+                        if variant == name.token:
+                            out_names.append(name)
+                        else:
+                            # A real variant. Tag our attributes.
+                            out_names.append(
+                                ttyp.FuzzyName(name.name_attr, variant,
+                                          attr_idxs=name.attr_idxs | vp.filter_idxs))
+                else:
+                    out_names.append(name)
+            in_names = out_names
+
+        return in_names
 
 class FuzzyNameProcessor:
     """ Provides functions for normalizing and tokenizing names.
@@ -85,14 +153,14 @@ class FuzzyNameProcessor:
 
     def _save_by_name(self, conn: Connection, token: str, token_type: str,
                       attr_keys: tuple[str, ...],
-                      attr_values: tuple[Optional[str], ...],
+                      attr_values: list[Optional[str]],
                       names: ttyp.FuzzyNames) -> ttyp.FuzzyTokens:
         """ Adds the token to the database if it doesn't exist and sets
             the token ID saved in the DB for all names.
         """
         attr_idxs: set[int] = set()
         for name in names:
-            attr_idxs.union(name.attr_idxs)
+            attr_idxs.update(name.attr_idxs)
         attr_dict = {attr_keys[i]: attr_values[i] for i in attr_idxs
                      if attr_values[i] is not None}
 
@@ -102,7 +170,7 @@ class FuzzyNameProcessor:
         variants.add(token)
 
         with conn.cursor() as cur:
-            cur.execute("getorcreate_token_source(%s, %s, %s, %s)",
+            cur.execute("SELECT (getorcreate_token_source(%s, %s, %s, %s)).*",
                         (token_type, token, attr_dict, sql_variant_list))
             result = cur.fetchone()
             if result is None:
@@ -124,7 +192,7 @@ class FuzzyNameProcessor:
 
     def _save_by_attribute(self, conn: Connection, token: str, token_type: str,
                            attr_keys: tuple[str, ...],
-                           attr_values: tuple[Optional[str], ...],
+                           attr_values: list[Optional[str]],
                            names: ttyp.FuzzyNames) -> ttyp.FuzzyTokens:
         """ Add the token to the database giving each attribute combination
             a different token ID.
@@ -242,8 +310,7 @@ class FuzzyNameProcessor:
 
     def _create_token_type_data(self, in_rules: list[config.FuzzyVariantConfig]) -> None:
         type_range = range(max(TOKEN_TYPES.values()) + 1)
-        varprocs: list[list[ttyp.VariantProcessor]] = [[] for _ in type_range]
-        filtersets: list[set[str]] = [set() for _ in type_range]
+        varprocs: list[list[VariantProcessorInfo]] = [[] for _ in type_range]
 
         apply_lookup = {v: TOKEN_TYPES[k] for k,v in ttyp.TOKEN_LABELS.items()
                         if k in TOKEN_TYPES}
@@ -268,12 +335,12 @@ class FuzzyNameProcessor:
                 LOG.fatal("Unknown variant processor type '%s'.", vconfig.rule_type)
                 raise UsageError('Syntax error in tokenizer configuration file.')
 
-            proc = proc_class(vconfig.config, vconfig.rules, self.normalizer)
+            proc = VariantProcessorInfo(
+                    vconfig.rules, proc_class(vconfig.config, vconfig.rules, self.normalizer))
             for nr in apply_to:
                 varprocs[nr].append(proc)
-                filtersets[nr].update(k for k, _ in proc.get_filter_attributes())
 
-        self.token_type_data = [TokenTypeData(f, v) for f, v in zip(filtersets, varprocs)]
+        self.token_type_data = [TokenTypeData(vp) for vp in varprocs]
 
     def normalize(self, name: str) -> str:
         """ Runs normalization and word-breaking on the input name.
@@ -313,14 +380,12 @@ class FuzzyNameProcessor:
         out_tokens: set[int] = set()
         out_partials: set[str] = set()
         for name in names:
-            attr_values = tuple(name.name_attr.get(a) for a in tdata.filter_attributes)
-            cache_key = (name.token, attr_values)
+            attr_values = [name.name_attr.get(a) for a in tdata.filter_attributes]
+            cache_key = (name.token, tuple(attr_values))
             if (cached := tdata.analyse_cache.get(cache_key)) is not None:
                 analysed = cached
             else:
-                variants = [name]
-                for varproc in tdata.variant_processors:
-                    variants = varproc.process(attr_values, variants)
+                variants = tdata.apply_variants(attr_values, name)
 
                 tokens = self.save_by_group(conn, name.token, token_type,
                                             tdata.filter_attributes, attr_values, variants)
@@ -378,10 +443,8 @@ class FuzzyNameProcessor:
             # Otherwise do full variant processor processing.
             variants = set()
             for name in names:
-                attr_values = tuple(name.name_attr.get(a) for a in tdata.filter_attributes)
-                name_vars = [name]
-                for varproc in tdata.variant_processors:
-                    name_vars = varproc.process(attr_values, name_vars)
+                attr_values = [name.name_attr.get(a) for a in tdata.filter_attributes]
+                name_vars = tdata.apply_variants(attr_values, name)
                 variants.update(t.token for t in name_vars)
 
         my_attr = {'int': 'yes'} if internal else {}

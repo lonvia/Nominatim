@@ -16,6 +16,7 @@ from ...errors import UsageError
 from . import types as ttyp
 
 class MutationProcessor(ttyp.VariantProcessor):
+    RESERVED_RULE_KEYS = ('mutations', )
 
     def __init__(self, config: dict[str, Any], rules: dict[str, Any],
                  normalizer: Transliterator) -> None:
@@ -43,9 +44,6 @@ class MutationProcessor(ttyp.VariantProcessor):
         self.regexes = [(re.compile(r['pattern']), str(r['replacement']))
                         for r in rules['mutations']
                         if 'pattern' in r and 'replacement' in r]
-
-    def get_filter_attributes(self) -> tuple[tuple[str, str], ...]:
-        return self.filters
 
     def process_name(self, name: str) -> Optional[list[str]]:
         return self._internal_process_name(name)
