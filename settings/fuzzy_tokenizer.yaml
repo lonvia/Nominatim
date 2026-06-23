@@ -29,7 +29,7 @@ transliteration:
     - ":: NFC ()"
     - "[:Space:]+ > ' '"
 token-analysis:
-    variant-grouping: by-attribute
+    variant-grouping: by-name
 variants:
     - applies-to: name
       type: lexical

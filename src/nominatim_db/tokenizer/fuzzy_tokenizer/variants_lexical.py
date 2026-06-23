@@ -25,6 +25,7 @@ class ICUVariant(NamedTuple):
     replacement: str
 
 class LexicalProcessor(ttyp.VariantProcessor):
+    RESERVED_RULE_KEYS = ('words', )
 
     def __init__(self, config: dict[str, Any], rules: dict[str, Any],
                  normalizer: Transliterator) -> None:
@@ -58,9 +59,6 @@ class LexicalProcessor(ttyp.VariantProcessor):
             immediate[variant.source].append(replstr)
 
         self.replacements = SimpleTrie(immediate.items())
-
-    def get_filter_attributes(self) -> tuple[tuple[str, str], ...]:
-        return self.filters
 
     def process_name(self, name: str) -> Optional[list[str]]:
         baseform = '^ ' + name + ' ^'
