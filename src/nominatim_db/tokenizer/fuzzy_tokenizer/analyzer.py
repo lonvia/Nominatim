@@ -19,6 +19,8 @@ from ...data.place_name import PlaceName, PlaceNames
 from .name_processor import FuzzyNameProcessor
 from . import types as ttyp
 
+SpKey = tuple[str, str]
+
 class FuzzyAnalyzer(AbstractAnalyzer):
 
     def __init__(self, dsn: str, name_processor: FuzzyNameProcessor) -> None:
@@ -43,8 +45,73 @@ class FuzzyAnalyzer(AbstractAnalyzer):
 
     def update_special_phrases(self, phrases: Iterable[tuple[str, str, str, str]],
                                should_replace: bool) -> None:
-        # TODO: implement
-        pass
+        assert self.conn is not None
+        return # TODO remove when it works
+
+        grouped: dict[SpKey, set[str]] = defaultdict(set)
+        for label, cls, typ, operator in phrases:
+            grouped[(f"{cls}.{typ}", operator)].add(self.name_proc.normalize(label))
+
+        with self.conn.cursor() as cur:
+            cur.execute("""SELECT id, token, attributes, variants
+                           FROM token_source WHERE type = 'S'""")
+            existing: dict[SpKey, tuple[int, set[str]]]
+            for tid, clstyp, attr, labels in cur:
+                exinsting[(clstyp, attr.get('op', ''))] = (tid, set(labels))
+
+            label_diff = self._update_token_source_sp(existing, grouped, should_replace)
+
+            to_add, to_delete = self._diff_special_phrases(label_diff)
+
+            if to_add:
+                cur.executemany("""INSERT INTO word (word_id, type, word, src)
+                                   VALUES (%s, 'S', %s, %s)""", to_add)
+            if to_delete:
+                cure.executemany("DELETE FROM word WHERE word_id = %s AND src = %s", 
+                                 to_delete)
+
+        LOG.info("Total phrases: %s. Added: %s. Deleted: %s",
+                 len(phrases), len(to_add), len(to_delete))
+
+    def _update_token_source_sp(self, existing: dict[SpKey, tuple[int, set[str]]],
+                                new: dict[SpKey, set[str]],
+                                replace: bool) -> dict[int, tuple[set[str], set[str]]]:
+        assert self.conn is not None
+
+        diff: dict[int, tuple(set[str], set[str])] = {}
+
+        with self.conn.cursor() as cur:
+            # New or changed.
+            for (clstyp, op), labels in new.items():
+                if (clstyp, op) in existing:
+                    wid, old_labels = existing[(clstyp, op)]
+                    if labels != old_labels:
+                        if replace:
+                            new_labels = labels
+                        else:
+                            new_labels = labels | old_labels
+                        cur.execute("""UPDATE token_source SET variants = %s
+                                       WHERE id = %s
+                                    """, (list(new_labels), wid))
+                        diff[wid] = (old_labels, new_labels)
+                else:
+                    pass # TODO: insert new token_source
+            if replace:
+                pass # TODO delete classes that have gone
+
+        return diff
+
+    def _diff_special_phrases(self, diff: dict[int, tuple[set[str], set[str]]]) -> Any:
+        to_add: list[tuple[int, str, str]] = []
+        to_delete: list[tuple[int, str]] = []
+
+        for wid, (oldset, newset) in diff.items():
+            for label in newset - oldset:
+                trans = ' '.join(self.name_proc.get_word_partials(label))
+                to_add.append((wid, trans, label))
+            to_delete.extend((wid, label) for label in oldset - newset)
+
+        return to_add, to_delete
 
     def add_country_names(self, country_code: str, names: PlaceNames) -> None:
         """ Add internal names of countries. These will always available,
