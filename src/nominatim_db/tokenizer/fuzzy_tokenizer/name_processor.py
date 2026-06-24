@@ -11,6 +11,7 @@ from typing import Optional, Iterable, cast, Any
 import logging
 import icu
 import dataclasses
+import re
 from collections import defaultdict
 
 from psycopg import sql as pysql
@@ -31,6 +32,7 @@ TOKEN_TYPES = {
     ttyp.TOKEN_COUNTRY: 2
 }
 
+NORM_BREAK_REGEX = re.compile('[ :-]')
 
 # Cache key: tuple of token base name and an attribute tuple
 TokenCacheKey = tuple[str, tuple[Optional[str], ...]]
@@ -355,7 +357,7 @@ class FuzzyNameProcessor:
         parts = []
         while (bnd := self.breaker.nextBoundary()) >= 0:
             part = normed[lastpos:bnd]
-            if len(part) > 2 or (part and part[0] not in (' -:')):
+            if part and part not in (' ', '-', ':'):
                 parts.append(part)
             lastpos = bnd
 
@@ -365,12 +367,17 @@ class FuzzyNameProcessor:
         return filter(None, (self.transliteration.transliterate(s).strip()
                              for s in normalized_name.split()))
 
-    def normalize_place_name(self, name: PlaceName) -> ttyp.FuzzyName:
+    def normalize_place_name(self, name: PlaceName, country_code: Optional[str]) -> ttyp.FuzzyName:
         """ Takes a list of PlaceName items and converts it into the
             internally used FuzzyName list, normalizing the names
             on the way.
         """
-        return ttyp.FuzzyName(name_attr=name.attr, token=self.normalize(name.name))
+        if country_code:
+            attr = {'country': country_code}
+            attr.update(name.attr)
+        else:
+            attr = name.attr
+        return ttyp.FuzzyName(name_attr=attr, token=self.normalize(name.name))
 
     def apply_variants(self, token_type: str, names: ttyp.FuzzyNames, conn: Connection) -> ttyp.AnalyzedWord:
         """ Apply variant processing for the given type of tokens to

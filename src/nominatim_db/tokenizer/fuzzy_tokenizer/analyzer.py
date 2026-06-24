@@ -53,13 +53,14 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         assert self.conn is not None
         self.name_proc.update_country_names(
             country_code,
-            [self.name_proc.normalize_place_name(n) for n in names],
+            [self.name_proc.normalize_place_name(n, country_code) for n in names],
             True, self.conn)
 
     def process_place(self, place: PlaceInfo) -> Any:
         assert self.conn is not None
         if place.searchable_names:
-            names = [self.name_proc.normalize_place_name(n) for n in place.searchable_names]
+            names = [self.name_proc.normalize_place_name(n, place.country_code)
+                     for n in place.searchable_names]
             analyzed = self.name_proc.apply_variants(ttyp.TOKEN_WORD, names, self.conn)
             token_info = _TokenInfo(full_names=analyzed.tokens,
                                     partials=analyzed.partials)
@@ -78,31 +79,33 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                 if item.kind == 'postcode':
                     token_info.postcode = self.normalize_postcode(item.name)
                 elif item.kind == 'housenumber':
-                    norm, tokens = self._housenumber_to_tokens(item)
+                    norm, tokens = self._housenumber_to_tokens(item, place.country_code)
                     token_info.housenumbers.add(norm)
                     token_info.hnr_tokens.update(tokens)
                 elif item.kind == 'street':
-                    tokens = self._lookup_street_tokens(item)
+                    tokens = self._lookup_street_tokens(item, place.country_code)
                     if token_info.street is None:
                         token_info.street = tokens
                     else:
                         token_info.street.update(tokens)
                 else:
-                    address_names[item.kind].append(self.name_proc.normalize_place_name(item))
+                    address_names[item.kind].append(
+                        self.name_proc.normalize_place_name(item, place.country_code))
 
             for k, names in address_names.items():
                 token_info.address[k] = self._create_address_part_info(names)
 
         return token_info.get_dict()
 
-    def _housenumber_to_tokens(self, name: PlaceName) -> tuple[str, Iterable[int]]:
+    def _housenumber_to_tokens(self, name: PlaceName,
+                               country_code: Optional[str]) -> tuple[str, Iterable[int]]:
         """ Computes the normalized name and token ID(s) for the given house number.
 
             Numeric house numbers up to 9999 have a fixed token ID that
             corresponds to the house number. This should avoid expensive
             lookups for a majority of house numbers.
         """
-        norm = self.name_proc.normalize_place_name(name)
+        norm = self.name_proc.normalize_place_name(name, country_code)
 
         if len(norm.token) <= 4 and norm.token.isdecimal():
             return norm.token, [int(norm.token)]
@@ -111,13 +114,13 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         return norm.token, self.name_proc.apply_variants(ttyp.TOKEN_HOUSENUMBER,
                                                          [norm], self.conn).tokens
 
-    def _lookup_street_tokens(self, name: PlaceName) -> set[int]:
+    def _lookup_street_tokens(self, name: PlaceName, country_code: Optional[str]) -> set[int]:
         """ Look up all tokens that cover a given name.
 
             addr:street requires a matching street. Thus the full name
             must already have been indexed.
         """
-        norm = self.name_proc.normalize_place_name(name)
+        norm = self.name_proc.normalize_place_name(name, country_code)
         assert self.conn is not None
         return self.name_proc.lookup_tokens(ttyp.TOKEN_WORD, norm, self.conn)
 
