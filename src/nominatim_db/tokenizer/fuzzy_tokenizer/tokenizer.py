@@ -109,8 +109,10 @@ class FuzzyTokenizer(AbstractTokenizer):
             conn.execute('SET max_parallel_workers_per_gather TO 0')
 
             sqlp = SQLPreprocessor(conn, config)
-            sqlp.run_string(conn,
-                            'GRANT SELECT ON tmp_word TO "{{config.DATABASE_WEBUSER}}"')
+            sqlp.run_string(conn, """
+                GRANT SELECT ON tmp_word TO "{{config.DATABASE_WEBUSER}}";
+                GRANT SELECT ON token_source TO "{{config.DATABASE_WEBUSER}}"
+                """)
 
             conn.commit()
 
