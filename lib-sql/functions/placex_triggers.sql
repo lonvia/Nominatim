@@ -475,8 +475,10 @@ BEGIN
   -- Cheating here by not recomputing all terms but simply using the ones
   -- from the parent object.
   nameaddress_vector := array_merge(nameaddress_vector, parent_name_vector);
-  nameaddress_vector := array_merge(nameaddress_vector, parent_address_vector);
-  nameaddress_partials := nameaddress_partials || parent_partials;
+  IF parent_address_vector is not NULL THEN
+    nameaddress_vector := array_merge(nameaddress_vector, parent_address_vector);
+    nameaddress_partials := nameaddress_partials || parent_partials;
+  END IF;
 
   -- make sure addr:place terms are always searchable
   IF is_place_addr THEN
@@ -487,6 +489,12 @@ BEGIN
     END IF;
     nameaddress_vector := array_merge(nameaddress_vector, addr_place_ids);
     nameaddress_partials := nameaddress_partials || token_addr_place_search_partials(token_info);
+  END IF;
+
+  -- Parent doesn't have a name and is therefore not listed.
+  -- Use the parents address parts for the address but only bother if there is a name.
+  IF parent_address_vector is NULL THEN
+   -- TODO!!!
   END IF;
 END;
 $$
