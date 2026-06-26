@@ -356,9 +356,9 @@ class FuzzyNameProcessor:
         lastpos = 0
         parts = []
         while (bnd := self.breaker.nextBoundary()) >= 0:
-            part = normed[lastpos:bnd]
-            if part and part not in (' ', '-', ':'):
-                parts.append(part)
+            if bnd > lastpos \
+                    and (lastpos + 1 > bnd or normed[lastpos] not in (' ', '-', ':')):
+                parts.append(normed[lastpos:bnd])
             lastpos = bnd
 
         return ' '.join(parts)
