@@ -379,7 +379,7 @@ class FuzzyNameProcessor:
             attr = name.attr
         return ttyp.FuzzyName(name_attr=attr, token=self.normalize(name.name))
 
-    def apply_variants(self, token_type: str, names: ttyp.FuzzyNames, conn: Connection) -> ttyp.AnalyzedWord:
+    def apply_variants(self, token_type: str, names: Iterable[ttyp.FuzzyName], conn: Connection) -> ttyp.AnalyzedWord:
         """ Apply variant processing for the given type of tokens to
             the name list and return the extended name list.
 
@@ -421,19 +421,19 @@ class FuzzyNameProcessor:
 
         return trans
 
-    def lookup_tokens(self, token_type: str, name: ttyp.FuzzyName, conn: Connection) -> set[int]:
+    def lookup_tokens(self, token_type: str, norm_name: str, conn: Connection) -> set[int]:
         """ Find all token IDs of the given type that resolve to a normalized
             name as given. Works against variants as well.
         """
         tdata = self.token_type_data[TOKEN_TYPES[token_type]]
 
-        if (tlist := tdata.token_lookup_cache.get(name.token)) is not None:
+        if (tlist := tdata.token_lookup_cache.get(norm_name)) is not None:
             return tlist
 
         with conn.cursor() as cur:
-            cur.execute('SELECT word_id FROM word WHERE src = %s', (name.token, ))
+            cur.execute('SELECT word_id FROM word WHERE src = %s', (norm_name, ))
             tlist = set(cast(int, r[0]) for r in cur)
-            tdata.token_lookup_cache[name.token] = tlist
+            tdata.token_lookup_cache[norm_name] = tlist
 
         return tlist
 

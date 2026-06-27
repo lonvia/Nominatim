@@ -52,7 +52,7 @@ Arguments:
                    the original is discarded when it matched the pattern.
                    (default: true)
 """
-from typing import Optional
+from typing import Optional, Iterable
 
 from ...data.place_name import PlaceName, PlaceNames
 from .base import ProcessInfo, SanitizerFunc
@@ -67,9 +67,9 @@ class _NameSanitizer(DerivedNameSanitizer):
         self.pattern = config.get_pattern('name-pattern')
         self.replacements = config.get_string_list('variants')
 
-    def compute_derived_names(self, name: PlaceName, obj: ProcessInfo) -> Optional[PlaceNames]:
+    def compute_derived_names(self, name: PlaceName, obj: ProcessInfo) -> Optional[Iterable[PlaceName]]:
         if (m := self.pattern.fullmatch(name.name)) is not None:
-            return [name.clone(name=n) for n in set(m.expand(r) for r in self.replacements)]
+            return (name.clone(name=n) for n in set(m.expand(r) for r in self.replacements))
 
         return None
 
