@@ -49,7 +49,7 @@ Arguments:
 
 
 """
-from typing import Optional
+from typing import Optional, Iterable
 
 from ...data.place_name import PlaceName, PlaceNames
 from .base import ProcessInfo, SanitizerFunc
@@ -64,7 +64,7 @@ class _DeleteNameSanitizer(DerivedNameSanitizer):
         self.filter_name = config.get_filter('filter-name')
 
     def compute_derived_names(self, name: PlaceName,
-                              obj: ProcessInfo) -> Optional[PlaceNames]:
+                              obj: ProcessInfo) -> Optional[Iterable[PlaceName]]:
         return [] if self.filter_name(name.name) else None
 
 

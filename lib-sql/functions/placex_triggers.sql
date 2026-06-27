@@ -1100,7 +1100,9 @@ BEGIN
                  VALUES (NEW.place_id, NEW.rank_address,
                          NEW.importance, NEW.country_code,
                          name_vector, name_partials,
-                         nameaddress_vector, nameaddress_partials, NEW.centroid);
+                         nameaddress_vector,
+                         tsvector_to_array(array_to_tsvector(nameaddress_partials)),
+                         NEW.centroid);
           {% if debug %}RAISE WARNING 'Place added to search table';{% endif %}
         END IF;
       END IF;

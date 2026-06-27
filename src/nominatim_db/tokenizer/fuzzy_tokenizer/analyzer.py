@@ -57,7 +57,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                            FROM token_source WHERE type = 'S'""")
             existing: dict[SpKey, tuple[int, set[str]]]
             for tid, clstyp, attr, labels in cur:
-                exinsting[(clstyp, attr.get('op', ''))] = (tid, set(labels))
+                existing[(clstyp, attr.get('op', ''))] = (tid, set(labels))
 
             label_diff = self._update_token_source_sp(existing, grouped, should_replace)
 
@@ -67,7 +67,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                 cur.executemany("""INSERT INTO word (word_id, type, word, src)
                                    VALUES (%s, 'S', %s, %s)""", to_add)
             if to_delete:
-                cure.executemany("DELETE FROM word WHERE word_id = %s AND src = %s", 
+                cur.executemany("DELETE FROM word WHERE word_id = %s AND src = %s", 
                                  to_delete)
 
         LOG.info("Total phrases: %s. Added: %s. Deleted: %s",
@@ -150,7 +150,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                     token_info.housenumbers.add(norm)
                     token_info.hnr_tokens.update(tokens)
                 elif item.kind == 'street':
-                    tokens = self._lookup_street_tokens(item, place.country_code)
+                    tokens = self._lookup_street_tokens(item)
                     if token_info.street is None:
                         token_info.street = tokens
                     else:
@@ -172,6 +172,9 @@ class FuzzyAnalyzer(AbstractAnalyzer):
             corresponds to the house number. This should avoid expensive
             lookups for a majority of house numbers.
         """
+        if len(name.name) <= 4 and name.name.isdecimal():
+            return name.name, [int(name.name)]
+
         norm = self.name_proc.normalize_place_name(name, country_code)
 
         if len(norm.token) <= 4 and norm.token.isdecimal():
@@ -181,13 +184,13 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         return norm.token, self.name_proc.apply_variants(ttyp.TOKEN_HOUSENUMBER,
                                                          [norm], self.conn).tokens
 
-    def _lookup_street_tokens(self, name: PlaceName, country_code: Optional[str]) -> set[int]:
+    def _lookup_street_tokens(self, name: PlaceName) -> set[int]:
         """ Look up all tokens that cover a given name.
 
             addr:street requires a matching street. Thus the full name
             must already have been indexed.
         """
-        norm = self.name_proc.normalize_place_name(name, country_code)
+        norm = self.name_proc.normalize(name.name)
         assert self.conn is not None
         return self.name_proc.lookup_tokens(ttyp.TOKEN_WORD, norm, self.conn)
 
@@ -195,7 +198,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         assert self.conn is not None
         lookup: set[int] = set()
         for n in names:
-            lookup.update(self.name_proc.lookup_tokens(ttyp.TOKEN_WORD, n, self.conn))
+            lookup.update(self.name_proc.lookup_tokens(ttyp.TOKEN_WORD, n.token, self.conn))
         analysed = self.name_proc.apply_variants(ttyp.TOKEN_WORD, names, self.conn)
 
         return {
