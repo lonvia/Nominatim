@@ -431,7 +431,9 @@ class FuzzyNameProcessor:
             return tlist
 
         with conn.cursor() as cur:
-            cur.execute('SELECT word_id FROM word WHERE src = %s', (norm_name, ))
+            cur.execute(pysql.SQL('SELECT word_id FROM word WHERE type = {} AND src = %s')
+                             .format(pysql.Literal(token_type)),
+                        (norm_name, ))
             tlist = set(cast(int, r[0]) for r in cur)
             tdata.token_lookup_cache[norm_name] = tlist
 
