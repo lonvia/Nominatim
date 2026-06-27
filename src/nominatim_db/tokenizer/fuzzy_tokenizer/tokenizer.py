@@ -41,7 +41,7 @@ class FuzzyTokenizer(AbstractTokenizer):
         self.config = FuzzyTokenizerConfig(config)
 
         with connect(self.dsn) as conn:
-            conn.execute('CREATE EXTENSION IF NOT EXISTS pg_search')
+            #conn.execute('CREATE EXTENSION IF NOT EXISTS pg_search')
             self.update_sql_functions(config)
             self._setup_db_tables(conn, config)
             self._create_base_indices(config, 'word')
