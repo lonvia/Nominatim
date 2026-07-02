@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Tests for creating abstract searches from token assignments.
@@ -36,6 +36,7 @@ def make_query(*args):
     for _ in range(max(inner[0] for tlist in args for inner in tlist)):
         q.add_node(qmod.BREAK_WORD, qmod.PHRASE_ANY)
     q.add_node(qmod.BREAK_END, qmod.PHRASE_ANY)
+    q.nodes[0].btype = qmod.BREAK_START
 
     for start, tlist in enumerate(args):
         for end, ttype, tinfos in tlist:
@@ -412,6 +413,7 @@ def make_counted_searches(name_part, name_full, address_part, address_full,
     for i in range(1 + num_address_parts):
         q.add_node(qmod.BREAK_WORD, qmod.PHRASE_ANY)
     q.add_node(qmod.BREAK_END, qmod.PHRASE_ANY)
+    q.nodes[0].btype = qmod.BREAK_START
 
     q.add_token(TokenRange(0, 1), qmod.TOKEN_PARTIAL,
                 MyToken(0.5, 1, name_part, 1, 'name_part'))

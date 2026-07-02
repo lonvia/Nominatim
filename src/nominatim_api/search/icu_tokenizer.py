@@ -11,7 +11,6 @@ from typing import Tuple, Dict, List, Optional, Iterator, Any, cast
 import dataclasses
 import difflib
 import re
-from itertools import zip_longest
 
 from icu import Transliterator
 
@@ -153,13 +152,14 @@ class ICUQueryAnalyzer(AbstractQueryAnalyzer):
 
         log().var_dump('Normalized query', query.source)
         if not query.source:
+            query.add_node(qmod.BREAK_END, qmod.PHRASE_ANY)
             return query
 
         self.split_query(query)
         log().var_dump('Transliterated query',
-                       lambda: ''.join(f"{n.term_lookup}{n.btype}" for n in query.nodes)
+                       lambda: ''.join(f"{n.btype}{n.term_lookup}" for n in query.nodes)
                                + ' / '
-                               + ''.join(f"{n.term_normalized}{n.btype}" for n in query.nodes))
+                               + ''.join(f"{n.btype}{n.term_normalized}" for n in query.nodes))
         words = query.extract_words()
 
         for row in await self.lookup_in_db(list(words.keys())):
@@ -182,7 +182,7 @@ class ICUQueryAnalyzer(AbstractQueryAnalyzer):
 
         self.add_extra_tokens(query)
         for start, end, pc in self.postcode_parser.parse(query):
-            term = ' '.join(n.term_lookup for n in query.nodes[start + 1:end + 1])
+            term = ' '.join(n.term_lookup for n in query.nodes[start:end])
             query.add_token(qmod.TokenRange(start, end),
                             qmod.TOKEN_POSTCODE,
                             ICUToken(penalty=0.0, token=0, count=1, addr_count=1,
@@ -233,23 +233,23 @@ class ICUQueryAnalyzer(AbstractQueryAnalyzer):
     def split_query(self, query: qmod.QueryStruct) -> None:
         """ Transliterate the phrases and split them into tokens.
         """
+        breakchar: Optional[str] = qmod.BREAK_START
         for phrase in query.source:
-            query.nodes[-1].ptype = phrase.ptype
             phrase_split = re.split('([ :-])', phrase.text)
-            # The zip construct will give us the pairs of word/break from
-            # the regular expression split. As the split array ends on the
-            # final word, we simply use the fillvalue to even out the list and
-            # add the phrase break at the end.
-            for word, breakchar in zip_longest(*[iter(phrase_split)]*2, fillvalue=','):
-                if not word:
-                    continue
-                if trans := self.transliterator.transliterate(word):
-                    for term, term_word in self.split_transliteration(trans, word):
-                        if term:
-                            query.add_node(qmod.BREAK_TOKEN, phrase.ptype, term, term_word)
-                    query.nodes[-1].btype = breakchar
+            for word in phrase_split:
+                if breakchar is None:
+                    breakchar = word
+                else:
+                    if word:
+                        if trans := self.transliterator.transliterate(word):
+                            for term, term_word in self.split_transliteration(trans, word):
+                                if term:
+                                    query.add_node(breakchar, phrase.ptype, term, term_word)
+                                    breakchar = qmod.BREAK_TOKEN
+                    breakchar = None
+            breakchar = qmod.BREAK_PHRASE
 
-        query.nodes[-1].btype = qmod.BREAK_END
+        query.add_node(qmod.BREAK_END, qmod.PHRASE_ANY)
 
     async def lookup_in_db(self, words: List[str]) -> 'sa.Result[Any]':
         """ Return the token information from the database for the
@@ -265,18 +265,22 @@ class ICUQueryAnalyzer(AbstractQueryAnalyzer):
     def add_extra_tokens(self, query: qmod.QueryStruct) -> None:
         """ Add tokens to query that are not saved in the database.
         """
-        need_hnr = False
+        candidate: Optional[str] = None
         for i, node in enumerate(query.nodes):
-            is_full_token = node.btype not in (qmod.BREAK_TOKEN, qmod.BREAK_PART)
-            if need_hnr and is_full_token \
-                    and len(node.term_normalized) <= 4 and node.term_normalized.isdigit():
-                query.add_token(qmod.TokenRange(i-1, i), qmod.TOKEN_HOUSENUMBER,
-                                ICUToken(penalty=0.2, token=0,
-                                         count=1, addr_count=1,
-                                         lookup_word=node.term_lookup,
-                                         word_token=node.term_lookup, info=None))
-
-            need_hnr = is_full_token and not node.has_tokens(i+1, qmod.TOKEN_HOUSENUMBER)
+            if node.btype in (qmod.BREAK_TOKEN, qmod.BREAK_PART):
+                candidate = None
+            else:
+                if candidate is not None:
+                    query.add_token(qmod.TokenRange(i - 1, i), qmod.TOKEN_HOUSENUMBER,
+                                    ICUToken(penalty=0.2, token=0,
+                                             count=1, addr_count=1,
+                                             lookup_word=candidate,
+                                             word_token=candidate, info=None))
+                if len(node.term_normalized) <= 4 and node.term_normalized.isdigit() \
+                        and not node.has_tokens(i+1, qmod.TOKEN_HOUSENUMBER):
+                    candidate = node.term_lookup
+                else:
+                    candidate = None
 
     def rerank_tokens(self, query: qmod.QueryStruct) -> None:
         """ Add penalties to tokens that depend on presence of other token.
@@ -289,7 +293,7 @@ class ICUQueryAnalyzer(AbstractQueryAnalyzer):
                         if ttype != qmod.TOKEN_POSTCODE and \
                                (ttype != qmod.TOKEN_HOUSENUMBER or
                                 start + 1 > end or
-                                len(query.nodes[end].term_lookup) > 4):
+                                len(query.nodes[start].term_lookup) > 4):
                             for token in tokens:
                                 token.penalty += 0.39
                         if (start + 1 == end):
@@ -310,8 +314,8 @@ class ICUQueryAnalyzer(AbstractQueryAnalyzer):
                                 partial.penalty += penalty
 
             # rerank tokens against the normalized form
-            norm = ''.join(f"{n.term_normalized}{'' if n.btype == qmod.BREAK_TOKEN else ' '}"
-                           for n in query.nodes[start + 1:end + 1]).strip()
+            norm = ''.join(f"{'' if n.btype == qmod.BREAK_TOKEN else ' '}{n.term_normalized}"
+                           for n in query.nodes[start:end]).strip()
             for ttype, tokens in tlist.items():
                 for token in tokens:
                     itok = cast(ICUToken, token)

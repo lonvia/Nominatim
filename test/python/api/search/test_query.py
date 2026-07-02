@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Test data types for search queries.
@@ -51,10 +51,11 @@ def test_token_range_unimplemented_ops():
 
 def test_query_extract_words():
     q = nq.QueryStruct([])
-    q.add_node(nq.BREAK_WORD, nq.PHRASE_ANY, '12', '')
-    q.add_node(nq.BREAK_TOKEN, nq.PHRASE_ANY, 'ab', '')
-    q.add_node(nq.BREAK_PHRASE, nq.PHRASE_ANY, '12', '')
-    q.add_node(nq.BREAK_END, nq.PHRASE_ANY, 'hallo', '')
+    q.add_node(nq.BREAK_START, nq.PHRASE_ANY, '12', '')
+    q.add_node(nq.BREAK_WORD, nq.PHRASE_ANY, 'ab', '')
+    q.add_node(nq.BREAK_TOKEN, nq.PHRASE_ANY, '12', '')
+    q.add_node(nq.BREAK_PHRASE, nq.PHRASE_ANY, 'hallo', '')
+    q.add_node(nq.BREAK_END, nq.PHRASE_ANY)
 
     words = q.extract_words()
 
