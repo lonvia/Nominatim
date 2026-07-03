@@ -9,7 +9,7 @@ DROP TYPE IF EXISTS nearfeaturecentr CASCADE;
 CREATE TYPE nearfeaturecentr AS (
   place_id BIGINT,
   keywords int[],
-  partials tsvector,
+  partials TEXT,
   rank_address smallint,
   rank_search smallint,
   distance float,
@@ -116,7 +116,7 @@ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION insertLocationAreaLarge(
   in_partition INTEGER, in_place_id BIGINT, in_country_code VARCHAR(2),
-  in_keywords INTEGER[], in_partials tsvector,
+  in_keywords INTEGER[], in_partials TEXT,
   in_rank_search INTEGER, in_rank_address INTEGER, in_estimate BOOLEAN, postcode TEXT,
   in_centroid GEOMETRY, in_geometry GEOMETRY) RETURNS BOOLEAN AS $$
 DECLARE

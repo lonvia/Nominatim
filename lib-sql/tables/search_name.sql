@@ -15,8 +15,8 @@ CREATE TABLE search_name (
   address_rank SMALLINT NOT NULL,
   name_vector integer[] NOT NULL,
   nameaddress_vector integer[] NOT NULL,
-  name_partials tsvector NOT NULL,
-  nameaddress_partials tsvector NOT NULL,
+  name_partials TEXT NOT NULL,
+  nameaddress_partials TEXT NOT NULL,
   country_code varchar(2),
   centroid GEOMETRY(Geometry, 4326) NOT NULL
   ) {{db.tablespace.search_data}};
