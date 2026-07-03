@@ -399,14 +399,14 @@ CREATE OR REPLACE FUNCTION create_poi_search_terms(obj_place_id BIGINT,
                                                    token_info JSONB,
                                                    geometry GEOMETRY,
                                                    OUT name_vector INTEGER[],
-                                                   OUT name_partials tsvector,
+                                                   OUT name_partials TEXT,
                                                    OUT nameaddress_vector INTEGER[],
-                                                   OUT nameaddress_partials tsvector)
+                                                   OUT nameaddress_partials TEXT)
   AS $$
 DECLARE
   parent_name_vector INTEGER[];
   parent_address_vector INTEGER[];
-  parent_partials tsvector;
+  parent_partials TEXT;
   addr_place_ids INTEGER[];
   hnr_vector INTEGER[];
 
@@ -415,10 +415,10 @@ DECLARE
   parent_address_place_ids BIGINT[];
 BEGIN
   nameaddress_vector := '{}'::INTEGER[];
-  nameaddress_partials := ''::tsvector;
+  nameaddress_partials := '';
 
   SELECT s.name_vector, s.nameaddress_vector,
-         s.name_partials || s.nameaddress_partials
+         s.name_partials || ' ' || s.nameaddress_partials
     INTO parent_name_vector, parent_address_vector, parent_partials
     FROM search_name s
     WHERE s.place_id = parent_place_id;
@@ -436,7 +436,7 @@ BEGIN
     IF addr_place is null THEN
       -- No place found in OSM that matches. Make it at least searchable.
       nameaddress_vector := array_merge(nameaddress_vector, addr_item.full_tokens);
-      nameaddress_partials := nameaddress_partials || addr_item.partials;
+      nameaddress_partials := nameaddress_partials || ' ' || addr_item.partials;
     ELSE
       IF parent_address_place_ids is null THEN
         SELECT array_agg(parent_place_id) INTO parent_address_place_ids
@@ -448,7 +448,7 @@ BEGIN
       -- are done. Otherwise, add its own place_address line.
       IF not parent_address_place_ids @> ARRAY[addr_place.place_id] THEN
         nameaddress_vector := array_merge(nameaddress_vector, addr_place.keywords);
-        nameaddress_partials := nameaddress_partials || addr_place.partials;
+        nameaddress_partials := nameaddress_partials || ' ' || addr_place.partials;
 
         INSERT INTO place_addressline (place_id, address_place_id, fromarea,
                                        isaddress, distance, cached_rank_address)
@@ -459,7 +459,7 @@ BEGIN
   END LOOP;
 
   name_vector := COALESCE(token_get_name_search_tokens(token_info), '{}'::INTEGER[]);
-  name_partials := COALESCE(token_get_name_search_partials(token_info), ''::tsvector);
+  name_partials := COALESCE(token_get_name_search_partials(token_info), '');
 
   -- Check if the parent covers all address terms.
   -- If not, create a search name entry with the house number as the name.
@@ -477,7 +477,7 @@ BEGIN
   nameaddress_vector := array_merge(nameaddress_vector, parent_name_vector);
   IF parent_address_vector is not NULL THEN
     nameaddress_vector := array_merge(nameaddress_vector, parent_address_vector);
-    nameaddress_partials := nameaddress_partials || parent_partials;
+    nameaddress_partials := nameaddress_partials || ' ' || parent_partials;
   END IF;
 
   -- make sure addr:place terms are always searchable
@@ -488,7 +488,7 @@ BEGIN
       name_vector := array_merge(name_vector, hnr_vector);
     END IF;
     nameaddress_vector := array_merge(nameaddress_vector, addr_place_ids);
-    nameaddress_partials := nameaddress_partials || token_addr_place_search_partials(token_info);
+    nameaddress_partials := nameaddress_partials || '  ' || token_addr_place_search_partials(token_info);
   END IF;
 
   -- Parent doesn't have a name and is therefore not listed.
@@ -496,6 +496,8 @@ BEGIN
   IF parent_address_vector is NULL THEN
    -- TODO!!!
   END IF;
+
+  nameaddress_partials := deduplicate_tokens(nameaddress_partials);
 END;
 $$
 LANGUAGE plpgsql;
@@ -528,7 +530,7 @@ CREATE OR REPLACE FUNCTION insert_addresslines(obj_place_id BIGINT,
                                                OUT parent_place_id BIGINT,
                                                OUT postcode TEXT,
                                                OUT nameaddress_vector INTEGER[],
-                                               OUT nameaddress_partials tsvector)
+                                               OUT nameaddress_partials TEXT)
   AS $$
 DECLARE
   address_havelevel BOOLEAN[];
@@ -546,7 +548,7 @@ DECLARE
 BEGIN
   parent_place_id := 0;
   nameaddress_vector := '{}'::int[];
-  nameaddress_partials := ''::tsvector;
+  nameaddress_partials := '';
 
   address_havelevel := array_fill(false, ARRAY[maxrank]);
   place_min_distance := array_fill(1.0, ARRAY[maxrank]);
@@ -564,12 +566,12 @@ BEGIN
     IF location.place_id is null THEN
       {% if not db.reverse_only %}
       nameaddress_vector := array_merge(nameaddress_vector, location.addr_full_tokens);
-      nameaddress_partials := nameaddress_partials || location.addr_partials;
+      nameaddress_partials := nameaddress_partials || ' ' || location.addr_partials;
       {% endif %}
     ELSE
       {% if not db.reverse_only %}
       nameaddress_vector := array_merge(nameaddress_vector, location.keywords);
-      nameaddress_partials := nameaddress_partials || location.partials;
+      nameaddress_partials := nameaddress_partials || ' ' || location.partials;
       {% endif %}
 
       location_isaddress := not address_havelevel[location.rank_address];
@@ -659,7 +661,7 @@ BEGIN
     -- Add it to the list of search terms
     {% if not db.reverse_only %}
     nameaddress_vector := array_merge(nameaddress_vector, location.keywords);
-    nameaddress_partials := nameaddress_partials || location.partials;
+    nameaddress_partials := nameaddress_partials || ' ' || location.partials;
     {% endif %}
 
     INSERT INTO place_addressline (place_id, address_place_id, fromarea,
@@ -667,6 +669,10 @@ BEGIN
         VALUES (obj_place_id, location.place_id, not location.isguess,
                 location_isaddress, location.distance, location.rank_address);
   END LOOP;
+
+  {% if not db.reverse_only %}
+  nameaddress_partials := deduplicate_tokens(nameaddress_partials);
+  {% endif %}
 END;
 $$
 LANGUAGE plpgsql;
@@ -754,9 +760,9 @@ DECLARE
   max_rank SMALLINT;
 
   name_vector INTEGER[];
-  name_partials tsvector;
+  name_partials TEXT;
   nameaddress_vector INTEGER[];
-  nameaddress_partials tsvector;
+  nameaddress_partials TEXT;
   addr_nameaddress_vector INTEGER[];
 
   linked_place BIGINT;
@@ -1248,7 +1254,7 @@ BEGIN
   -- if we have a name add this to the name search table
   name_vector := token_get_name_search_tokens(NEW.token_info);
   IF array_length(name_vector, 1) is not NULL THEN
-    name_partials := COALESCE(token_get_name_search_partials(NEW.token_info), ''::tsvector);
+    name_partials := COALESCE(token_get_name_search_partials(NEW.token_info), '');
     -- Initialise the name vector using our name
     NEW.name := add_default_place_name(NEW.country_code, NEW.name);
 
