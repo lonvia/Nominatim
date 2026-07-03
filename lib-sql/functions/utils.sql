@@ -62,6 +62,14 @@ END;
 $$
 LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
+
+CREATE OR REPLACE FUNCTION deduplicate_tokens(in_tokens TEXT)
+  RETURNS TEXT
+AS $$
+  SELECT array_to_string(tsvector_to_array(in_tokens::tsvector), ' ')
+$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+
 -- Return the node members with a given label from a relation member list
 -- as a set.
 --
@@ -359,7 +367,7 @@ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION add_location(place_id BIGINT, country_code varchar(2),
                                         partition INTEGER,
-                                        keywords INTEGER[], partials tsvector,
+                                        keywords INTEGER[], partials TEXT,
                                         rank_search INTEGER, rank_address INTEGER,
                                         in_postcode TEXT, geometry GEOMETRY,
                                         centroid GEOMETRY)

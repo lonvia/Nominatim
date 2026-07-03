@@ -16,9 +16,9 @@ $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION token_get_name_search_partials(info JSONB)
-  RETURNS tsvector
+  RETURNS TEXT
 AS $$
-  SELECT (info->>'part')::tsvector
+  SELECT info->>'part'
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
@@ -81,9 +81,9 @@ $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION token_addr_place_search_partials(info JSONB)
-  RETURNS tsvector
+  RETURNS TEXT
 AS $$
-  SELECT (info->'addr'->'place'->>'part')::tsvector
+  SELECT info->'addr'->'place'->>'part'
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 DROP TYPE IF EXISTS TokenAddressInfo CASCADE;
@@ -91,7 +91,7 @@ CREATE TYPE TokenAddressInfo AS (
   key TEXT,
   match_tokens INTEGER[],
   full_tokens INTEGER[],
-  partials tsvector
+  partials TEXT
 );
 
 CREATE OR REPLACE FUNCTION token_get_address_info(info JSONB)
@@ -100,7 +100,7 @@ AS $$
   SELECT addr.key as key,
          COALESCE(addr.value->>'match', '{}')::INTEGER[] as match_tokens,
          COALESCE(addr.value->>'full', '{}')::INTEGER[] as full_tokens,
-         COALESCE(addr.value->>'part', '')::tsvector as partials
+         COALESCE(addr.value->>'part', '') as partials
     FROM jsonb_each(info->'addr') as addr WHERE addr.key != 'place';
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
