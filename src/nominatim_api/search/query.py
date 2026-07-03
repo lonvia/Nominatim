@@ -402,7 +402,7 @@ class QueryStruct:
     def iter_partials_trans(self, trange: TokenRange) -> Iterator[str]:
         """ Iterate over the transliterated form of the partial tokens.
         """
-        return (n.term_lookup for n in self.nodes[trange.start + 1:trange.end + 1])
+        return (n.term_lookup for n in self.nodes[trange.start:trange.end])
 
     def get_partial_penalty(self, trange: TokenRange) -> float:
         """ Return the sumed up penalty of partial tokens in the given range

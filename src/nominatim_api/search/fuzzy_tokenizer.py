@@ -158,9 +158,9 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
 
         self._split_query(query)
         log().var_dump('Transliterated query',
-                       lambda: ''.join(f"{n.term_lookup}{n.btype}" for n in query.nodes)
+                       lambda: ''.join(f"{n.btype}{n.term_lookup}" for n in query.nodes)
                                + ' / '
-                               + ''.join(f"{n.term_normalized}{n.btype}" for n in query.nodes))
+                               + ''.join(f"{n.btype}{n.term_normalized}" for n in query.nodes))
         words = query.extract_words()
 
         for row in await self._lookup_in_db(list(words.keys())):
@@ -196,19 +196,19 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
     def _split_query(self, query: qmod.QueryStruct) -> None:
         """ Transliterate the phrases and split them into tokens.
         """
+        breakchar: Optional[str] = qmod.BREAK_START
         for phrase in query.source:
-            phrase_split = TOKEN_SPLIT_RE.split(phrase.text)
-            # The zip construct will give us the pairs of word/break from
-            # the regular expression split. As the split array ends on the
-            # final word, we simply use the fillvalue to even out the list and
-            # add the phrase break at the end.
-            for word, breakchar in zip_longest(*[iter(phrase_split)]*2,
-                                               fillvalue=qmod.BREAK_PHRASE):
-                if word:
-                    if trans := self.transliterator.transliterate(word):
-                        query.add_node(breakchar, phrase.ptype, trans, word)
+            for word in TOKEN_SPLIT_RE.split(phrase.text):
+                if breakchar is None:
+                    breakchar = word
+                else:
+                    if word:
+                        if trans := self.transliterator.transliterate(word):
+                            query.add_node(breakchar, phrase.ptype, trans, word)
+                    breakchar = None
+            breakchar = qmod.BREAK_PHRASE
 
-        query.nodes[-1].btype = qmod.BREAK_END
+        query.add_node(qmod.BREAK_END, qmod.PHRASE_ANY)
 
     async def _lookup_in_db(self, words: list[str]) -> 'sa.Result[Any]':
         """ Return the token information from the database for the
@@ -223,18 +223,20 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
         """ Add tokens to query that are not saved in the database.
         """
         # numerical housenumbers up to 9999
-        need_hnr = False
+        candidate: Optional[str] = None
         for i, node in enumerate(query.nodes):
-            is_full_token = node.btype not in (qmod.BREAK_TOKEN, qmod.BREAK_PART)
-            if need_hnr and is_full_token \
-                    and len(node.term_normalized) <= 4 and node.term_normalized.isdecimal():
-                query.add_token(qmod.TokenRange(i-1, i), qmod.TOKEN_HOUSENUMBER,
-                                FuzzyToken(penalty=0.0,
-                                           token=int(node.term_normalized.isdecimal()),
-                                           count=1, addr_count=1,
-                                           lookup_word=node.term_normalized))
-
-            need_hnr = is_full_token
+            if node.btype in (qmod.BREAK_TOKEN, qmod.BREAK_PART):
+                candidate = None
+            else:
+                if candidate is not None:
+                    query.add_token(qmod.TokenRange(i - 1, i), qmod.TOKEN_HOUSENUMBER,
+                                    FuzzyToken(penalty=0.0, token=int(candidate),
+                                               count=1, addr_count=1,
+                                               lookup_word=candidate))
+                if len(node.term_normalized) <= 4 and node.term_normalized.isdecimal():
+                    candidate = node.term_normalized
+                else:
+                    candidate = None
 
         # postcodes
         for start, end, pc in self.postcode_parser.parse(query):
@@ -330,7 +332,7 @@ def _dump_word_tokens(query: qmod.QueryStruct) -> Iterator[list[Any]]:
     yield ['type', 'from', 'to', 'token', 'word', 'src', 'penalty', 'name_count', 'addr_count', 'extra']
     for i, node in enumerate(query.nodes):
         if node.term_lookup:
-            yield [qmod.TOKEN_PARTIAL, i - 1, i, '-', node.term_lookup,
+            yield [qmod.TOKEN_PARTIAL, i, i + 1, '-', node.term_lookup,
                    node.term_normalized, '-', '-', '-', '']
     for i, node in enumerate(query.nodes):
         for tlist in node.starting:
