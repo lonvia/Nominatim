@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Test for creation of token assignments from tokenized queries.
@@ -29,7 +29,7 @@ def make_query(*args):
     dummy = MyToken(penalty=3.0, token=45, count=1, addr_count=1,
                     lookup_word='foo')
 
-    for btype, ptype, _ in args[1:]:
+    for btype, ptype, _ in args:
         q.add_node(btype, ptype)
         q.nodes[-1].penalty = PENALTY_BREAK[btype]
     q.add_node(qmod.BREAK_END, qmod.PHRASE_ANY)

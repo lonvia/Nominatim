@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Handling of arbitrary postcode tokens in tokenized query string.
@@ -57,28 +57,34 @@ class PostcodeParser:
         nodes = query.nodes
         outcodes: Set[Tuple[int, int, str]] = set()
 
-        terms = [n.term_normalized.upper() + n.btype for n in nodes]
-        for i in range(query.num_token_slots()):
-            if nodes[i].btype in '<,: ' and nodes[i + 1].btype != '`' \
-                    and (i == 0 or nodes[i - 1].ptype != qmod.PHRASE_POSTCODE):
-                if nodes[i].ptype == qmod.PHRASE_ANY:
-                    word = terms[i + 1]
-                    if word[-1] in ' -' and nodes[i + 2].btype != '`' \
-                            and nodes[i + 1].ptype == qmod.PHRASE_ANY:
-                        word += terms[i + 2]
-                        if word[-1] in ' -' and nodes[i + 3].btype != '`' \
-                                and nodes[i + 2].ptype == qmod.PHRASE_ANY:
-                            word += terms[i + 3]
+        start = 0
+        endnode = query.num_token_slots()
+        while start < endnode:
+            ptype = nodes[start].ptype
+            end = start + 1
+            while nodes[end].btype not in '>,:' and nodes[end].ptype == ptype:
+                end += 1
 
-                    self._match_word(word, i, False, outcodes)
-                elif nodes[i].ptype == qmod.PHRASE_POSTCODE:
-                    word = terms[i + 1]
-                    for j in range(i + 1, query.num_token_slots()):
-                        if nodes[j].ptype != qmod.PHRASE_POSTCODE:
-                            break
-                        word += terms[j + 1]
+            subnodes = nodes[start:end]
+            if ptype == qmod.PHRASE_POSTCODE:
+                self._match_word(''.join(f"{n.btype}{n.term_normalized.upper()}"
+                                         for n in subnodes)[1:] + nodes[end].btype,
+                                 start, True, outcodes)
+            elif ptype == qmod.PHRASE_ANY:
+                subnodes.reverse()
+                word = nodes[end].btype
+                substart = end - 1
+                for n in subnodes:
+                    if n.btype == '`' or word == '`':
+                        word = n.btype
+                    else:
+                        word = n.term_normalized.upper() + word
+                        if n.btype in '<,: ':
+                            self._match_word(word, substart, False, outcodes)
+                        word = n.btype + word
+                    substart -= 1
 
-                    self._match_word(word, i, True, outcodes)
+            start = end
 
         return outcodes
 

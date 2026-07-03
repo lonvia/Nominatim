@@ -190,10 +190,12 @@ class QueryNode:
     """ A node of the query representing a break between terms.
 
         The node also contains information on the source term
-        ending at the node. The tokens are created from this information.
+        starting at the node. The tokens are created from this information.
     """
     btype: BreakType
     ptype: PhraseType
+    """ Type of phrase for edges starting at this node.
+    """
 
     penalty: float
     """ Penalty for having a word break at this position. The penalty
@@ -201,10 +203,10 @@ class QueryNode:
         the word after the node.
     """
     term_lookup: str
-    """ Transliterated term ending at this node.
+    """ Transliterated term starting at this node.
     """
     term_normalized: str
-    """ Normalised form of term ending at this node.
+    """ Normalised form of term starting at this node.
     """
 
     starting: List[TokenList] = dataclasses.field(default_factory=list)
@@ -288,9 +290,7 @@ class QueryStruct:
     def __init__(self, source: List[Phrase]) -> None:
         self.source = source
         self.dir_penalty = 0.0
-        self.nodes: List[QueryNode] = \
-            [QueryNode(BREAK_START, source[0].ptype if source else PHRASE_ANY,
-                       0.0, '', '')]
+        self.nodes: List[QueryNode] = []
 
     def num_token_slots(self) -> int:
         """ Return the length of the query in vertice steps.
@@ -406,19 +406,18 @@ class QueryStruct:
             position within the query.
         """
         if endpos is None:
-            endpos = len(self.nodes)
+            endpos = len(self.nodes) - 1
 
         words: Dict[str, List[TokenRange]] = defaultdict(list)
 
-        for first, first_node in enumerate(self.nodes[start + 1:endpos], start):
+        for first, first_node in enumerate(self.nodes[start:endpos], start):
             word = first_node.term_lookup
             words[word].append(TokenRange(first, first + 1))
-            if first_node.btype != BREAK_PHRASE:
-                max_last = min(first + 20, endpos)
-                for last, last_node in enumerate(self.nodes[first + 2:max_last], first + 2):
-                    word = ' '.join((word, last_node.term_lookup))
-                    words[word].append(TokenRange(first, last))
-                    if last_node.btype == BREAK_PHRASE:
-                        break
+            max_last = min(first + 20, endpos)
+            for last, last_node in enumerate(self.nodes[first + 1:max_last], first + 2):
+                if last_node.btype == BREAK_PHRASE:
+                    break
+                word = f"{word} {last_node.term_lookup}"
+                words[word].append(TokenRange(first, last))
 
         return words

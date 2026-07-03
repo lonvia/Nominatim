@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Tests for tokenized query data structures.
@@ -64,14 +64,9 @@ def test_query_node_with_content(qnode):
     assert len(qnode.get_tokens(2, query.TOKEN_WORD)) == 1
 
 
-def test_query_struct_empty():
-    q = query.QueryStruct([])
-
-    assert q.num_token_slots() == 0
-
-
 def test_query_struct_with_tokens():
     q = query.QueryStruct([query.Phrase(query.PHRASE_ANY, 'foo bar')])
+    q.add_node(query.BREAK_START, query.PHRASE_ANY)
     q.add_node(query.BREAK_WORD, query.PHRASE_ANY)
     q.add_node(query.BREAK_END, query.PHRASE_ANY)
 
@@ -96,6 +91,7 @@ def test_query_struct_with_tokens():
 
 def test_query_struct_incompatible_token():
     q = query.QueryStruct([query.Phrase(query.PHRASE_COUNTRY, 'foo bar')])
+    q.add_node(query.BREAK_START, query.PHRASE_COUNTRY)
     q.add_node(query.BREAK_WORD, query.PHRASE_COUNTRY)
     q.add_node(query.BREAK_END, query.PHRASE_ANY)
 
@@ -107,6 +103,7 @@ def test_query_struct_incompatible_token():
 
 def test_query_struct_amenity_single_word():
     q = query.QueryStruct([query.Phrase(query.PHRASE_AMENITY, 'bar')])
+    q.add_node(query.BREAK_START, query.PHRASE_ANY)
     q.add_node(query.BREAK_END, query.PHRASE_ANY)
 
     q.add_token(query.TokenRange(0, 1), query.TOKEN_PARTIAL, mktoken(1))
@@ -120,6 +117,7 @@ def test_query_struct_amenity_single_word():
 
 def test_query_struct_amenity_two_words():
     q = query.QueryStruct([query.Phrase(query.PHRASE_AMENITY, 'foo bar')])
+    q.add_node(query.BREAK_START, query.PHRASE_AMENITY)
     q.add_node(query.BREAK_WORD, query.PHRASE_AMENITY)
     q.add_node(query.BREAK_END, query.PHRASE_ANY)
 
