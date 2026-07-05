@@ -7,11 +7,12 @@
 """
 Analyzer which works with full word tokens as ints and partial tokens as str.
 """
-from typing import Optional, Iterable, Any
+from typing import Optional, Collection, Any
 import dataclasses
+import logging
 from collections import defaultdict
 
-from ...db.connection import connect, Connection
+from ...db.connection import connect, Connection, register_hstore
 from ..base import AbstractAnalyzer
 from ...config import Configuration
 from ...data.place_info import PlaceInfo
@@ -19,7 +20,10 @@ from ...data.place_name import PlaceName, PlaceNames
 from .name_processor import FuzzyNameProcessor
 from . import types as ttyp
 
+LOG = logging.getLogger()
+
 SpKey = tuple[str, str]
+
 
 class FuzzyAnalyzer(AbstractAnalyzer):
 
@@ -43,9 +47,11 @@ class FuzzyAnalyzer(AbstractAnalyzer):
     def update_postcodes_from_db(self) -> None:
         pass # not needed
 
-    def update_special_phrases(self, phrases: Iterable[tuple[str, str, str, str]],
+    def update_special_phrases(self, phrases: Collection[tuple[str, str, str, str]],
                                should_replace: bool) -> None:
         assert self.conn is not None
+
+        register_hstore(self.conn)
 
         grouped: dict[SpKey, set[str]] = defaultdict(set)
         for label, cls, typ, operator in phrases:
@@ -56,7 +62,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                                   (SELECT array_agg(src) FROM word
                                    WHERE type = 'S' and word_id = id) AS variants
                            FROM token_source WHERE type = 'S'""")
-            existing: dict[SpKey, tuple[int, set[str]]]
+            existing: dict[SpKey, tuple[int, set[str]]] = {}
             for tid, clstyp, attr, labels in cur:
                 existing[(clstyp, attr.get('op', ''))] = (tid, set(labels))
 
@@ -80,12 +86,12 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                                 replace: bool) -> dict[int, tuple[set[str], set[str]]]:
         assert self.conn is not None
 
-        diff: dict[int, tuple(set[str], set[str])] = {}
+        diff: dict[int, tuple[set[str], set[str]]] = {}
 
         with self.conn.cursor() as cur:
-            # New or changed.
             for (clstyp, op), labels in new.items():
                 if (clstyp, op) in existing:
+                    # Label set has changed.
                     wid, old_labels = existing[(clstyp, op)]
                     if labels != old_labels:
                         if replace:
@@ -94,13 +100,19 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                             new_labels = labels | old_labels
                         diff[wid] = (old_labels, new_labels)
                 else:
+                    # Classtype is new.
                     cur.execute("""INSERT INTO token_source (type, token, attributes)
-                                   VALUES (%s, 'S', %s, hstore('op', %s))
+                                   VALUES ('S', %s, hstore('op', %s))
                                    RETURNING id""",
-                                ())
-                    pass # TODO: insert new token_source
+                                (clstyp, op))
+                    for (tid, ) in cur:
+                        diff[tid] = (set(), labels)
             if replace:
-                pass # TODO delete classes that have gone
+                for clskey, (tid, labels) in existing.items():
+                    if clskey not in new:
+                        # Classtype is gone.
+                        cur.execute('DELTE FROM token_source WHERE id = %s', (tid, ))
+                        diff[tid] = (labels, set())
 
         return diff
 
@@ -168,7 +180,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         return token_info.get_dict()
 
     def _housenumber_to_tokens(self, name: PlaceName,
-                               country_code: Optional[str]) -> tuple[str, Iterable[int]]:
+                               country_code: Optional[str]) -> tuple[str, Collection[int]]:
         """ Computes the normalized name and token ID(s) for the given house number.
 
             Numeric house numbers up to 9999 have a fixed token ID that
@@ -211,7 +223,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         }
 
 
-def _mk_array(tokens: Iterable[int]) -> str:
+def _mk_array(tokens: Collection[int]) -> str:
     """ Create an int array string suitable for PostgreSOL array input.
     """
     return '{' + ','.join((str(s) for s in tokens)) + '}'

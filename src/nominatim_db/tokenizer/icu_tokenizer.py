@@ -9,7 +9,7 @@ Tokenizer implementing normalisation as used before Nominatim 4 but using
 libICU instead of the PostgreSQL module.
 """
 from typing import Optional, Sequence, List, Tuple, Mapping, Any, cast, \
-                   Dict, Set, Iterable
+                   Dict, Set, Iterable, Collection
 import logging
 
 from psycopg.types.json import Jsonb
@@ -382,7 +382,7 @@ class ICUNameAnalyzer(AbstractAnalyzer):
         with self.conn.cursor() as cur:
             cur.execute("DELETE FROM word WHERE type = 'P'")
 
-    def update_special_phrases(self, phrases: Iterable[Tuple[str, str, str, str]],
+    def update_special_phrases(self, phrases: Collection[Tuple[str, str, str, str]],
                                should_replace: bool) -> None:
         """ Replace the search index for special phrases with the new phrases.
             If `should_replace` is True, then the previous set of will be
