@@ -46,14 +46,15 @@ class FuzzyAnalyzer(AbstractAnalyzer):
     def update_special_phrases(self, phrases: Iterable[tuple[str, str, str, str]],
                                should_replace: bool) -> None:
         assert self.conn is not None
-        return # TODO remove when it works
 
         grouped: dict[SpKey, set[str]] = defaultdict(set)
         for label, cls, typ, operator in phrases:
             grouped[(f"{cls}.{typ}", operator)].add(self.name_proc.normalize(label))
 
         with self.conn.cursor() as cur:
-            cur.execute("""SELECT id, token, attributes, variants
+            cur.execute("""SELECT id, token, attributes,
+                                  (SELECT array_agg(src) FROM word
+                                   WHERE type = 'S' and word_id = id) AS variants
                            FROM token_source WHERE type = 'S'""")
             existing: dict[SpKey, tuple[int, set[str]]]
             for tid, clstyp, attr, labels in cur:
@@ -67,7 +68,8 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                 cur.executemany("""INSERT INTO word (word_id, type, word, src)
                                    VALUES (%s, 'S', %s, %s)""", to_add)
             if to_delete:
-                cur.executemany("DELETE FROM word WHERE word_id = %s AND src = %s", 
+                cur.executemany("""DELETE FROM word
+                                   WHERE type = 'S' AND word_id = %s AND src = %s""", 
                                  to_delete)
 
         LOG.info("Total phrases: %s. Added: %s. Deleted: %s",
@@ -90,11 +92,12 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                             new_labels = labels
                         else:
                             new_labels = labels | old_labels
-                        cur.execute("""UPDATE token_source SET variants = %s
-                                       WHERE id = %s
-                                    """, (list(new_labels), wid))
                         diff[wid] = (old_labels, new_labels)
                 else:
+                    cur.execute("""INSERT INTO token_source (type, token, attributes)
+                                   VALUES (%s, 'S', %s, hstore('op', %s))
+                                   RETURNING id""",
+                                ())
                     pass # TODO: insert new token_source
             if replace:
                 pass # TODO delete classes that have gone
