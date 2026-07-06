@@ -7,16 +7,86 @@
 """
 Interface for classes implementing a database search.
 """
-from typing import Callable, List
+from typing import Any, Callable, List, Optional
 import abc
+import re
 
 import sqlalchemy as sa
+from sqlalchemy.ext.compiler import compiles
 
 from ...typing import SaFromClause, SaSelect, SaColumn, SaExpression, SaLambdaSelect
 from ...sql.sqlalchemy_types import Geometry
 from ...connection import SearchConnection
 from ...types import SearchDetails, DataLayer, GeometryFormat
 from ...results import SearchResults
+
+
+_LTREE_INVALID = re.compile(r'[^A-Za-z0-9_-]')
+
+
+def _sanitize_label(part: str) -> str:
+    """ Turn an OSM key or value into a valid ltree label, mirroring the
+        Lua sanitize_label(): invalid characters map to 'yes', hyphens to
+        underscores (for PostgreSQL < 16 compatibility).
+    """
+    if not part or _LTREE_INVALID.search(part):
+        return 'yes'
+    return part.replace('-', '_')
+
+
+def category_ltree(cls: str, typ: str) -> Optional[str]:
+    """ Build the 'osm.<class>.<type>' ltree string for a class/type pair,
+        mirroring the Lua get_category(). Returns None when the class cannot
+        form a valid ltree label, in which case no stored category can match.
+    """
+    if not cls or _LTREE_INVALID.search(cls):
+        return None
+    return f'osm.{_sanitize_label(cls)}.{_sanitize_label(typ)}'
+
+
+class CategoryMatch(sa.sql.expression.FunctionElement[Any]):
+    """ Match a placex row against a single (class, type) category.
+
+        On PostgreSQL this queries the ltree 'categories' column using the
+        GiST index (``categories <@ 'osm.<class>.<type>'``). On SQLite, which
+        has no ltree support, it falls back to class/type equality; those
+        columns are still present and populated.
+    """
+    inherit_cache = True
+
+    def __init__(self, table: SaFromClause, ltree: str, cls: str, typ: str) -> None:
+        super().__init__(table.c.categories, sa.literal(ltree),
+                         table.c.class_, sa.literal(cls),
+                         table.c.type, sa.literal(typ))
+
+
+@compiles(CategoryMatch)
+def _default_category_match(element: CategoryMatch,
+                            compiler: 'sa.Compiled', **kw: Any) -> str:
+    cats, ltree, _, _, _, _ = list(element.clauses)
+    return "(%s <@ (%s)::ltree)" % (compiler.process(cats, **kw),
+                                    compiler.process(ltree, **kw))
+
+
+@compiles(CategoryMatch, 'sqlite')
+def _sqlite_category_match(element: CategoryMatch,
+                           compiler: 'sa.Compiled', **kw: Any) -> str:
+    _, _, cls_col, cls_lit, typ_col, typ_lit = list(element.clauses)
+    return "(%s = %s AND %s = %s)" % (compiler.process(cls_col, **kw),
+                                      compiler.process(cls_lit, **kw),
+                                      compiler.process(typ_col, **kw),
+                                      compiler.process(typ_lit, **kw))
+
+
+def category_filter(table: SaFromClause, cls: str, typ: str) -> SaExpression:
+    """ Build a boolean expression selecting rows of the given class/type
+        category. Uses the ltree categories column on PostgreSQL and falls
+        back to class/type equality where no ltree category can exist.
+    """
+    ltree = category_ltree(cls, typ)
+    if ltree is None:
+        return sa.and_(table.c.class_ == cls, table.c.type == typ)
+    return CategoryMatch(table, ltree, cls, typ)
 
 
 class AbstractSearch(abc.ABC):

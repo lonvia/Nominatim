@@ -7,14 +7,12 @@
 """
 Implementation of category search.
 """
-from typing import List
-
 import sqlalchemy as sa
 
 from . import base
 from ..db_search_fields import SearchData
 from ... import results as nres
-from ...typing import SaBind, SaRow, SaSelect, SaLambdaSelect
+from ...typing import SaBind, SaRow, SaSelect
 from ...sql.sqlalchemy_types import Geometry
 from ...connection import SearchConnection
 from ...types import SearchDetails, Bbox
@@ -48,7 +46,10 @@ class PoiSearch(base.AbstractSearch):
 
         t = conn.t.placex
 
-        rows: List[SaRow] = []
+        # Rows tagged with the category they were matched on. A placex row may
+        # carry several categories, so the matched one is not necessarily its
+        # class/type and must be tracked explicitly.
+        rows: list[tuple[SaRow, tuple[str, str]]] = []
 
         if details.near and details.near_radius is not None and details.near_radius < 0.2:
             # simply search in placex table
@@ -61,58 +62,48 @@ class PoiSearch(base.AbstractSearch):
                            .order_by(t.c.centroid.ST_Distance(NEAR_PARAM)) \
                            .limit(LIMIT_PARAM)
 
-            classtype = self.qualifiers.values
-            if len(classtype) == 1:
-                cclass, ctype = classtype[0]
-                sql: SaLambdaSelect = sa.lambda_stmt(
-                    lambda: _base_query().where(t.c.class_ == cclass)
-                                         .where(t.c.type == ctype))
-            else:
-                sql = _base_query().where(sa.or_(*(sa.and_(t.c.class_ == cls, t.c.type == typ)
-                                                   for cls, typ in classtype)))
-
-            if self.countries:
-                sql = sql.where(t.c.country_code.in_(self.countries.values))
-
-            if details.viewbox is not None and details.bounded_viewbox:
-                sql = sql.where(t.c.geometry.intersects(VIEWBOX_PARAM))
-
-            if details.excluded:
-                sql = sql.where(base.exclude_places(t))
-
-            rows.extend(await conn.execute(sql, bind_params))
-        else:
-            # use the class type tables
             for category in self.qualifiers.values:
-                table = await conn.get_class_table(*category)
-                if table is not None:
-                    sql = base.select_placex(t)\
-                               .add_columns(t.c.importance)\
-                               .join(table, t.c.place_id == table.c.place_id)\
-                               .where(t.c.class_ == category[0])\
-                               .where(t.c.type == category[1])
+                sql = _base_query().where(base.category_filter(t, *category))
 
-                    if details.viewbox is not None and details.bounded_viewbox:
-                        sql = sql.where(table.c.centroid.intersects(VIEWBOX_PARAM))
+                if self.countries:
+                    sql = sql.where(t.c.country_code.in_(self.countries.values))
 
-                    if details.near and details.near_radius is not None:
-                        sql = sql.order_by(table.c.centroid.ST_Distance(NEAR_PARAM))\
-                                 .where(table.c.centroid.within_distance(NEAR_PARAM,
-                                                                         NEAR_RADIUS_PARAM))
+                if details.viewbox is not None and details.bounded_viewbox:
+                    sql = sql.where(t.c.geometry.intersects(VIEWBOX_PARAM))
 
-                    if self.countries:
-                        sql = sql.where(t.c.country_code.in_(self.countries.values))
+                if details.excluded:
+                    sql = sql.where(base.exclude_places(t))
 
-                    if details.excluded:
-                        sql = sql.where(base.exclude_places(t))
+                rows.extend((r, category) for r in await conn.execute(sql, bind_params))
+        else:
+            # use the categories column, backed by the ltree GiST index
+            for category in self.qualifiers.values:
+                sql = base.select_placex(t)\
+                           .add_columns(t.c.importance)\
+                           .where(base.category_filter(t, *category))
 
-                    sql = sql.limit(LIMIT_PARAM)
-                    rows.extend(await conn.execute(sql, bind_params))
+                if details.viewbox is not None and details.bounded_viewbox:
+                    sql = sql.where(t.c.geometry.intersects(VIEWBOX_PARAM))
+
+                if details.near and details.near_radius is not None:
+                    sql = sql.order_by(t.c.centroid.ST_Distance(NEAR_PARAM))\
+                             .where(t.c.geometry.within_distance(NEAR_PARAM,
+                                                                 NEAR_RADIUS_PARAM))
+
+                if self.countries:
+                    sql = sql.where(t.c.country_code.in_(self.countries.values))
+
+                if details.excluded:
+                    sql = sql.where(base.exclude_places(t))
+
+                sql = sql.limit(LIMIT_PARAM)
+                rows.extend((r, category) for r in await conn.execute(sql, bind_params))
 
         results = nres.SearchResults()
-        for row in rows:
+        for row, category in rows:
             result = nres.create_from_placex_row(row, nres.SearchResult)
-            result.accuracy = self.penalty + self.qualifiers.get_penalty((row.class_, row.type))
+            result.category = category
+            result.accuracy = self.penalty + self.qualifiers.get_penalty(category)
             result.bbox = Bbox.from_wkb(row.bbox)
             results.append(result)
 

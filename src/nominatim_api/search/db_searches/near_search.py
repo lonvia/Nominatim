@@ -79,31 +79,21 @@ class NearSearch(base.AbstractSearch):
         """ Find places of the given category near the list of
             place ids and add the results to 'results'.
         """
-        table = await conn.get_class_table(*category)
-
         tgeom = conn.t.placex.alias('pgeom')
+        table = conn.t.placex
 
-        if table is None:
-            # No classtype table available, do a simplified lookup in placex.
-            table = conn.t.placex
-            sql = sa.select(table.c.place_id,
-                            sa.func.min(tgeom.c.centroid.ST_Distance(table.c.centroid))
-                              .label('dist'))\
-                    .join(tgeom, table.c.geometry.intersects(tgeom.c.centroid.ST_Expand(0.01)))\
-                    .where(table.c.class_ == category[0])\
-                    .where(table.c.type == category[1])
-        else:
-            # Use classtype table. We can afford to use a larger
-            # radius for the lookup.
-            sql = sa.select(table.c.place_id,
-                            sa.func.min(tgeom.c.centroid.ST_Distance(table.c.centroid))
-                              .label('dist'))\
-                    .join(tgeom,
-                          table.c.centroid.ST_CoveredBy(
-                              sa.case((sa.and_(tgeom.c.rank_address > 9,
-                                               tgeom.c.geometry.is_area()),
-                                       tgeom.c.geometry),
-                                      else_=tgeom.c.centroid.ST_Expand(0.05))))
+        # Look up places of the category in placex via the ltree categories
+        # index. We can afford a larger search radius here.
+        sql = sa.select(table.c.place_id,
+                        sa.func.min(tgeom.c.centroid.ST_Distance(table.c.centroid))
+                          .label('dist'))\
+                .join(tgeom,
+                      table.c.centroid.ST_CoveredBy(
+                          sa.case((sa.and_(tgeom.c.rank_address > 9,
+                                           tgeom.c.geometry.is_area()),
+                                   tgeom.c.geometry),
+                                  else_=tgeom.c.centroid.ST_Expand(0.05))))\
+                .where(base.category_filter(table, *category))
 
         inner = sql.where(tgeom.c.place_id.in_(ids))\
                    .group_by(table.c.place_id).subquery()
@@ -130,6 +120,9 @@ class NearSearch(base.AbstractSearch):
                        'countries': details.countries}
         for row in await conn.execute(sql, bind_params):
             result = nres.create_from_placex_row(row, nres.SearchResult)
+            # A matched placex row may carry several categories; report the
+            # one that was searched for rather than its class/type.
+            result.category = category
             result.accuracy = self.penalty + penalty
             result.bbox = Bbox.from_wkb(row.bbox)
             results.append(result)

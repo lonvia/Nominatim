@@ -125,6 +125,10 @@ class SearchConnection:
     async def get_class_table(self, cls: str, typ: str) -> Optional[SaFromClause]:
         """ Lookup up if there is a classtype table for the given category
             and return a SQLAlchemy table for it, if it exists.
+
+            TODO: the place_classtype_* tables are obsolete now that the search
+            side queries the ltree categories column. This helper and the
+            tables are to be deprecated soon.
         """
         if self._classtables is None:
             res = await self.execute(sa.text("""SELECT tablename FROM pg_tables
