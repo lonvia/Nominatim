@@ -9,7 +9,7 @@ SQLAlchemy definitions for all tables used by the frontend.
 """
 import sqlalchemy as sa
 
-from .sqlalchemy_types import Geometry, KeyValueStore, IntArray
+from .sqlalchemy_types import Geometry, KeyValueStore, IntArray, CategoryArray
 
 
 class SearchTables:
@@ -47,6 +47,7 @@ class SearchTables:
             sa.Column('osm_id', sa.BigInteger, nullable=False),
             sa.Column('class', sa.Text, nullable=False, key='class_'),
             sa.Column('type', sa.Text, nullable=False),
+            sa.Column('categories', CategoryArray),
             sa.Column('admin_level', sa.SmallInteger),
             sa.Column('name', KeyValueStore),
             sa.Column('address', KeyValueStore),
