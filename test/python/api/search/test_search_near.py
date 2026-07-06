@@ -103,13 +103,11 @@ class TestNearSearch:
 
         assert [r.place_id for r in results] == [22, 23]
 
-    def test_near_in_classtype(self, apiobj, frontend):
+    def test_near_larger_radius(self, apiobj, frontend):
         apiobj.add_placex(place_id=22, class_='amenity', type='bank',
                           centroid=(5.6, 4.34))
         apiobj.add_placex(place_id=23, class_='amenity', type='bench',
                           centroid=(5.6, 4.34))
-        apiobj.add_class_type_table('amenity', 'bank')
-        apiobj.add_class_type_table('amenity', 'bench')
 
         results = run_search(apiobj, frontend, 0.1, [('amenity', 'bank')])
 
