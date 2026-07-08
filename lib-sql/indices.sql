@@ -85,11 +85,14 @@ CREATE INDEX IF NOT EXISTS idx_osmline_parent_osm_id
 -- Indices only needed for search.
 {% if 'search_name' in db.tables %}
 ---
-  CREATE INDEX IF NOT EXISTS idx_search_name_nameaddress_partials
-    ON search_name USING GIN ((nameaddress_partials::tsvector)) {{db.tablespace.search_index}};
----
-  CREATE INDEX IF NOT EXISTS idx_search_name_name_partials
-    ON search_name USING GIN ((name_partials::tsvector)) {{db.tablespace.search_index}};
+  CREATE INDEX IF NOT EXISTS idx_search_name_bm25
+    ON search_name
+    USING bm25 (place_id, importance, address_rank,
+                (country_code::pdb.literal),
+                (name_partials::pdb.whitespace),
+                (nameaddress_partials::pdb.whitespace))
+    WITH (key_field='place_id')
+    {{db.tablespace.search_index}};
 ---
   CREATE INDEX IF NOT EXISTS idx_search_name_name_vector
     ON search_name USING GIN (name_vector) WITH (fastupdate = off) {{db.tablespace.search_index}};
