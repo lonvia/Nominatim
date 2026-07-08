@@ -27,15 +27,12 @@ COUNTRIES="europe/monaco europe/andorra"
 UPDATEBASEURL="https://download.geofabrik.de"
 UPDATECOUNTRYPOSTFIX="-updates"
 
-# If you do not use Photon, let Nominatim handle (re-)indexing:
+# If you use Photon, update it, too (Photon server must be running and must have
+# been started with "-database", "-user", "-password" and "-enable-update-api"
+# parameters):
 #
-FOLLOWUP="nominatim index"
-#
-# If you use Photon, update Photon and let it handle the index
-# (Photon server must be running and must have been started with "-database",
-# "-user" and "-password" parameters):
-#
-#FOLLOWUP="curl http://localhost:2322/nominatim-update"
+#PHOTON_UPDATE="curl http://localhost:2322/nominatim-update"
+PHOTON_UPDATE="" # Just set to an empty string, if not wanted.
 
 # ******************************************************************************
 UPDATEDIR="update"
@@ -59,5 +56,12 @@ done
 
 echo "===================================================================="
 echo "Reindexing"
-${FOLLOWUP}
+nominatim index
 echo "===================================================================="
+
+if [ -n "$PHOTON_UPDATE" ]; then
+  echo "===================================================================="
+  echo "Triggering asynchronous Photon update"
+  ${PHOTON_UPDATE}
+  echo "===================================================================="
+fi
