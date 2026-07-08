@@ -126,7 +126,7 @@ class PartialLookup(LookupType):
 def _default_partial_lookup(element: PartialLookup,
                             compiler: 'sa.Compiled', **kw: Any) -> str:
     arg1, arg2 = list(element.clauses)
-    return "%s::tsvector @@ %s::tsquery" % (compiler.process(arg1, **kw),
+    return "%s &&& %s::pdb.fuzzy(1, f, t)" % (compiler.process(arg1, **kw),
                                   compiler.process(arg2, **kw))
 
 
