@@ -352,14 +352,19 @@ class FuzzyNameProcessor:
         """ Runs normalization and word-breaking on the input name.
         """
         normed = self.normalizer.transliterate(f" {name} ")
+        len_normed = len(normed)
         self.breaker.setText(normed)
         lastpos = 0
         parts = []
         while (bnd := self.breaker.nextBoundary()) >= 0:
+            if bnd > len_normed:
+                bnd = len_normed
             if bnd > lastpos \
                     and (lastpos + 1 > bnd or normed[lastpos] not in (' ', '-', ':')):
                 parts.append(normed[lastpos:bnd])
             lastpos = bnd
+            if lastpos >= len_normed:
+                break
 
         return ' '.join(parts)
 
