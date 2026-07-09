@@ -120,9 +120,6 @@ class NearSearch(base.AbstractSearch):
                        'countries': details.countries}
         for row in await conn.execute(sql, bind_params):
             result = nres.create_from_placex_row(row, nres.SearchResult)
-            # A matched placex row may carry several categories; report the
-            # one that was searched for rather than its class/type.
-            result.category = category
             result.accuracy = self.penalty + penalty
             result.bbox = Bbox.from_wkb(row.bbox)
             results.append(result)
