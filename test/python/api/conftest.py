@@ -53,7 +53,7 @@ class APITester:
                        'osm_id': kw.get('osm_id', 4),
                        'class_': kw.get('class_', 'highway'),
                        'type': kw.get('type', 'residential'),
-                       'categories': kw.get('categories', [cat] if cat else None),
+                       'categories': kw.get('categories', [cat]),
                        'name': name,
                        'address': kw.get('address'),
                        'extratags': kw.get('extratags'),

@@ -23,6 +23,7 @@ from ..logging import log
 from . import query as qmod
 from .query_analyzer_factory import AbstractQueryAnalyzer
 from .postcode_parser import PostcodeParser
+from .db_searches.base import is_ltree_category
 
 
 DB_TO_TOKEN_TYPE = {
@@ -169,6 +170,8 @@ class ICUQueryAnalyzer(AbstractQueryAnalyzer):
                 # (See rerank_tokens() below.)
                 token = ICUToken.from_db_row(row)
                 if row.type == 'S':
+                    if not is_ltree_category(token.get_category()[0]):
+                        continue
                     if row.info['op'] in ('in', 'near'):
                         if trange.start == 0:
                             query.add_token(trange, qmod.TOKEN_NEAR_ITEM, token)

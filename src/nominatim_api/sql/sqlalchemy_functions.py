@@ -13,7 +13,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.compiler import compiles
 
-from ..typing import SaColumn
+from ..typing import SaColumn, SaFromClause
 
 
 class PlacexGeometryReverseLookuppolygon(sa.sql.functions.GenericFunction[Any]):
@@ -220,3 +220,37 @@ def sqlite_regexp_nocase(element: RegexpWord, compiler: 'sa.Compiled', **kw: Any
     arg1, arg2 = list(element.clauses)
     return "regexp('\\b(' || %s  || ')\\b', %s)"\
         % (compiler.process(arg1, **kw), compiler.process(arg2, **kw))
+
+
+class CategoryMatch(sa.sql.functions.GenericFunction[Any]):
+    """ Match a placex row against a single (class, type) category.
+
+        On PostgreSQL this queries the ltree 'categories' column using the
+        GiST index (``categories <@ 'osm.<class>.<type>'``). On SQLite, which
+        has no ltree support, it matches on the class/type columns instead.
+    """
+    name = 'CategoryMatch'
+    inherit_cache = True
+
+    def __init__(self, table: SaFromClause, ltree: str, cls: str, typ: str) -> None:
+        super().__init__(table.c.categories, sa.literal(ltree),
+                         table.c.class_, sa.literal(cls),
+                         table.c.type, sa.literal(typ))
+
+
+@compiles(CategoryMatch)
+def _default_category_match(element: CategoryMatch,
+                            compiler: 'sa.Compiled', **kw: Any) -> str:
+    cats, ltree, _, _, _, _ = list(element.clauses)
+    return "(%s <@ (%s)::ltree)" % (compiler.process(cats, **kw),
+                                    compiler.process(ltree, **kw))
+
+
+@compiles(CategoryMatch, 'sqlite')
+def _sqlite_category_match(element: CategoryMatch,
+                           compiler: 'sa.Compiled', **kw: Any) -> str:
+    _, _, cls_col, cls_lit, typ_col, typ_lit = list(element.clauses)
+    return "(%s = %s AND %s = %s)" % (compiler.process(cls_col, **kw),
+                                      compiler.process(cls_lit, **kw),
+                                      compiler.process(typ_col, **kw),
+                                      compiler.process(typ_lit, **kw))
