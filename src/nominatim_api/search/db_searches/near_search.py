@@ -82,17 +82,20 @@ class NearSearch(base.AbstractSearch):
         tgeom = conn.t.placex.alias('pgeom')
         table = conn.t.placex
 
-        # Look up places of the category in placex via the ltree categories
-        # index. We can afford a larger search radius here.
+        # Look up places of the category near the base place. The ltree
+        # categories index is not spatial, so prune with the geometry GiST
+        # index (geometry && search_area) and keep the centroid containment
+        # as the exact recheck. We can afford a larger search radius here.
+        search_area = sa.case((sa.and_(tgeom.c.rank_address > 9,
+                                       tgeom.c.geometry.is_area()),
+                               tgeom.c.geometry),
+                              else_=tgeom.c.centroid.ST_Expand(0.05))
         sql = sa.select(table.c.place_id,
                         sa.func.min(tgeom.c.centroid.ST_Distance(table.c.centroid))
                           .label('dist'))\
                 .join(tgeom,
-                      table.c.centroid.ST_CoveredBy(
-                          sa.case((sa.and_(tgeom.c.rank_address > 9,
-                                           tgeom.c.geometry.is_area()),
-                                   tgeom.c.geometry),
-                                  else_=tgeom.c.centroid.ST_Expand(0.05))))\
+                      sa.and_(table.c.geometry.intersects(search_area),
+                              table.c.centroid.ST_CoveredBy(search_area)))\
                 .where(base.category_filter(table, *category))
 
         inner = sql.where(tgeom.c.place_id.in_(ids))\
