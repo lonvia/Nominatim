@@ -113,6 +113,16 @@ Feature: Search queries
           | category | type |
           | leisure  | firepit |
 
+    # github #4148
+    Scenario Outline: Key/value search without any match returns no results
+        When geocoding "<query>"
+        Then exactly 0 results are returned
+
+        Examples:
+          | query                   |
+          | [amenity=xyzxyz] Vaduz  |
+          | [amenity=xyzxyz] Berlin |
+
     Scenario: POI search in a bounded viewbox
         When geocoding "restaurants"
           | viewbox                           | bounded |
