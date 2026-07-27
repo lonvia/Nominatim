@@ -586,11 +586,6 @@ def backfill_categories(conn: Connection, **_: Any) -> None:
     """)
     conn.execute("ALTER TABLE placex ENABLE TRIGGER ALL")
 
-    if table_exists(conn, 'search_name'):
-        conn.execute("""CREATE INDEX IF NOT EXISTS idx_placex_categories
-                        ON placex USING GIST (categories gist__ltree_ops)
-                        WHERE categories IS NOT NULL""")
-
     with conn.cursor() as cur:
         cur.execute("""CREATE INDEX IF NOT EXISTS idx_placex_geometry_placenode_categories
                        ON placex USING SPGIST (geometry)
@@ -608,3 +603,19 @@ def backfill_categories(conn: Connection, **_: Any) -> None:
                              AND indexed_status > 0""")
 
     conn.execute("ANALYZE placex")
+
+
+@_migration(5, 3, 99, 3)
+def add_centroid_categories_index(conn: Connection, **_: Any) -> None:
+    """ Add the combined centroid/categories index used by category search.
+
+    The index is not partial, so that it can also serve queries on the
+    centroid alone. A partial index cannot be used for those.
+    """
+    if not table_exists(conn, 'placex') or not table_has_column(conn, 'placex', 'categories'):
+        return
+
+    if table_exists(conn, 'search_name'):
+        conn.execute("""CREATE INDEX IF NOT EXISTS idx_placex_centroid_categories
+                        ON placex USING GIST (centroid,
+                                              categories gist__ltree_ops(siglen=8))""")
