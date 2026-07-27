@@ -73,17 +73,18 @@ class PoiSearch(base.AbstractSearch):
 
             rows.extend(await conn.execute(sql, bind_params))
         else:
-            # use the categories column, backed by the ltree GiST index
+            # use the categories column, backed by the combined
+            # centroid/categories GiST index
             sql = base.select_placex(t)\
                       .add_columns(t.c.importance)\
                       .where(category_match)
 
             if details.viewbox is not None and details.bounded_viewbox:
-                sql = sql.where(t.c.geometry.intersects(VIEWBOX_PARAM))
+                sql = sql.where(t.c.centroid.intersects(VIEWBOX_PARAM))
 
             if details.near and details.near_radius is not None:
                 sql = sql.order_by(t.c.centroid.ST_Distance(NEAR_PARAM))\
-                         .where(t.c.geometry.within_distance(NEAR_PARAM, NEAR_RADIUS_PARAM))
+                         .where(t.c.centroid.within_distance(NEAR_PARAM, NEAR_RADIUS_PARAM))
 
             if self.countries:
                 sql = sql.where(t.c.country_code.in_(self.countries.values))
