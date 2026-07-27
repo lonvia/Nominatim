@@ -175,6 +175,9 @@ class ForwardGeocoder:
         """ Remove badly matching results, sort by ranking and
             limit to the configured number of results.
         """
+        if not results:
+            return results
+
         results.sort(key=lambda r: (r.ranking, 0 if r.bbox is None else -r.bbox.area))
 
         final = SearchResults()
@@ -271,7 +274,7 @@ class ForwardGeocoder:
         if phrases:
             query, searches = await self.build_searches(phrases)
 
-            if query:
+            if searches:
                 searches = [wrap_near_search(categories, s) for s in searches[:50]]
                 results = await self.execute_searches(query, searches)
                 results = self.pre_filter_results(results)
