@@ -181,6 +181,7 @@ class SqliteWriter:
 
         if 'search' in self.options:
             await self.create_spatial_index('postcode', 'geometry')
+            await self.create_spatial_index('placex', 'centroid')
             await self.create_spatial_index('search_name', 'centroid')
             await self.create_index('search_name', 'place_id')
             await self.create_index('osmline', 'parent_place_id')
