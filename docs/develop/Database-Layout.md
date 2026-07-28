@@ -164,9 +164,8 @@ Next to the main search tables, there is a set of secondary helper tables used
 to compute the address relations between places. These tables are partitioned.
 Each country is assigned a partition number in the country_name table (see
 below) and the data is then split between a set of tables, one for each
-partition. Note that Nominatim still manually manages partitioned tables.
-Native support for partitions in PostgreSQL only became usable with version 13.
-It will be a little while before Nominatim drops support for older versions.
+partition. Note that Nominatim still manually manages partitioned tables
+instead of using PostgreSQL's native partitioning.
 
 ![address tables](address-tables.svg)
 
