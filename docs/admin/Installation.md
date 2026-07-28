@@ -24,7 +24,7 @@ and can't offer support.
 
 For running Nominatim:
 
-  * [PostgreSQL](https://www.postgresql.org) (12+ will work, 13+ strongly recommended)
+  * [PostgreSQL](https://www.postgresql.org) (13+)
   * [PostGIS](https://postgis.net) (3.0+ will work, 3.2+ strongly recommended)
   * [osm2pgsql](https://osm2pgsql.org) (1.8+)
   * [Python 3](https://www.python.org/) (3.9+, 3.10+ in case of Windows)

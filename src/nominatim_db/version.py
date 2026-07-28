@@ -57,7 +57,7 @@ def parse_version(version: str) -> NominatimVersion:
 
 NOMINATIM_VERSION = parse_version('5.3.99-2')
 
-POSTGRESQL_REQUIRED_VERSION = (12, 0)
+POSTGRESQL_REQUIRED_VERSION = (13, 0)
 POSTGIS_REQUIRED_VERSION = (3, 0)
 OSM2PGSQL_REQUIRED_VERSION = (1, 8)
 
