@@ -606,6 +606,47 @@ def backfill_categories(conn: Connection, **_: Any) -> None:
 
 
 @_migration(5, 3, 99, 3)
+def backfill_poi_categories(conn: Connection, **_: Any) -> None:
+    """ Backfill the categories column for POIs.
+
+    The earlier backfill only filled the rank_address < 26 rows that place
+    linking needs. Category search reads the column for POIs as well, so fill
+    in the rows that are still empty. Only the class/type category can be
+    derived from placex, the same one the lazy backfill in placex_update adds;
+    categories from secondary tags need a reimport.
+
+    Runs before the index is created, so that the update does not have to
+    maintain it.
+    """
+    if not table_exists(conn, 'placex') or not table_has_column(conn, 'placex', 'categories'):
+        return
+
+    conn.execute("ALTER TABLE placex DISABLE TRIGGER ALL")
+    conn.execute("""
+        UPDATE placex
+        SET categories = ARRAY[(
+                 'osm.'
+                 || CASE
+                      WHEN placex.class !~ '^[A-Za-z0-9_-]+$'
+                        THEN 'place'
+                      ELSE replace(placex.class, '-', '_')
+                    END
+                 || '.'
+                 || CASE
+                      WHEN placex.type IS NULL OR placex.type = ''
+                           OR placex.type !~ '^[A-Za-z0-9_-]+$'
+                        THEN 'yes'
+                      ELSE replace(placex.type, '-', '_')
+                    END
+               )::ltree]
+        WHERE categories IS NULL
+    """)
+    conn.execute("ALTER TABLE placex ENABLE TRIGGER ALL")
+
+    conn.execute("ANALYZE placex")
+
+
+@_migration(5, 3, 99, 3)
 def add_centroid_categories_index(conn: Connection, **_: Any) -> None:
     """ Add the combined centroid/categories index used by category search.
 
