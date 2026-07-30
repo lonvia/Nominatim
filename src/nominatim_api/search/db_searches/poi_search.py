@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from . import base
 from ..db_search_fields import SearchData
 from ... import results as nres
-from ...typing import SaBind, SaRow
+from ...typing import SaBind
 from ...sql.sqlalchemy_types import Geometry
 from ...connection import SearchConnection
 from ...types import SearchDetails, Bbox
@@ -46,54 +46,32 @@ class PoiSearch(base.AbstractSearch):
 
         t = conn.t.placex
 
-        rows: list[SaRow] = []
+        # All searches go through the categories column, which is backed by the
+        # combined centroid/categories GiST index. Filter and order on the
+        # centroid, so that the index can serve both conditions at once.
+        sql = base.select_placex(t)\
+                  .where(sa.or_(*(base.category_filter(t, *category)
+                                  for category in self.qualifiers.values)))\
+                  .where(t.c.linked_place_id == None)
 
-        category_match = sa.or_(*(base.category_filter(t, *category)
-                                  for category in self.qualifiers.values))
-
-        if details.near and details.near_radius is not None and details.near_radius < 0.2:
-            # simply search in placex table
-            sql = base.select_placex(t) \
-                      .add_columns((-t.c.centroid.ST_Distance(NEAR_PARAM))
-                                   .label('importance'))\
-                      .where(t.c.linked_place_id == None) \
-                      .where(t.c.geometry.within_distance(NEAR_PARAM, NEAR_RADIUS_PARAM)) \
-                      .where(category_match) \
-                      .order_by(t.c.centroid.ST_Distance(NEAR_PARAM)) \
-                      .limit(LIMIT_PARAM)
-
-            if self.countries:
-                sql = sql.where(t.c.country_code.in_(self.countries.values))
-
-            if details.viewbox is not None and details.bounded_viewbox:
-                sql = sql.where(t.c.geometry.intersects(VIEWBOX_PARAM))
-
-            if details.excluded:
-                sql = sql.where(base.exclude_places(t))
-
-            rows.extend(await conn.execute(sql, bind_params))
+        if details.near is not None and details.near_radius is not None:
+            sql = sql.add_columns((-t.c.centroid.ST_Distance(NEAR_PARAM))
+                                  .label('importance'))\
+                     .where(t.c.centroid.within_distance(NEAR_PARAM, NEAR_RADIUS_PARAM))\
+                     .order_by(t.c.centroid.ST_Distance(NEAR_PARAM))
         else:
-            # use the categories column, backed by the combined
-            # centroid/categories GiST index
-            sql = base.select_placex(t)\
-                      .add_columns(t.c.importance)\
-                      .where(category_match)
+            sql = sql.add_columns(t.c.importance)
 
-            if details.viewbox is not None and details.bounded_viewbox:
-                sql = sql.where(t.c.centroid.intersects(VIEWBOX_PARAM))
+        if details.viewbox is not None and details.bounded_viewbox:
+            sql = sql.where(t.c.centroid.intersects(VIEWBOX_PARAM))
 
-            if details.near and details.near_radius is not None:
-                sql = sql.order_by(t.c.centroid.ST_Distance(NEAR_PARAM))\
-                         .where(t.c.centroid.within_distance(NEAR_PARAM, NEAR_RADIUS_PARAM))
+        if self.countries:
+            sql = sql.where(t.c.country_code.in_(self.countries.values))
 
-            if self.countries:
-                sql = sql.where(t.c.country_code.in_(self.countries.values))
+        if details.excluded:
+            sql = sql.where(base.exclude_places(t))
 
-            if details.excluded:
-                sql = sql.where(base.exclude_places(t))
-
-            sql = sql.limit(LIMIT_PARAM)
-            rows.extend(await conn.execute(sql, bind_params))
+        rows = await conn.execute(sql.limit(LIMIT_PARAM), bind_params)
 
         results = nres.SearchResults()
         for row in rows:

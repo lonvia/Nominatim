@@ -66,6 +66,22 @@ def test_simple_near_search_large_radius(apiobj, frontend, coord, pid):
     assert [r.place_id for r in results] == [pid]
 
 
+@pytest.mark.parametrize('args', [{'near': '34.3, 56.100021', 'near_radius': 0.001},
+                                  {'near': '34.3, 56.4', 'near_radius': 0.5},
+                                  {'bounded_viewbox': True,
+                                   'viewbox': '34.29,56.0,34.31,56.2'}])
+def test_linked_places_excluded(apiobj, frontend, args):
+    apiobj.add_placex(place_id=1, class_='highway', type='bus_stop',
+                      centroid=(34.3, 56.1))
+    apiobj.add_placex(place_id=2, class_='highway', type='bus_stop',
+                      linked_place_id=1, centroid=(34.3, 56.10003))
+
+    results = run_search(apiobj, frontend, 0.1, [('highway', 'bus_stop')], [0.5],
+                         details=SearchDetails.from_kwargs(args))
+
+    assert [r.place_id for r in results] == [1]
+
+
 class TestPoiSearchWithRestrictions:
 
     @pytest.fixture(autouse=True, params=["small_radius", "large_radius"])
