@@ -46,6 +46,14 @@ To learn about how to add your own custom sanitizer, see the section on
         heading_level: 6
         docstring_section_style: spacy
 
+### clean-multilingual-names
+
+::: nominatim_db.tokenizer.sanitizers.clean_multilingual_names
+    options:
+        members: False
+        heading_level: 6
+        docstring_section_style: spacy
+
 ### clean-postcodes
 
 ::: nominatim_db.tokenizer.sanitizers.clean_postcodes

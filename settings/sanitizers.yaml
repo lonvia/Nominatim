@@ -25,6 +25,9 @@
   convert-to-address: yes
   default-pattern: "[A-Z0-9- ]{3,12}"
 - step: clean-tiger-tags
+- step: clean-multilingual-names
+  delimiters: ['/', '-', ' ']
+  filter-kind: ['name']
 - step: split-name-list
   delimiters: ;
 - step: affix-expansion
