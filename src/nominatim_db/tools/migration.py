@@ -612,10 +612,15 @@ def add_centroid_categories_index(conn: Connection, **_: Any) -> None:
     The index is not partial, so that it can also serve queries on the
     centroid alone. A partial index cannot be used for those. It is created
     for all databases because reverse queries need it as well.
+
+    It replaces idx_placex_categories, which the earlier migration does not
+    create anymore. Drop that index first, if it is still around, so that the
+    two are never on disk at the same time.
     """
     if not table_exists(conn, 'placex') or not table_has_column(conn, 'placex', 'categories'):
         return
 
+    conn.execute("DROP INDEX IF EXISTS idx_placex_categories")
     conn.execute("""CREATE INDEX IF NOT EXISTS idx_placex_centroid_categories
                     ON placex USING GIST (centroid,
                                           categories gist__ltree_ops(siglen=8))""")
