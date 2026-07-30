@@ -610,12 +610,12 @@ def add_centroid_categories_index(conn: Connection, **_: Any) -> None:
     """ Add the combined centroid/categories index used by category search.
 
     The index is not partial, so that it can also serve queries on the
-    centroid alone. A partial index cannot be used for those.
+    centroid alone. A partial index cannot be used for those. It is created
+    for all databases because reverse queries need it as well.
     """
     if not table_exists(conn, 'placex') or not table_has_column(conn, 'placex', 'categories'):
         return
 
-    if table_exists(conn, 'search_name'):
-        conn.execute("""CREATE INDEX IF NOT EXISTS idx_placex_centroid_categories
-                        ON placex USING GIST (centroid,
-                                              categories gist__ltree_ops(siglen=8))""")
+    conn.execute("""CREATE INDEX IF NOT EXISTS idx_placex_centroid_categories
+                    ON placex USING GIST (centroid,
+                                          categories gist__ltree_ops(siglen=8))""")
