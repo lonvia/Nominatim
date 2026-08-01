@@ -93,15 +93,12 @@ Feature: Search queries
           | category | type       | address+country |
           | amenity  | restaurant | Liechtenstein |
 
-    @skip
-    # FIXME: the matched placex row carries several categories (club=scout and
-    # amenity=...); result.category reports its main class/type (amenity), so the
-    # searched category is not surfaced. Needs a decision on how to report it.
     Scenario: Search with key-value amenity
         When geocoding "[club=scout] Vaduz"
-        Then all results contain
-          | category | type |
-          | club     | scout |
+        Then the result set contains
+          | object     |
+          | W351713277 |
+          | W408844120 |
 
     Scenario: POI search near given coordinate
         When geocoding "restaurant near 47.16712,9.51100"

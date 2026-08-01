@@ -611,9 +611,12 @@ def backfill_poi_categories(conn: Connection, **_: Any) -> None:
 
     The earlier backfill only filled the rank_address < 26 rows that place
     linking needs. Category search reads the column for POIs as well, so fill
-    in the rows that are still empty. Only the class/type category can be
-    derived from placex, the same one the lazy backfill in placex_update adds;
-    categories from secondary tags need a reimport.
+    in the rows that are still empty.
+
+    Restricted to the class/type combinations that have a place_classtype_*
+    table, because those are exactly the ones that can be found through a
+    special phrase. That keeps the update off the vast majority of the table
+    and skips it altogether when there are no such tables.
 
     Runs before the index is created, so that the update does not have to
     maintain it.
@@ -621,26 +624,53 @@ def backfill_poi_categories(conn: Connection, **_: Any) -> None:
     if not table_exists(conn, 'placex') or not table_has_column(conn, 'placex', 'categories'):
         return
 
+    with conn.cursor() as cur:
+        cur.execute("""SELECT tablename FROM pg_tables
+                       WHERE schemaname = 'public'
+                             AND tablename LIKE 'place\\_classtype\\_%'""")
+        classtype_tables = [row[0] for row in cur]
+
+    if not classtype_tables:
+        return
+
     conn.execute("ALTER TABLE placex DISABLE TRIGGER ALL")
     conn.execute("""
         UPDATE placex
-        SET categories = ARRAY[(
-                 'osm.'
-                 || CASE
-                      WHEN placex.class !~ '^[A-Za-z0-9_-]+$'
-                        THEN 'place'
-                      ELSE replace(placex.class, '-', '_')
-                    END
-                 || '.'
-                 || CASE
-                      WHEN placex.type IS NULL OR placex.type = ''
-                           OR placex.type !~ '^[A-Za-z0-9_-]+$'
-                        THEN 'yes'
-                      ELSE replace(placex.type, '-', '_')
-                    END
-               )::ltree]
+        SET categories = (
+          SELECT array_agg(DISTINCT cat)
+          FROM (
+            SELECT (
+                     'osm.'
+                     || CASE
+                          WHEN placex.class !~ '^[A-Za-z0-9_-]+$'
+                            THEN 'place'
+                          ELSE replace(placex.class, '-', '_')
+                        END
+                     || '.'
+                     || CASE
+                          WHEN placex.type IS NULL OR placex.type = ''
+                               OR placex.type !~ '^[A-Za-z0-9_-]+$'
+                            THEN 'yes'
+                          ELSE replace(placex.type, '-', '_')
+                        END
+                   )::ltree AS cat
+            WHERE placex.class != ''
+            UNION
+            SELECT (
+                     'osm.place.'
+                     || CASE
+                          WHEN placex.extratags->'place' IS NULL OR placex.extratags->'place' = ''
+                               OR placex.extratags->'place' !~ '^[A-Za-z0-9_-]+$'
+                            THEN 'yes'
+                          ELSE replace(placex.extratags->'place', '-', '_')
+                        END
+                   )::ltree AS cat
+            WHERE placex.extratags ? 'place'
+          ) sub
+        )
         WHERE categories IS NULL
-    """)
+          AND 'place_classtype_' || placex.class || '_' || placex.type = ANY(%s)
+    """, (classtype_tables,))
     conn.execute("ALTER TABLE placex ENABLE TRIGGER ALL")
 
     conn.execute("ANALYZE placex")
