@@ -20,6 +20,7 @@ from ..typing import SaRow
 from ..sql.sqlalchemy_types import Json
 from ..connection import SearchConnection
 from ..logging import log
+from ..errors import UsageError
 from . import query as qmod
 from .query_analyzer_factory import AbstractQueryAnalyzer
 from .postcode_parser import PostcodeParser
@@ -157,6 +158,8 @@ class ICUQueryAnalyzer(AbstractQueryAnalyzer):
             return query
 
         self.split_query(query)
+        if query.num_token_slots() > 50:
+            raise UsageError('Query is too long.')
         log().var_dump('Transliterated query',
                        lambda: ''.join(f"{n.btype}{n.term_lookup}" for n in query.nodes)
                                + ' / '
