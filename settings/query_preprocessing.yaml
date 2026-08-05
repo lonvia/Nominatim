@@ -1,1 +1,5 @@
+- step: regex-replace
+  replacements:
+      - pattern: '^.{500,}$'
+        replace: ''
 - step: split_japanese_phrases
