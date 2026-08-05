@@ -618,6 +618,10 @@ def backfill_poi_categories(conn: Connection, **_: Any) -> None:
     special phrase. That keeps the update off the vast majority of the table
     and skips it altogether when there are no such tables.
 
+    Only tables whose name is made up of valid ltree label characters are
+    considered, so that the class and type of the rows to update are known to
+    be usable as labels as they are.
+
     Runs before the index is created, so that the update does not have to
     maintain it.
     """
@@ -627,7 +631,7 @@ def backfill_poi_categories(conn: Connection, **_: Any) -> None:
     with conn.cursor() as cur:
         cur.execute("""SELECT tablename FROM pg_tables
                        WHERE schemaname = 'public'
-                             AND tablename LIKE 'place\\_classtype\\_%'""")
+                             AND tablename ~ '^place_classtype_[A-Za-z0-9_]+$'""")
         classtype_tables = [row[0] for row in cur]
 
     if not classtype_tables:
@@ -639,22 +643,7 @@ def backfill_poi_categories(conn: Connection, **_: Any) -> None:
         SET categories = (
           SELECT array_agg(DISTINCT cat)
           FROM (
-            SELECT (
-                     'osm.'
-                     || CASE
-                          WHEN placex.class !~ '^[A-Za-z0-9_-]+$'
-                            THEN 'place'
-                          ELSE replace(placex.class, '-', '_')
-                        END
-                     || '.'
-                     || CASE
-                          WHEN placex.type IS NULL OR placex.type = ''
-                               OR placex.type !~ '^[A-Za-z0-9_-]+$'
-                            THEN 'yes'
-                          ELSE replace(placex.type, '-', '_')
-                        END
-                   )::ltree AS cat
-            WHERE placex.class != ''
+            SELECT ('osm.' || placex.class || '.' || placex.type)::ltree AS cat
             UNION
             SELECT (
                      'osm.place.'
