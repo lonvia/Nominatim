@@ -418,6 +418,8 @@ class QueryStruct:
                 if last_node.btype == BREAK_PHRASE:
                     break
                 word = f"{word} {last_node.term_lookup}"
+                if len(word) > 255:
+                    break
                 words[word].append(TokenRange(first, last))
 
         return words
