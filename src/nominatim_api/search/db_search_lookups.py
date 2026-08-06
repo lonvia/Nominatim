@@ -120,7 +120,7 @@ class PartialLookup(LookupType):
     inherit_cache = True
 
     def __init__(self, table: SaFromClause, column: str, tokens: List[str]) -> None:
-        super().__init__(getattr(table.c, column), ' & '.join(tokens))
+        super().__init__(getattr(table.c, column), ' '.join(tokens))
 
 @compiles(PartialLookup)
 def _default_partial_lookup(element: PartialLookup,
