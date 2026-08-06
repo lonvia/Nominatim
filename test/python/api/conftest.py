@@ -11,11 +11,10 @@ import pytest
 import pytest_asyncio
 import datetime as dt
 
-import sqlalchemy as sa
-
 import nominatim_api as napi
 from nominatim_db.db.sql_preprocessor import SQLPreprocessor
 from nominatim_api.search.query_analyzer_factory import make_query_analyzer
+from nominatim_api.search.db_searches.base import category_ltree
 from nominatim_db.tools import convert_sqlite
 import nominatim_api.logging as loglib
 
@@ -46,12 +45,15 @@ class APITester:
         centroid = kw.get('centroid', (23.0, 34.0))
         geometry = kw.get('geometry', 'POINT(%f %f)' % centroid)
 
+        cat = category_ltree(kw.get('class_', 'highway'), kw.get('type', 'residential'))
+
         self.add_data('placex',
                       {'place_id': kw.get('place_id', 1000),
                        'osm_type': kw.get('osm_type', 'W'),
                        'osm_id': kw.get('osm_id', 4),
                        'class_': kw.get('class_', 'highway'),
                        'type': kw.get('type', 'residential'),
+                       'categories': kw.get('categories', [cat]),
                        'name': name,
                        'address': kw.get('address'),
                        'extratags': kw.get('extratags'),
@@ -145,13 +147,6 @@ class APITester:
                        'nameaddress_vector': kw.get('address', []),
                        'country_code': kw.get('country_code', 'xx'),
                        'centroid': 'POINT(%f %f)' % centroid})
-
-    def add_class_type_table(self, cls, typ):
-        self.async_to_sync(
-            self.exec_async(sa.text(f"""CREATE TABLE place_classtype_{cls}_{typ}
-                                         AS (SELECT place_id, centroid FROM placex
-                                             WHERE class = '{cls}' AND type = '{typ}')
-                                     """)))
 
     def add_word_table(self, content):
         data = [dict(zip(['word_id', 'word_token', 'type', 'word', 'info'], c))

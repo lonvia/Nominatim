@@ -181,10 +181,13 @@ class SqliteWriter:
 
         if 'search' in self.options:
             await self.create_spatial_index('postcode', 'geometry')
+            await self.create_spatial_index('placex', 'centroid')
             await self.create_spatial_index('search_name', 'centroid')
             await self.create_index('search_name', 'place_id')
             await self.create_index('osmline', 'parent_place_id')
             await self.create_index('tiger', 'parent_place_id')
+            # SQLite has no ltree, so category search matches on class/type.
+            await self.create_index('placex', 'class_', 'type')
             await self.create_search_index()
 
             for t in self.dest.t.meta.tables:
@@ -198,12 +201,13 @@ class SqliteWriter:
         await self.dest.execute(sa.select(
                   sa.func.CreateSpatialIndex(getattr(self.dest.t, table).name, column)))
 
-    async def create_index(self, table_name: str, column: str) -> None:
-        """ Create a simple index on the given table and column.
+    async def create_index(self, table_name: str, *columns: str) -> None:
+        """ Create a simple index on the given table and columns.
         """
         table = getattr(self.dest.t, table_name)
+        cols = [getattr(table.c, column) for column in columns]
         await self.dest.connection.run_sync(
-            sa.Index(f"idx_{table}_{column}", getattr(table.c, column)).create)
+            sa.Index(f"idx_{table}_{'_'.join(c.name for c in cols)}", *cols).create)
 
     async def create_search_index(self) -> None:
         """ Create the tables and indexes needed for word lookup.

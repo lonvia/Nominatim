@@ -104,7 +104,6 @@ CREATE INDEX IF NOT EXISTS idx_osmline_parent_osm_id
     INCLUDE (startnumber, endnumber) {{db.tablespace.search_index}}
     WHERE startnumber is not null;
 ---
-  CREATE INDEX IF NOT EXISTS idx_placex_categories ON placex
-    USING GIST(categories gist__ltree_ops) {{db.tablespace.search_index}}
-    WHERE categories IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_placex_centroid_categories ON placex
+    USING GIST(centroid, categories gist__ltree_ops(siglen=8)) {{db.tablespace.search_index}};
 {% endif %}

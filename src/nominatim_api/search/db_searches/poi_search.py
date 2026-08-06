@@ -7,14 +7,12 @@
 """
 Implementation of category search.
 """
-from typing import List
-
 import sqlalchemy as sa
 
 from . import base
 from ..db_search_fields import SearchData
 from ... import results as nres
-from ...typing import SaBind, SaRow, SaSelect, SaLambdaSelect
+from ...typing import SaBind
 from ...sql.sqlalchemy_types import Geometry
 from ...connection import SearchConnection
 from ...types import SearchDetails, Bbox
@@ -48,66 +46,32 @@ class PoiSearch(base.AbstractSearch):
 
         t = conn.t.placex
 
-        rows: List[SaRow] = []
+        # All searches go through the categories column, which is backed by the
+        # combined centroid/categories GiST index. Filter and order on the
+        # centroid, so that the index can serve both conditions at once.
+        sql = base.select_placex(t)\
+                  .where(sa.or_(*(base.category_filter(t, *category)
+                                  for category in self.qualifiers.values)))\
+                  .where(t.c.linked_place_id == None)
 
-        if details.near and details.near_radius is not None and details.near_radius < 0.2:
-            # simply search in placex table
-            def _base_query() -> SaSelect:
-                return base.select_placex(t) \
-                           .add_columns((-t.c.centroid.ST_Distance(NEAR_PARAM))
-                                        .label('importance'))\
-                           .where(t.c.linked_place_id == None) \
-                           .where(t.c.geometry.within_distance(NEAR_PARAM, NEAR_RADIUS_PARAM)) \
-                           .order_by(t.c.centroid.ST_Distance(NEAR_PARAM)) \
-                           .limit(LIMIT_PARAM)
-
-            classtype = self.qualifiers.values
-            if len(classtype) == 1:
-                cclass, ctype = classtype[0]
-                sql: SaLambdaSelect = sa.lambda_stmt(
-                    lambda: _base_query().where(t.c.class_ == cclass)
-                                         .where(t.c.type == ctype))
-            else:
-                sql = _base_query().where(sa.or_(*(sa.and_(t.c.class_ == cls, t.c.type == typ)
-                                                   for cls, typ in classtype)))
-
-            if self.countries:
-                sql = sql.where(t.c.country_code.in_(self.countries.values))
-
-            if details.viewbox is not None and details.bounded_viewbox:
-                sql = sql.where(t.c.geometry.intersects(VIEWBOX_PARAM))
-
-            if details.excluded:
-                sql = sql.where(base.exclude_places(t))
-
-            rows.extend(await conn.execute(sql, bind_params))
+        if details.near is not None and details.near_radius is not None:
+            sql = sql.add_columns((-t.c.centroid.ST_Distance(NEAR_PARAM))
+                                  .label('importance'))\
+                     .where(t.c.centroid.within_distance(NEAR_PARAM, NEAR_RADIUS_PARAM))\
+                     .order_by(t.c.centroid.ST_Distance(NEAR_PARAM))
         else:
-            # use the class type tables
-            for category in self.qualifiers.values:
-                table = await conn.get_class_table(*category)
-                if table is not None:
-                    sql = base.select_placex(t)\
-                               .add_columns(t.c.importance)\
-                               .join(table, t.c.place_id == table.c.place_id)\
-                               .where(t.c.class_ == category[0])\
-                               .where(t.c.type == category[1])
+            sql = sql.add_columns(t.c.importance)
 
-                    if details.viewbox is not None and details.bounded_viewbox:
-                        sql = sql.where(table.c.centroid.intersects(VIEWBOX_PARAM))
+        if details.viewbox is not None and details.bounded_viewbox:
+            sql = sql.where(t.c.centroid.intersects(VIEWBOX_PARAM))
 
-                    if details.near and details.near_radius is not None:
-                        sql = sql.order_by(table.c.centroid.ST_Distance(NEAR_PARAM))\
-                                 .where(table.c.centroid.within_distance(NEAR_PARAM,
-                                                                         NEAR_RADIUS_PARAM))
+        if self.countries:
+            sql = sql.where(t.c.country_code.in_(self.countries.values))
 
-                    if self.countries:
-                        sql = sql.where(t.c.country_code.in_(self.countries.values))
+        if details.excluded:
+            sql = sql.where(base.exclude_places(t))
 
-                    if details.excluded:
-                        sql = sql.where(base.exclude_places(t))
-
-                    sql = sql.limit(LIMIT_PARAM)
-                    rows.extend(await conn.execute(sql, bind_params))
+        rows = await conn.execute(sql.limit(LIMIT_PARAM), bind_params)
 
         results = nres.SearchResults()
         for row in rows:

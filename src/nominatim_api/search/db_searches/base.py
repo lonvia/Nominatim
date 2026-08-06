@@ -9,14 +9,53 @@ Interface for classes implementing a database search.
 """
 from typing import Callable, List
 import abc
+import re
 
 import sqlalchemy as sa
 
 from ...typing import SaFromClause, SaSelect, SaColumn, SaExpression, SaLambdaSelect
 from ...sql.sqlalchemy_types import Geometry
+from ...sql.sqlalchemy_functions import CategoryMatch
 from ...connection import SearchConnection
 from ...types import SearchDetails, DataLayer, GeometryFormat
 from ...results import SearchResults
+
+
+_LTREE_INVALID = re.compile(r'[^A-Za-z0-9_-]')
+
+
+def _sanitize_label(part: str) -> str:
+    """ Turn an OSM key or value into a valid ltree label, mirroring the
+        Lua sanitize_label(): invalid characters map to 'yes', hyphens to
+        underscores (for PostgreSQL < 16 compatibility).
+    """
+    if not part or _LTREE_INVALID.search(part):
+        return 'yes'
+    return part.replace('-', '_')
+
+
+def is_ltree_category(cls: str) -> bool:
+    """ Check whether the given class can form a valid ltree category label.
+        Types are always sanitized, so only the class may render a category
+        unrepresentable. Non-conforming categories are rejected during token
+        collection so that search never has to fall back to an unindexed query.
+    """
+    return bool(cls) and not _LTREE_INVALID.search(cls)
+
+
+def category_ltree(cls: str, typ: str) -> str:
+    """ Build the 'osm.<class>.<type>' ltree string for a class/type pair,
+        mirroring the Lua get_category(). The class must be a valid ltree
+        label (see is_ltree_category()).
+    """
+    return f'osm.{_sanitize_label(cls)}.{_sanitize_label(typ)}'
+
+
+def category_filter(table: SaFromClause, cls: str, typ: str) -> SaExpression:
+    """ Build a boolean expression selecting rows of the given class/type
+        category via the ltree categories column (class/type on SQLite).
+    """
+    return CategoryMatch(table, category_ltree(cls, typ), cls, typ)
 
 
 class AbstractSearch(abc.ABC):

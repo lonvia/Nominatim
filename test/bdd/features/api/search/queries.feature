@@ -93,13 +93,12 @@ Feature: Search queries
           | category | type       | address+country |
           | amenity  | restaurant | Liechtenstein |
 
-    @skip
-    # FIXME: near_search.py must query categories column instead of class/type.
     Scenario: Search with key-value amenity
         When geocoding "[club=scout] Vaduz"
-        Then all results contain
-          | category | type |
-          | club     | scout |
+        Then the result set contains
+          | object     |
+          | W351713277 |
+          | W408844120 |
 
     Scenario: POI search near given coordinate
         When geocoding "restaurant near 47.16712,9.51100"

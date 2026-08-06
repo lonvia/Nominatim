@@ -10,5 +10,6 @@ Module with custom types for SQLAlchemy
 
 from .geometry import (Geometry as Geometry)
 from .int_array import (IntArray as IntArray)
+from .ltree import (CategoryArray as CategoryArray)
 from .key_value import (KeyValueStore as KeyValueStore)
 from .json import (Json as Json)

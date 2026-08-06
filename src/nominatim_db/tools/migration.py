@@ -586,11 +586,6 @@ def backfill_categories(conn: Connection, **_: Any) -> None:
     """)
     conn.execute("ALTER TABLE placex ENABLE TRIGGER ALL")
 
-    if table_exists(conn, 'search_name'):
-        conn.execute("""CREATE INDEX IF NOT EXISTS idx_placex_categories
-                        ON placex USING GIST (categories gist__ltree_ops)
-                        WHERE categories IS NOT NULL""")
-
     with conn.cursor() as cur:
         cur.execute("""CREATE INDEX IF NOT EXISTS idx_placex_geometry_placenode_categories
                        ON placex USING SPGIST (geometry)
@@ -608,3 +603,84 @@ def backfill_categories(conn: Connection, **_: Any) -> None:
                              AND indexed_status > 0""")
 
     conn.execute("ANALYZE placex")
+
+
+@_migration(5, 3, 99, 3)
+def backfill_poi_categories(conn: Connection, **_: Any) -> None:
+    """ Backfill the categories column for POIs.
+
+    The earlier backfill only filled the rank_address < 26 rows that place
+    linking needs. Category search reads the column for POIs as well, so fill
+    in the rows that are still empty.
+
+    Restricted to the class/type combinations that have a place_classtype_*
+    table, because those are exactly the ones that can be found through a
+    special phrase. That keeps the update off the vast majority of the table
+    and skips it altogether when there are no such tables.
+
+    Only tables whose name is made up of valid ltree label characters are
+    considered, so that the class and type of the rows to update are known to
+    be usable as labels as they are.
+
+    Runs before the index is created, so that the update does not have to
+    maintain it.
+    """
+    if not table_exists(conn, 'placex') or not table_has_column(conn, 'placex', 'categories'):
+        return
+
+    with conn.cursor() as cur:
+        cur.execute("""SELECT tablename FROM pg_tables
+                       WHERE schemaname = 'public'
+                             AND tablename ~ '^place_classtype_[A-Za-z0-9_]+$'""")
+        classtype_tables = [row[0] for row in cur]
+
+    if not classtype_tables:
+        return
+
+    conn.execute("ALTER TABLE placex DISABLE TRIGGER ALL")
+    conn.execute("""
+        UPDATE placex
+        SET categories = (
+          SELECT array_agg(DISTINCT cat)
+          FROM (
+            SELECT ('osm.' || placex.class || '.' || placex.type)::ltree AS cat
+            UNION
+            SELECT (
+                     'osm.place.'
+                     || CASE
+                          WHEN placex.extratags->'place' IS NULL OR placex.extratags->'place' = ''
+                               OR placex.extratags->'place' !~ '^[A-Za-z0-9_-]+$'
+                            THEN 'yes'
+                          ELSE replace(placex.extratags->'place', '-', '_')
+                        END
+                   )::ltree AS cat
+            WHERE placex.extratags ? 'place'
+          ) sub
+        )
+        WHERE categories IS NULL
+          AND 'place_classtype_' || placex.class || '_' || placex.type = ANY(%s)
+    """, (classtype_tables,))
+    conn.execute("ALTER TABLE placex ENABLE TRIGGER ALL")
+
+    conn.execute("ANALYZE placex")
+
+
+@_migration(5, 3, 99, 3)
+def add_centroid_categories_index(conn: Connection, **_: Any) -> None:
+    """ Add the combined centroid/categories index used by category search.
+
+    The index is not partial, so that it can also serve queries on the
+    centroid alone. A partial index cannot be used for those. It is created
+    for all databases because reverse queries need it as well.
+
+    It replaces idx_placex_categories, which the earlier migration does not
+    create anymore. Drop that index first, if it is still around, so that the
+    two are never on disk at the same time.
+    """
+    if not table_exists(conn, 'placex') or not table_has_column(conn, 'placex', 'categories'):
+        return
+
+    conn.execute("DROP INDEX IF EXISTS idx_placex_categories")
+    conn.execute("""CREATE INDEX IF NOT EXISTS idx_placex_centroid_categories
+                    ON placex USING GIST (centroid,
+                                          categories gist__ltree_ops(siglen=8))""")
