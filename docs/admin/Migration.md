@@ -17,6 +17,18 @@ breaking changes. **Please read them before running the migration.**
     and migrate to 4.3 first. Then you can migrate to the current
     version. It is strongly recommended to do a reimport instead.
 
+## 5.3.0 -> 5.4.0
+
+### Removal of the place_classtype tables
+
+Category search now runs against the `categories` column of `placex`, so the
+per-category `place_classtype_*` tables are not used anymore. The migration
+drops them. This frees a considerable amount of disk space on a planet
+database but may take a moment as there is one table per category.
+
+The `--min` option of `nominatim special-phrases` only restricted which of
+those tables were created. It has no effect anymore and has been removed.
+
 ## 5.2.0 -> 5.3.0
 
 #### Expensive table migrations
