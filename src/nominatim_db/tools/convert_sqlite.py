@@ -73,8 +73,6 @@ class SqliteWriter:
         LOG.warning('Setting up tables')
         if 'search' not in self.options:
             self.dest.t.meta.remove(self.dest.t.search_name)
-        else:
-            await self.create_class_tables()
 
         await self.dest.connection.run_sync(self.dest.t.meta.create_all)
 
@@ -85,17 +83,6 @@ class SqliteWriter:
                     await self.dest.execute(sa.select(
                         sa.func.RecoverGeometryColumn(table.name, col.name, 4326,
                                                       col.type.subtype.upper(), 'XY')))
-
-    async def create_class_tables(self) -> None:
-        """ Set up the table that serve class/type-specific geometries.
-        """
-        sql = sa.text("""SELECT tablename FROM pg_tables
-                         WHERE tablename LIKE 'place_classtype_%'""")
-        for res in await self.src.execute(sql):
-            for db in (self.src, self.dest):
-                sa.Table(res[0], db.t.meta,
-                         sa.Column('place_id', sa.BigInteger),
-                         sa.Column('centroid', Geometry))
 
     async def create_word_table(self) -> None:
         """ Create the word table.
@@ -139,14 +126,6 @@ class SqliteWriter:
                         for r in partition]
                 await self.dest.execute(table.insert(), data)
 
-        # Set up a minimal copy of pg_tables used to look up the class tables later.
-        pg_tables = sa.Table('pg_tables', self.dest.t.meta,
-                             sa.Column('schemaname', sa.Text, default='public'),
-                             sa.Column('tablename', sa.Text))
-        await self.dest.connection.run_sync(pg_tables.create)
-        data = [{'tablename': t} for t in self.dest.t.meta.tables]
-        await self.dest.execute(pg_tables.insert().values(data))
-
     async def create_indexes(self) -> None:
         """ Add indexes necessary for the frontend.
         """
@@ -189,11 +168,6 @@ class SqliteWriter:
             # SQLite has no ltree, so category search matches on class/type.
             await self.create_index('placex', 'class_', 'type')
             await self.create_search_index()
-
-            for t in self.dest.t.meta.tables:
-                if t.startswith('place_classtype_'):
-                    await self.dest.execute(sa.select(
-                      sa.func.CreateSpatialIndex(t, 'centroid')))
 
     async def create_spatial_index(self, table: str, column: str) -> None:
         """ Create a spatial index on the given table and column.
