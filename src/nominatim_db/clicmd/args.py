@@ -138,6 +138,7 @@ class NominatimArgs:
     import_from_wiki: bool
     import_from_csv: Optional[str]
     no_replace: bool
+    min: int
 
     # Arguments to all query functions
     format: str

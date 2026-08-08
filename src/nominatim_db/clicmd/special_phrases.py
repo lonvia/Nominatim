@@ -58,8 +58,13 @@ class ImportSpecialPhrases:
                            help='Import special phrases from a CSV file')
         group.add_argument('--no-replace', action='store_true',
                            help='Keep the old phrases and only add the new ones')
+        group.add_argument('--min', type=int, default=0,
+                           help='Deprecated, no longer has any effect')
 
     def run(self, args: NominatimArgs) -> int:
+
+        if args.min:
+            LOG.warning('The --min option is deprecated and no longer has any effect.')
 
         if args.import_from_wiki:
             self.start_import(args, SPWikiLoader(args.config))
