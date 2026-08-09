@@ -59,9 +59,12 @@ class ImportSpecialPhrases:
         group.add_argument('--no-replace', action='store_true',
                            help='Keep the old phrases and only add the new ones')
         group.add_argument('--min', type=int, default=0,
-                           help='Restrict special phrases by minimum occurance')
+                           help='Deprecated, no longer has any effect')
 
     def run(self, args: NominatimArgs) -> int:
+
+        if args.min:
+            LOG.warning('The --min option is deprecated and no longer has any effect.')
 
         if args.import_from_wiki:
             self.start_import(args, SPWikiLoader(args.config))
@@ -84,9 +87,8 @@ class ImportSpecialPhrases:
 
         tokenizer = tokenizer_factory.get_tokenizer_for_db(args.config)
         should_replace = not args.no_replace
-        min = args.min
 
         with connect(args.config.get_libpq_dsn()) as db_connection:
             SPImporter(
                 args.config, db_connection, loader
-            ).import_phrases(tokenizer, should_replace, min)
+            ).import_phrases(tokenizer, should_replace)

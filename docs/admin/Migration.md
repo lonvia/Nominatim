@@ -17,6 +17,29 @@ breaking changes. **Please read them before running the migration.**
     and migrate to 4.3 first. Then you can migrate to the current
     version. It is strongly recommended to do a reimport instead.
 
+## 5.3.0 -> 5.4.0
+
+### The place_classtype tables are not used anymore
+
+Category search now runs against the `categories` column of `placex`, so the
+per-category `place_classtype_*` tables are not created or updated anymore.
+The migration leaves the existing tables in place because the old frontend
+code still queries them until you have restarted it with the new version.
+
+Once all your frontends run the new version, you can drop the tables to free
+the disk space. On a planet database that is a couple of hundred tables and
+several GB. To generate the necessary SQL, run:
+
+```sql
+SELECT format('DROP TABLE IF EXISTS %I;', tablename)
+  FROM pg_tables
+  WHERE schemaname = 'public' AND tablename LIKE 'place\_classtype\_%';
+```
+
+The `--min` option of `nominatim special-phrases` only restricted which of
+those tables were created. It has no effect anymore and is deprecated. It
+will be removed in a future version.
+
 ## 5.2.0 -> 5.3.0
 
 #### Expensive table migrations

@@ -38,10 +38,3 @@ GRANT SELECT ON country_osm_grid TO "{{config.DATABASE_WEBUSER}}";
 {% if 'word' in db.tables %}
 GRANT SELECT ON word TO "{{config.DATABASE_WEBUSER}}";
 {% endif %}
-
--- Special phrase tables
-{% for table in db.tables %}
-{% if table.startswith('place_classtype_') %}
-GRANT SELECT ON {{ table }} TO "{{config.DATABASE_WEBUSER}}";
-{% endif %}
-{% endfor %}

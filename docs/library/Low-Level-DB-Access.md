@@ -49,7 +49,6 @@ asyncio.run(print_table_size())
         members:
             - scalar
             - execute
-            - get_class_table
             - get_db_property
             - get_property
         heading_level: 6

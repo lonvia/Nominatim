@@ -25,9 +25,6 @@ class SpecialPhrasesImporterStatistics():
             Set all counts for the global
             import to 0.
         """
-        self.tables_created = 0
-        self.tables_deleted = 0
-        self.tables_ignored = 0
         self.invalids = 0
 
     def notify_one_phrase_invalid(self) -> None:
@@ -36,24 +33,6 @@ class SpecialPhrasesImporterStatistics():
             fetched from the wiki.
         """
         self.invalids += 1
-
-    def notify_one_table_created(self) -> None:
-        """
-            Add +1 to the count of created tables.
-        """
-        self.tables_created += 1
-
-    def notify_one_table_deleted(self) -> None:
-        """
-            Add +1 to the count of deleted tables.
-        """
-        self.tables_deleted += 1
-
-    def notify_one_table_ignored(self) -> None:
-        """
-            Add +1 to the count of ignored tables.
-        """
-        self.tables_ignored += 1
 
     def notify_import_done(self) -> None:
         """
@@ -65,12 +44,6 @@ class SpecialPhrasesImporterStatistics():
         LOG.info('- %s phrases were invalid.', self.invalids)
         if self.invalids > 0:
             LOG.info('  Those invalid phrases have been skipped.')
-        LOG.info('- %s tables were ignored as they already exist on the database',
-                 self.tables_ignored)
-        LOG.info('- %s tables were created', self.tables_created)
-        LOG.info('- %s tables were deleted from the database', self.tables_deleted)
-        if self.tables_deleted > 0:
-            LOG.info('  They were deleted as they are not valid anymore.')
 
         if self.invalids > 0:
             LOG.warning('%s phrases were invalid and have been skipped during the whole process.',

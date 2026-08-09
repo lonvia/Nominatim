@@ -659,11 +659,9 @@ CREATE OR REPLACE FUNCTION placex_insert()
   AS $$
 DECLARE
   postcode TEXT;
-  result INT;
   is_area BOOLEAN;
   country_code VARCHAR(2);
   diameter FLOAT;
-  classtable TEXT;
 BEGIN
   {% if debug %}RAISE WARNING '% % % %',NEW.osm_type,NEW.osm_id,NEW.class,NEW.type;{% endif %}
 
@@ -712,22 +710,6 @@ BEGIN
   END IF;
 
   {% if debug %}RAISE WARNING 'placex_insert:END: % % % %',NEW.osm_type,NEW.osm_id,NEW.class,NEW.type;{% endif %}
-
-{% if not disable_diff_updates %}
-  -- The following is not needed until doing diff updates, and slows the main index process down
-
-   -- add to tables for special search
-  classtable := 'place_classtype_' || NEW.class || '_' || NEW.type;
-  SELECT count(*) INTO result
-    FROM pg_tables
-    WHERE classtable NOT SIMILAR TO '%\W%'
-          AND tablename = classtable and schemaname = current_schema();
-  IF result > 0 THEN
-    EXECUTE 'INSERT INTO ' || classtable::regclass || ' (place_id, centroid) VALUES ($1,$2)' 
-    USING NEW.place_id, NEW.centroid;
-  END IF;
-
-{% endif %} -- not disable_diff_updates
 
   RETURN NEW;
 
@@ -1298,8 +1280,6 @@ CREATE OR REPLACE FUNCTION placex_delete()
   AS $$
 DECLARE
   b BOOLEAN;
-  result INT;
-  classtable TEXT;
 BEGIN
   -- RAISE WARNING 'placex_delete % %',OLD.osm_type,OLD.osm_id;
 
@@ -1354,17 +1334,6 @@ BEGIN
   DELETE FROM place_addressline where place_id = OLD.place_id;
 
   {% if debug %}RAISE WARNING 'placex_delete:11 % %',OLD.osm_type,OLD.osm_id;{% endif %}
-
-  -- remove from tables for special search
-  classtable := 'place_classtype_' || OLD.class || '_' || OLD.type;
-  SELECT count(*) INTO result
-    FROM pg_tables
-    WHERE classtable NOT SIMILAR TO '%\W%'
-          AND tablename = classtable and schemaname = current_schema();
-
-  IF result > 0 THEN
-    EXECUTE 'DELETE FROM ' || classtable::regclass || ' WHERE place_id = $1' USING OLD.place_id;
-  END IF;
 
   {% if debug %}RAISE WARNING 'placex_delete:12 % %',OLD.osm_type,OLD.osm_id;{% endif %}
   RETURN OLD;
