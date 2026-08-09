@@ -13,7 +13,7 @@ import logging
 from ..errors import UsageError
 from ..config import Configuration
 from ..db import properties
-from ..db.connection import connect, Connection, drop_tables, \
+from ..db.connection import connect, Connection, \
                             table_exists, register_hstore, table_has_column
 from ..db.sql_preprocessor import SQLPreprocessor
 from ..version import NominatimVersion, NOMINATIM_VERSION, parse_version
@@ -684,20 +684,3 @@ def add_centroid_categories_index(conn: Connection, **_: Any) -> None:
     conn.execute("""CREATE INDEX IF NOT EXISTS idx_placex_centroid_categories
                     ON placex USING GIST (centroid,
                                           categories gist__ltree_ops(siglen=8))""")
-
-
-@_migration(5, 3, 99, 4)
-def drop_place_classtype_tables(conn: Connection, **_: Any) -> None:
-    """ Drop the obsolete place_classtype_* tables.
-
-    Category search now goes through the ltree categories column, so nothing
-    reads these tables anymore. They are dropped after the POI backfill above,
-    which still uses their names to decide which rows to fill in.
-    """
-    with conn.cursor() as cur:
-        cur.execute("""SELECT tablename FROM pg_tables
-                       WHERE schemaname = 'public'
-                             AND tablename LIKE 'place\\_classtype\\_%'""")
-        tables = [row[0] for row in cur]
-
-    drop_tables(conn, *tables)
