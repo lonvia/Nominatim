@@ -30,6 +30,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
     def __init__(self, dsn: str, name_processor: FuzzyNameProcessor) -> None:
         self.conn: Optional[Connection] = connect(dsn)
         self.conn.autocommit = True
+        register_hstore(self.conn)
         self.name_proc = name_processor
 
     def close(self) -> None:
@@ -50,8 +51,6 @@ class FuzzyAnalyzer(AbstractAnalyzer):
     def update_special_phrases(self, phrases: Collection[tuple[str, str, str, str]],
                                should_replace: bool) -> None:
         assert self.conn is not None
-
-        register_hstore(self.conn)
 
         grouped: dict[SpKey, set[str]] = defaultdict(set)
         for label, cls, typ, operator in phrases:

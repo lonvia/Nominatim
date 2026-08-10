@@ -17,6 +17,7 @@ from nominatim_db.tools.refresh import create_functions, load_address_levels_fro
 from nominatim_db.tools.exec_utils import run_osm2pgsql
 from nominatim_db.tokenizer import factory as tokenizer_factory
 from nominatim_db.utils.asyncio_utils import asyncio_run
+from nominatim_db.db.connection import register_hstore
 
 
 class DBManager:
