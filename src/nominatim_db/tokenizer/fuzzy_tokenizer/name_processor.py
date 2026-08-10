@@ -267,9 +267,9 @@ class FuzzyNameProcessor:
         """
         # Word type must be given as a literal or the index won't work!
         conn.execute(
-            pysql.SQL("DELETE FROM WORD WHERE type = {} and src = ANY(%s)")
+            pysql.SQL("DELETE FROM WORD WHERE word_id = %s AND type = {} and src = ANY(%s)")
                  .format(pysql.Literal(wtype)),
-            (list(tokens), ))
+            (word_id, list(tokens)))
 
     def _update_tokens_in_word(self, conn: Connection, word_id: int,
                                  wtype: str, old_tokens: Optional[Iterable[str]],
