@@ -734,7 +734,7 @@ async def complete_keywords(conn: SearchConnection, result: BaseResult) -> None:
     result.address_keywords = []
 
     t = conn.t.meta.tables['word']
-    sel = sa.select(t.c.word_id, t.c.word_token, t.c.word)
+    sel = sa.select(t.c.word_id, t.c.word.label('word_token'), t.c.src.label('word'))
 
     for name_tokens, address_tokens in await conn.execute(sql):
         for row in await conn.execute(sel.where(t.c.word_id.in_(name_tokens))):

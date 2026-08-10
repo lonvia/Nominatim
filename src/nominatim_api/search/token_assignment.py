@@ -291,7 +291,7 @@ class _TokenSequence:
         #  * the containing phrase is strictly typed
         if (base.housenumber and first.end < base.housenumber.start)\
            or (base.qualifier and base.qualifier > first)\
-           or (query.nodes[first.end].ptype != qmod.PHRASE_ANY):
+           or (query.nodes[first.start].ptype != qmod.PHRASE_ANY):
             return
 
         # Penalty for:
@@ -337,7 +337,7 @@ class _TokenSequence:
         #  * the containing phrase is strictly typed
         if (base.housenumber and last.start > base.housenumber.end)\
            or (base.qualifier and base.qualifier < last)\
-           or (query.nodes[last.end].ptype != qmod.PHRASE_ANY):
+           or (query.nodes[last.start].ptype != qmod.PHRASE_ANY):
             return
 
         if base.housenumber and base.housenumber < last:
@@ -421,7 +421,7 @@ def yield_token_assignments(query: qmod.QueryStruct) -> Iterator[TokenAssignment
                 state.advance(tlist.ttype, tlist.end,
                               True, node.word_break_penalty))
 
-        if query.nodes[state.end_pos + 1].ptype not in (qmod.PHRASE_POSTCODE, qmod.PHRASE_COUNTRY):
+        if query.nodes[state.end_pos].ptype not in (qmod.PHRASE_POSTCODE, qmod.PHRASE_COUNTRY):
             yield from _append_state_to_todo(
                 query, todo,
                 state.advance(qmod.TOKEN_PARTIAL, state.end_pos + 1,

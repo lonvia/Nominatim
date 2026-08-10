@@ -74,10 +74,10 @@ class PostcodeSearch(base.AbstractSearch):
         if self.lookups:
             assert len(self.lookups) == 1
             tsearch = conn.t.search_name
+            # XXX must use ::ts_query instead to_tsquery() !!!
             sql = sql.where(tsearch.c.place_id == t.c.parent_place_id)\
-                     .where((tsearch.c.name_vector + tsearch.c.nameaddress_vector)
-                            .contains(sa.type_coerce(self.lookups[0].tokens,
-                                                     IntArray)))
+                     .where((tsearch.c.name_partials.op('||')(tsearch.c.nameaddress_partials))
+                            .op('@@')(sa.func.to_tsquery(' & '.join(self.lookups[0].tokens))))
             # Do NOT add rerank penalties based on the address terms.
             # The standard rerank penalty only checks the address vector
             # while terms may appear in name and address vector. This would

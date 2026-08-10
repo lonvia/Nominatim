@@ -17,7 +17,7 @@ import sqlalchemy as sa
 
 from ..logging import log
 from ..typing import SaRow
-from ..sql.sqlalchemy_types import Json
+from ..sql.sqlalchemy_types import KeyValueStore
 from . import query as qmod
 from .query_analyzer_factory import AbstractQueryAnalyzer
 from .postcode_parser import PostcodeParser
@@ -77,7 +77,7 @@ class FuzzyToken(qmod.Token):
             if len(row.word) == 1 and row.word == row.src:
                 penalty += 0.2 if row.word.isdigit() else 0.3
         elif row.type == 'H':
-            penalty += sum(0.1 for c in row.word_token if c != ' ' and not c.isdigit())
+            penalty += sum(0.1 for c in row.word if c != ' ' and not c.isdigit())
             if all(not c.isdigit() for c in row.word):
                 penalty += 0.2 * (len(row.word) - 1)
         elif row.type == 'C':
@@ -276,7 +276,7 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
 
             # rerank tokens against the normalized form
             norm = ''.join(f"{n.term_normalized}{'' if n.btype == qmod.BREAK_TOKEN else ' '}"
-                           for n in query.nodes[start + 1:end + 1]).strip()
+                           for n in query.nodes[start:end]).strip()
             for ttype, tokens in tlist.items():
                 for token in tokens:
                     token.penalty += token.match_penalty(norm) * \
@@ -304,7 +304,7 @@ async def create_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer
                          sa.Column('id', sa.Integer, nullable=False),
                          sa.Column('type', sa.Text, nullable=False),
                          sa.Column('token', sa.Text, nullable=False),
-                         sa.Column('info', Json))
+                         sa.Column('attributes', KeyValueStore))
 
             if not fuzzy_country_tokens:
                 sql = sa.select(t.c.id, t.c.token).where(t.c.type == 'C')
@@ -313,12 +313,12 @@ async def create_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer
                     fuzzy_country_tokens[row.id] = row.token
 
             if not fuzzy_category_tokens:
-                sql = sa.select(t.c.id, t.c.token, t.c.info).where(t.c.type == 'S')
+                sql = sa.select(t.c.id, t.c.token, t.c.attributes).where(t.c.type == 'S')
 
                 for row in await conn.execute(sql):
                     fuzzy_category_tokens[row.id] = \
                         CategoryInfo(tuple(row.token.split('.', 2)),
-                                     row.info.get('op', ''))
+                                     row.attributes.get('op', ''))
 
 
         return await FuzzyAnalyzerConfig.create(conn)
