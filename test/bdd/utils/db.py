@@ -101,4 +101,5 @@ class DBManager:
             asyncio_run(create_search_indices(conn, config))
 
             tokenizer = tokenizer_factory.create_tokenizer(config)
+            tokenizer.init_new_db(config)
             create_country_names(conn, tokenizer, config)
