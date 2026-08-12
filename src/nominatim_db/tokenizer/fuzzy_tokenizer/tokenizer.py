@@ -106,8 +106,25 @@ class FuzzyTokenizer(AbstractTokenizer):
                   FROM word LEFT JOIN word_frequencies wf ON word_id = wf.id
                   """)
             drop_tables(conn, 'word_frequencies')
-            conn.execute('SET max_parallel_workers_per_gather TO 0')
 
+            conn.execute(r"""
+                WITH word_freq AS MATERIALIZED (
+                        SELECT regexp_split_to_table(name_partials, '\s+') as id,
+                               count(*) as name_count
+                        FROM search_name GROUP BY id),
+                     addr_freq AS MATERIALIZED (
+                        SELECT regexp_split_to_table(nameaddress_partials, '\s+') as id,
+                               count(*) as  address_count
+                        FROM search_name GROUP BY id)
+                INSERT INTO tmp_word
+                (SELECT 0, 'w', coalesce(a.id, w.id), '',
+                        COALESCE(name_count, 1), COALESCE(address_count, 1)
+                   FROM word_freq AS w FULL JOIN addr_freq AS a
+                        ON a.id = w.id
+                    WHERE name_count > 500 OR address_count > 5000)
+                """)
+
+            conn.execute('SET max_parallel_workers_per_gather TO 0')
             sqlp = SQLPreprocessor(conn, config)
             sqlp.run_string(conn, """
                 GRANT SELECT ON tmp_word TO "{{config.DATABASE_WEBUSER}}";
