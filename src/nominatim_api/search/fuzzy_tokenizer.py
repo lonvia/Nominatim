@@ -264,9 +264,10 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
 
                 # If it looks like a simple housenumber, prefer that.
                 if qmod.TOKEN_HOUSENUMBER in tlist:
-                    hnr_lookup = tlist[qmod.TOKEN_HOUSENUMBER][0].lookup_word
-                    if len(hnr_lookup) <= 3 and any(c.isdigit() for c in hnr_lookup):
-                        penalty = 0.5 - tlist[qmod.TOKEN_HOUSENUMBER][0].penalty
+                    token = next((t for t in tlist[qmod.TOKEN_HOUSENUMBER]
+                                 if t.token > 0 and t.token < 1000), None)
+                    if token is not None:
+                        penalty = 0.5 - token.penalty
                         for ttype, tokens in tlist.items():
                             if ttype != qmod.TOKEN_HOUSENUMBER:
                                 for token in tokens:
