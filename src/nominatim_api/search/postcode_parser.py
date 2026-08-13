@@ -67,7 +67,7 @@ class PostcodeParser:
 
             subnodes = nodes[start:end]
             if ptype == qmod.PHRASE_POSTCODE:
-                self._match_word(''.join(f"{n.btype}{n.term_normalized.upper()}"
+                self._match_word(''.join(f"{n.btype}{n.partial.lookup_word.upper()}"
                                          for n in subnodes)[1:] + nodes[end].btype,
                                  start, True, outcodes)
             elif ptype == qmod.PHRASE_ANY:
@@ -78,7 +78,7 @@ class PostcodeParser:
                     if n.btype == '`' or word == '`':
                         word = n.btype
                     else:
-                        word = n.term_normalized.upper() + word
+                        word = n.partial.lookup_word.upper() + word
                         if n.btype in '<,: ':
                             self._match_word(word, substart, False, outcodes)
                         word = n.btype + word

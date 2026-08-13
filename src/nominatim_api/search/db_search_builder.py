@@ -230,12 +230,12 @@ class SearchBuilder:
             # partial node
             next_node = self.query.nodes[pos + 1]
             if pos + 1 < trange.end:
-                penalty = rank.penalty + next_node.term_penalty \
+                penalty = rank.penalty + next_node.partial.penalty \
                           + next_node.word_break_penalty
                 heapq.heappush(todo, (-(pos + 1), pos + 1,
                                dbf.RankedTokens(penalty, rank.tokens)))
             else:
-                ranks.append(dbf.RankedTokens(rank.penalty + next_node.term_penalty,
+                ranks.append(dbf.RankedTokens(rank.penalty + next_node.partial.penalty,
                                               rank.tokens))
             # full words
             for tlist in self.query.nodes[pos].starting:

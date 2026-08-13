@@ -158,30 +158,35 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
 
         self._split_query(query)
         log().var_dump('Transliterated query',
-                       lambda: ''.join(f"{n.btype}{n.term_lookup}" for n in query.nodes)
+                       lambda: ''.join(f"{n.btype}{n.partial.transliterated}" for n in query.nodes)
                                + ' / '
-                               + ''.join(f"{n.btype}{n.term_normalized}" for n in query.nodes))
+                               + ''.join(f"{n.btype}{n.partial.lookup_word}" for n in query.nodes))
         words = query.extract_words()
 
         for row in await self._lookup_in_db(list(words.keys())):
             for trange in words[row.word]:
-                # Create a new token for each position because the token
-                # penalty can vary depending on the position in the query.
-                # (See rerank_tokens() below.)
-                token = FuzzyToken.from_db_row(row)
-                log().var_dump('Token', token)
-                if row.type == 'S':
-                    catinfo = fuzzy_category_tokens.get(row.word_id, MISSING_CATEGORY_INFO)
-                    if catinfo.operator in ('in', 'near'):
-                        if trange.start == 0:
-                            query.add_token(trange, qmod.TOKEN_NEAR_ITEM, token)
-                    else:
-                        if trange.start == 0 and trange.end == query.num_token_slots():
-                            query.add_token(trange, qmod.TOKEN_NEAR_ITEM, token)
-                        else:
-                            query.add_token(trange, qmod.TOKEN_QUALIFIER, token)
+                if row.type == 'w':
+                    assert trange.start + 1 == trange.end
+                    partial = query.nodes[trange.start].partial
+                    partial.count=row.name_count
+                    partial.addr_count=row.address_count
                 else:
-                    query.add_token(trange, DB_TO_TOKEN_TYPE[row.type], token)
+                    # Create a new token for each position because the token
+                    # penalty can vary depending on the position in the query.
+                    # (See rerank_tokens() below.)
+                    token = FuzzyToken.from_db_row(row)
+                    if row.type == 'S':
+                        catinfo = fuzzy_category_tokens.get(row.word_id, MISSING_CATEGORY_INFO)
+                        if catinfo.operator in ('in', 'near'):
+                            if trange.start == 0:
+                                query.add_token(trange, qmod.TOKEN_NEAR_ITEM, token)
+                        else:
+                            if trange.start == 0 and trange.end == query.num_token_slots():
+                                query.add_token(trange, qmod.TOKEN_NEAR_ITEM, token)
+                            else:
+                                query.add_token(trange, qmod.TOKEN_QUALIFIER, token)
+                    else:
+                        query.add_token(trange, DB_TO_TOKEN_TYPE[row.type], token)
 
         self._add_extra_tokens(query)
         self._rerank_tokens(query)
@@ -204,11 +209,16 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
                 else:
                     if word:
                         if trans := self.transliterator.transliterate(word):
-                            query.add_node(breakchar, phrase.ptype, trans, word)
+                            ptoken = qmod.PartialToken(
+                                        penalty=0.3, token=-1, count=1, addr_count=1,
+                                        lookup_word=word, transliterated=trans)
+                            query.add_node(breakchar, phrase.ptype, ptoken)
                     breakchar = None
             breakchar = qmod.BREAK_PHRASE
 
-        query.add_node(qmod.BREAK_END, qmod.PHRASE_ANY)
+        query.add_node(qmod.BREAK_END, qmod.PHRASE_ANY,
+                       qmod.PartialToken(penalty=10.0, token=-1, count=1, addr_count=1,
+                                         lookup_word='', transliterated=''))
 
     async def _lookup_in_db(self, words: list[str]) -> 'sa.Result[Any]':
         """ Return the token information from the database for the
@@ -233,8 +243,8 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
                                     FuzzyToken(penalty=0.0, token=int(candidate),
                                                count=1, addr_count=1,
                                                lookup_word=candidate))
-                if len(node.term_normalized) <= 4 and node.term_normalized.isdecimal():
-                    candidate = node.term_normalized
+                if len(node.partial.transliterated) <= 4 and node.partial.transliterated.isdecimal():
+                    candidate = node.partial.transliterated
                 else:
                     candidate = None
 
@@ -250,33 +260,32 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
         """
         for start, end, tlist in query.iter_tokens_by_edge():
             if len(tlist) > 1:
-                # If it looks like a Postcode, give preference.
-                if qmod.TOKEN_POSTCODE in tlist:
-                    for ttype, tokens in tlist.items():
-                        if ttype != qmod.TOKEN_POSTCODE and \
-                               (ttype != qmod.TOKEN_HOUSENUMBER or
-                                start + 1 > end or
-                                len(query.nodes[end].term_lookup) > 4):
-                            for token in tokens:
-                                token.penalty += 0.39
-                        if (start + 1 == end):
-                            query.nodes[end].term_penalty += 0.39
-
                 # If it looks like a simple housenumber, prefer that.
+                hnr_token: Optional[Token] = None
                 if qmod.TOKEN_HOUSENUMBER in tlist:
-                    token = next((t for t in tlist[qmod.TOKEN_HOUSENUMBER]
-                                 if t.token > 0 and t.token < 1000), None)
-                    if token is not None:
-                        penalty = 0.5 - token.penalty
+                    hnr_token = next((t for t in tlist[qmod.TOKEN_HOUSENUMBER]
+                                      if t.token > 0 and t.token < 1000), None)
+                    if hnr_token is not None:
+                        penalty = 0.5 - hnr_token.penalty
                         for ttype, tokens in tlist.items():
                             if ttype != qmod.TOKEN_HOUSENUMBER:
                                 for token in tokens:
                                     token.penalty += penalty
                         if (start + 1 == end):
-                            query.nodes[end].term_penalty += penalty
+                            query.nodes[start].partial.penalty += penalty
+
+                # If it looks like a Postcode, give preference.
+                if qmod.TOKEN_POSTCODE in tlist:
+                    for ttype, tokens in tlist.items():
+                        if ttype != qmod.TOKEN_POSTCODE and \
+                               (ttype != qmod.TOKEN_HOUSENUMBER or hnr_token is None):
+                            for token in tokens:
+                                token.penalty += 0.39
+                        if (start + 1 == end):
+                            query.nodes[start].partial.penalty += 0.39
 
             # rerank tokens against the normalized form
-            norm = ''.join(f"{n.term_normalized}{'' if n.btype == qmod.BREAK_TOKEN else ' '}"
+            norm = ''.join(f"{n.partial.lookup_word}{'' if n.btype == qmod.BREAK_TOKEN else ' '}"
                            for n in query.nodes[start:end]).strip()
             for ttype, tokens in tlist.items():
                 for token in tokens:
@@ -332,9 +341,9 @@ async def create_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer
 def _dump_word_tokens(query: qmod.QueryStruct) -> Iterator[list[Any]]:
     yield ['type', 'from', 'to', 'token', 'word', 'src', 'penalty', 'name_count', 'addr_count', 'extra']
     for i, node in enumerate(query.nodes):
-        if node.term_lookup:
-            yield [qmod.TOKEN_PARTIAL, i, i + 1, '-', node.term_lookup,
-                   node.term_normalized, '-', '-', '-', '']
+        t = node.partial
+        yield [qmod.TOKEN_PARTIAL, i, i + 1, t.token, t.transliterated, t.lookup_word,
+               t.penalty, t.count, t.addr_count, '']
     for i, node in enumerate(query.nodes):
         for tlist in node.starting:
             lookup = ' '.join(query.iter_partials_trans(qmod.TokenRange(i, tlist.end)))
