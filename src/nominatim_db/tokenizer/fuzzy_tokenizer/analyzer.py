@@ -10,6 +10,7 @@ Analyzer which works with full word tokens as ints and partial tokens as str.
 from typing import Optional, Collection, Any
 import dataclasses
 import logging
+import re
 from collections import defaultdict
 
 from ...db.connection import connect, Connection, register_hstore
@@ -24,6 +25,7 @@ LOG = logging.getLogger()
 
 SpKey = tuple[str, str]
 
+HOUSENUMBER_RE = re.compile('[0-9]{1,4}')
 
 class FuzzyAnalyzer(AbstractAnalyzer):
 
@@ -186,7 +188,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
             corresponds to the house number. This should avoid expensive
             lookups for a majority of house numbers.
         """
-        if len(name.name) <= 4 and name.name.isdecimal():
+        if HOUSENUMBER_RE.fullmatch(name.name):
             return name.name, [int(name.name)]
 
         norm = self.name_proc.normalize_place_name(name, country_code)
