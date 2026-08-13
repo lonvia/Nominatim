@@ -261,7 +261,7 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
         for start, end, tlist in query.iter_tokens_by_edge():
             if len(tlist) > 1:
                 # If it looks like a simple housenumber, prefer that.
-                hnr_token: Optional[Token] = None
+                hnr_token: Optional[qmod.Token] = None
                 if qmod.TOKEN_HOUSENUMBER in tlist:
                     hnr_token = next((t for t in tlist[qmod.TOKEN_HOUSENUMBER]
                                       if t.token > 0 and t.token < 1000), None)
@@ -341,9 +341,9 @@ async def create_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer
 def _dump_word_tokens(query: qmod.QueryStruct) -> Iterator[list[Any]]:
     yield ['type', 'from', 'to', 'token', 'word', 'src', 'penalty', 'name_count', 'addr_count', 'extra']
     for i, node in enumerate(query.nodes):
-        t = node.partial
-        yield [qmod.TOKEN_PARTIAL, i, i + 1, t.token, t.transliterated, t.lookup_word,
-               t.penalty, t.count, t.addr_count, '']
+        pt = node.partial
+        yield [qmod.TOKEN_PARTIAL, i, i + 1, pt.token, pt.transliterated, pt.lookup_word,
+               pt.penalty, pt.count, pt.addr_count, '']
     for i, node in enumerate(query.nodes):
         for tlist in node.starting:
             lookup = ' '.join(query.iter_partials_trans(qmod.TokenRange(i, tlist.end)))

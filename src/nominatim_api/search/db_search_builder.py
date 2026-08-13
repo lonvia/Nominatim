@@ -194,13 +194,66 @@ class SearchBuilder:
         addr_partials = [t for r in address
                          for t in self.query.iter_partials_trans(r)]
 
-        lookup = [dbf.FieldLookup('name_partials', name_partials, lookups.PartialLookup)]
+        if not addr_partials:
+            yield from self.yield_name_only_lookups(name_partials, name)
+        else:
+            yield from self.yield_address_lookups(name_partials, addr_partials, name, address)
 
-        if addr_partials:
-            lookup.append(
-                dbf.FieldLookup('nameaddress_partials', addr_partials, lookups.PartialLookup))
+    def yield_name_only_lookups(self, partials: list[str], name: qmod.TokenRange
+                                ) -> Iterator[Tuple[float, int, List[dbf.FieldLookup]]]:
+        name_expected = int(min(t.count for t in self.query.iter_partials(name)) / len(partials))
 
-        yield 0.0, 10, lookup
+        if name_expected > 50000:
+            # Lots of results, try by full name first
+            name_fulls = list(filter(lambda t: t.count < 50000,
+                              self.query.get_tokens(name, qmod.TOKEN_WORD)))
+            if name_fulls:
+                yield 0.1, sum(t.count for t in name_fulls), \
+                      [dbf.FieldLookup('name_vector', [t.token for t in name_fulls],
+                                       lookups.LookupAny)]
+
+            partial_lookup_penalty = 1.0
+        else:
+            partial_lookup_penalty = 0.0
+
+        if name_expected < 100000:
+            yield partial_lookup_penalty, name_expected, \
+                  [dbf.FieldLookup('name_partials', partials, lookups.PartialLookup)]
+
+    def yield_address_lookups(self, name_partials: list[str], addr_partials: list[str],
+                              name: qmod.TokenRange, address: list[qmod.TokenRange]
+                              ) -> Iterator[Tuple[float, int, List[dbf.FieldLookup]]]:
+        name_expected = int(min(t.count for t in self.query.iter_partials(name)) / len(name_partials))
+
+        if name_expected < 20000:
+            yield 0.0, name_expected, \
+                   [dbf.FieldLookup('name_partials', name_partials, lookups.PartialLookup),
+                    dbf.FieldLookup('nameaddress_partials', addr_partials, lookups.PartialRestrict)]
+        else:
+            addr_expected = int(min(t.addr_count for r in address
+                                    for t in self.query.iter_partials(r)) / len(addr_partials))
+            if addr_expected < 20000:
+                yield 0.0, addr_expected, \
+                       [dbf.FieldLookup('name_partials', name_partials, lookups.PartialRestrict),
+                        dbf.FieldLookup('nameaddress_partials', addr_partials, lookups.PartialLookup)]
+            elif min(name_expected, addr_expected) < 100000:
+                yield 0.4, int(min(name_expected, addr_expected) / 2), \
+                       [dbf.FieldLookup('name_partials', name_partials, lookups.PartialLookup),
+                        dbf.FieldLookup('nameaddress_partials', addr_partials, lookups.PartialLookup)]
+            else:
+                # Lots of results, restrict to full names
+                name_fulls = self.query.get_tokens(name, qmod.TOKEN_WORD)
+                if name_fulls:
+                    fulls_count = sum(t.count for t in name_fulls)
+
+                    if fulls_count < 80000:
+                        yield 0.0, fulls_count, \
+                              [dbf.FieldLookup('name_vector', [t.token for t in name_fulls],
+                                               lookups.LookupAny),
+                               dbf.FieldLookup('nameaddress_partials', addr_partials,
+                                               lookups.PartialRestrict)]
+
+
 
     def get_name_ranking(self, trange: qmod.TokenRange,
                          db_field: str = 'name_vector') -> dbf.FieldRanking:
