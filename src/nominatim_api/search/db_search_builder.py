@@ -237,7 +237,7 @@ class SearchBuilder:
                        [dbf.FieldLookup('name_partials', name_partials, lookups.PartialRestrict),
                         dbf.FieldLookup('nameaddress_partials', addr_partials, lookups.PartialLookup)]
             elif min(name_expected, addr_expected) < 100000:
-                yield 0.4, int(min(name_expected, addr_expected) / 2), \
+                yield 0.0, int(min(name_expected, addr_expected) / 2), \
                        [dbf.FieldLookup('name_partials', name_partials, lookups.PartialLookup),
                         dbf.FieldLookup('nameaddress_partials', addr_partials, lookups.PartialLookup)]
             else:
@@ -247,7 +247,7 @@ class SearchBuilder:
                     fulls_count = sum(t.count for t in name_fulls)
 
                     if fulls_count < 80000:
-                        yield 0.0, fulls_count, \
+                        yield 0.2, fulls_count, \
                               [dbf.FieldLookup('name_vector', [t.token for t in name_fulls],
                                                lookups.LookupAny),
                                dbf.FieldLookup('nameaddress_partials', addr_partials,
@@ -281,15 +281,16 @@ class SearchBuilder:
         while todo:
             _, pos, rank = heapq.heappop(todo)
             # partial node
-            next_node = self.query.nodes[pos + 1]
-            if pos + 1 < trange.end:
-                penalty = rank.penalty + next_node.partial.penalty \
-                          + next_node.word_break_penalty
-                heapq.heappush(todo, (-(pos + 1), pos + 1,
-                               dbf.RankedTokens(penalty, rank.tokens)))
-            else:
-                ranks.append(dbf.RankedTokens(rank.penalty + next_node.partial.penalty,
-                                              rank.tokens))
+            partial = self.query.nodes[pos].partial
+            if partial is not None:
+                if pos + 1 < trange.end:
+                    penalty = rank.penalty + partial.penalty \
+                              + self.query.nodes[pos + 1].word_break_penalty
+                    heapq.heappush(todo, (-(pos + 1), pos + 1,
+                                   dbf.RankedTokens(penalty, rank.tokens)))
+                else:
+                    ranks.append(dbf.RankedTokens(rank.penalty + partial.penalty,
+                                                  rank.tokens))
             # full words
             for tlist in self.query.nodes[pos].starting:
                 if tlist.ttype == qmod.TOKEN_WORD:
