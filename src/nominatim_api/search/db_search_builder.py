@@ -237,7 +237,7 @@ class SearchBuilder:
                        [dbf.FieldLookup('name_partials', name_partials, lookups.PartialRestrict),
                         dbf.FieldLookup('nameaddress_partials', addr_partials, lookups.PartialLookup)]
             elif min(name_expected, addr_expected) < 100000:
-                yield 0.4, int(min(name_expected, addr_expected) / 2), \
+                yield 0.0, int(min(name_expected, addr_expected) / 2), \
                        [dbf.FieldLookup('name_partials', name_partials, lookups.PartialLookup),
                         dbf.FieldLookup('nameaddress_partials', addr_partials, lookups.PartialLookup)]
             else:
@@ -247,7 +247,7 @@ class SearchBuilder:
                     fulls_count = sum(t.count for t in name_fulls)
 
                     if fulls_count < 80000:
-                        yield 0.0, fulls_count, \
+                        yield 0.2, fulls_count, \
                               [dbf.FieldLookup('name_vector', [t.token for t in name_fulls],
                                                lookups.LookupAny),
                                dbf.FieldLookup('nameaddress_partials', addr_partials,
