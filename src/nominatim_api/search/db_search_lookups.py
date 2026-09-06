@@ -139,8 +139,26 @@ class PartialRestrict(LookupType):
 
 @compiles(PartialRestrict)
 def _default_partial_restrict(element: PartialLookup,
-                            compiler: 'sa.Compiled', **kw: Any) -> str:
+                              compiler: 'sa.Compiled', **kw: Any) -> str:
     arg1, arg2 = list(element.clauses)
     return "COALESCE(null, %s::tsvector) @@ %s::tsquery" % (
             compiler.process(arg1, **kw), compiler.process(arg2, **kw))
 
+
+class CombinedPartialLookup(LookupType):
+    """ Find all tokens in either name or address partial vector.
+    """
+    inherite_cache = True
+
+    def __init__(self, table: SaFromClause, _: str, tokens: List[str]) -> None:
+        super().__init__(table.c['name_partials'], table.c['nameaddress_partials'],
+                         ' & '.join(tokens))
+
+
+@compiles(CombinedPartialLookup)
+def _default_combined_partial_lookup(element: PartialLookup,
+                                     compiler: 'sa.Compiled', **kw: Any) -> str:
+    col1, col2, tokens = list(element.clauses)
+    return "(%s || %s) @@ %s::tsquery" % (
+            compiler.process(col1, **kw), compiler.process(col2, **kw),
+            compiler.process(tokens, **kw))
