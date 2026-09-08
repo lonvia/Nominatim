@@ -105,14 +105,6 @@ class BaseLogger:
         sqlstr = str(compiled)
 
         if conn.dialect.name == 'postgresql':
-            if sa.__version__.startswith('1'):
-                try:
-                    sqlstr = re.sub(r'__\[POSTCOMPILE_[^]]*\]', '%s', sqlstr)
-                    return sqlstr % tuple((repr(params.get(name, None))
-                                          for name in compiled.positiontup))  # type: ignore
-                except TypeError:
-                    return sqlstr
-
             sqlstr = re.sub(r'__\[POSTCOMPILE_([^]]*)\]', r'%(\1)s', sqlstr)
             return sqlstr % params
 
