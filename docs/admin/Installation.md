@@ -47,8 +47,9 @@ For running continuous updates:
 
 For running the Python frontend:
 
-  * [SQLAlchemy](https://www.sqlalchemy.org/) (1.4.31+ with greenlet support)
-  * [asyncpg](https://magicstack.github.io/asyncpg) (0.8+, only when using SQLAlchemy < 2.0)
+  * [SQLAlchemy](https://www.sqlalchemy.org/) (2.0+ with greenlet support)
+  * [Pygments](https://pygments.org) (optional, for pretty-printing debug output)
+  * [async-timeout](https://github.com/aio-libs-abandoned/async-timeout) (with Python<3.11 only)
   * one of the following web frameworks:
     * [falcon](https://falconframework.org/) (3.0+)
     * [starlette](https://www.starlette.io/)

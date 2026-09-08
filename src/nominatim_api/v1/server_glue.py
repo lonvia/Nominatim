@@ -15,6 +15,7 @@ from urllib.parse import urlencode
 import asyncio
 
 import sqlalchemy as sa
+import psycopg
 
 from ..errors import UsageError
 from .. import logging as loglib
@@ -27,7 +28,6 @@ from ..localization import Locales
 from . import helpers
 from ..server import content_types as ct
 from ..server.asgi_adaptor import ASGIAdaptor, EndpointFunc
-from ..sql.async_core_library import PGCORE_ERROR
 
 
 def build_response(adaptor: ASGIAdaptor, output: str, status: int = 200,
@@ -524,7 +524,7 @@ class LazySearchEndpoint:
                             if self._wrapper is not None:
                                 self._wrapper.func = search_unavailable_endpoint
 
-                    except (PGCORE_ERROR, sa.exc.OperationalError, OSError):
+                    except (psycopg.Error, sa.exc.OperationalError, OSError):
                         # No _delegate set, so retry on next request
                         params.raise_error('Search temporarily unavailable', 503)
 
@@ -547,7 +547,7 @@ async def get_routes(api: NominatimAPIAsync) -> Sequence[Tuple[str, EndpointFunc
                 routes.append(('search', search_endpoint))
             else:
                 routes.append(('search', search_unavailable_endpoint))
-    except (PGCORE_ERROR, sa.exc.OperationalError, OSError):
+    except (psycopg.Error, sa.exc.OperationalError, OSError):
         routes.append(('search', LazySearchEndpoint(api, search_endpoint)))
 
     return routes

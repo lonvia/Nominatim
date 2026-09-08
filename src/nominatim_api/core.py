@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Implementation of classes for API access via libraries.
@@ -21,10 +21,10 @@ else:
 
 import sqlalchemy as sa
 import sqlalchemy.ext.asyncio as sa_asyncio
+import psycopg
 
 from .errors import UsageError
 from .sql.sqlalchemy_schema import SearchTables
-from .sql.async_core_library import PGCORE_LIB, PGCORE_ERROR
 from .config import Configuration
 from .sql import sqlite_functions, sqlalchemy_functions  # noqa
 from .connection import SearchConnection
@@ -120,7 +120,7 @@ class NominatimAPIAsync:
                          if k not in ('user', 'password', 'dbname', 'host', 'port')}
 
                 dburl = sa.engine.URL.create(
-                           f'postgresql+{PGCORE_LIB}',
+                           'postgresql+psycopg',
                            database=cast(str, dsn.get('dbname')),
                            username=cast(str, dsn.get('user')),
                            password=cast(str, dsn.get('password')),
@@ -149,7 +149,7 @@ class NominatimAPIAsync:
                         await conn.execute(sa.text("SET jit_above_cost TO '-1'"))
                         await conn.execute(sa.text(
                                 "SET max_parallel_workers_per_gather TO '0'"))
-                except (PGCORE_ERROR, sa.exc.OperationalError):
+                except (psycopg.Error, sa.exc.OperationalError):
                     server_version = 0
 
                 @sa.event.listens_for(engine.sync_engine, "connect")
@@ -205,7 +205,7 @@ class NominatimAPIAsync:
             async with self.begin(abs_timeout=timeout.abs) as conn:
                 conn.set_query_timeout(self.query_timeout)
                 status = await get_status(conn)
-        except (PGCORE_ERROR, sa.exc.OperationalError):
+        except (psycopg.Error, sa.exc.OperationalError):
             return StatusResult(700, 'Database connection failed')
 
         return status
