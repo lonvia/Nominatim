@@ -419,7 +419,7 @@ BEGIN
   nameaddress_partials := '';
 
   SELECT s.name_vector, s.nameaddress_vector,
-         s.name_partials || ' ' || s.nameaddress_partials
+         ' ' || s.name_partials || ' ' || s.nameaddress_partials
     INTO parent_name_vector, parent_address_vector, parent_partials
     FROM search_name s
     WHERE s.place_id = parent_place_id;
@@ -430,15 +430,17 @@ BEGIN
   THEN
     parent_name_vector := '{}'::INTEGER[];
     parent_address_vector := '{}'::INTEGER[];
+    parent_partials := '';
 
     FOR parent_place IN
-      SELECT s.name_vector
+      SELECT s.name_vector, s.name_partials
         FROM place_addressline pa
         JOIN search_name s ON s.place_id = pa.address_place_id
        WHERE pa.place_id = parent_place_id
     LOOP
       parent_address_vector := array_merge(parent_address_vector,
                                            parent_place.name_vector);
+      parent_partials := parent_partials || ' ' || parent_place.name_partials;
     END LOOP;
   END IF;
 
@@ -494,10 +496,8 @@ BEGIN
   -- Cheating here by not recomputing all terms but simply using the ones
   -- from the parent object.
   nameaddress_vector := array_merge(nameaddress_vector, parent_name_vector);
-  IF parent_address_vector is not NULL THEN
-    nameaddress_vector := array_merge(nameaddress_vector, parent_address_vector);
-    nameaddress_partials := nameaddress_partials || ' ' || parent_partials;
-  END IF;
+  nameaddress_partials := nameaddress_partials || parent_partials;
+  nameaddress_vector := array_merge(nameaddress_vector, parent_address_vector);
 
   -- make sure addr:place terms are always searchable
   IF is_place_addr THEN
@@ -508,12 +508,6 @@ BEGIN
     END IF;
     nameaddress_vector := array_merge(nameaddress_vector, addr_place_ids);
     nameaddress_partials := nameaddress_partials || '  ' || token_addr_place_search_partials(token_info);
-  END IF;
-
-  -- Parent doesn't have a name and is therefore not listed.
-  -- Use the parents address parts for the address but only bother if there is a name.
-  IF parent_address_vector is NULL THEN
-   -- TODO!!!
   END IF;
 
   nameaddress_partials := deduplicate_tokens(nameaddress_partials);
