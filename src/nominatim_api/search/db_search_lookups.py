@@ -148,7 +148,7 @@ def _default_partial_restrict(element: PartialLookup,
 class CombinedPartialLookup(LookupType):
     """ Find all tokens in either name or address partial vector.
     """
-    inherite_cache = True
+    inherit_cache = True
 
     def __init__(self, table: SaFromClause, _: str, tokens: List[str]) -> None:
         super().__init__(table.c['name_partials'], table.c['nameaddress_partials'],
