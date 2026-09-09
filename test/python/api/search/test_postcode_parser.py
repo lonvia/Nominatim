@@ -13,7 +13,8 @@ import re
 import pytest
 
 from nominatim_api.search.postcode_parser import PostcodeParser
-from nominatim_api.search.query import QueryStruct, PHRASE_ANY, PHRASE_POSTCODE, PHRASE_STREET
+from nominatim_api.search.query import QueryStruct, PartialToken, \
+                                       PHRASE_ANY, PHRASE_POSTCODE, PHRASE_STREET
 
 
 @pytest.fixture
@@ -61,19 +62,23 @@ gb:
 
     return project_env
 
+def add_node(query, btype, ptype, word=''):
+    query.add_node(btype, ptype,
+                   PartialToken(penalty=0.3, token=-1, count=1, addr_count=1,
+                                lookup_word=word, transliterated=word))
 
 def mk_query(inp):
     query = QueryStruct([])
-    phrase_split = re.split(r"([ ,:'-])", inp)
+    phrase_split = re.split(r"([ ,:`-])", inp)
 
     brk = '<'
     for word in phrase_split:
         if brk is None:
             brk = word
         else:
-            query.add_node(brk, PHRASE_ANY, word, word)
+            add_node(query, brk, PHRASE_ANY, word)
             brk = None
-    query.add_node('>', PHRASE_ANY)
+    add_node(query, '>', PHRASE_ANY)
 
     return query
 
@@ -108,7 +113,7 @@ def test_contained_postcode(pc_config):
                                                   (0, 2, '12345 DX')}
 
 
-@pytest.mark.parametrize('query,frm,to', [('345987', 0, 1), ('345 987', 0, 2),
+@pytest.mark.parametrize('query,frm,to', [('345`987', 0, 2), ('345987', 0, 1), ('345 987', 0, 2),
                                           ('Aina 345 987', 1, 3),
                                           ('Aina 23 345 987 ff', 2, 4)])
 def test_postcode_with_space(pc_config, query, frm, to):
@@ -125,9 +130,9 @@ def test_overlapping_postcode(pc_config):
     assert parser.parse(mk_query('123 456 78')) == {(0, 2, '123456'), (1, 3, '456 78')}
 
 
-@pytest.mark.parametrize('query', ['45325-Berlin', "45325'Berlin",
-                                   'Berlin-45325', "Berlin'45325", '45325Berlin'
-                                   '345-987', "345'987", '345,987', '345:987'])
+@pytest.mark.parametrize('query', ['45325-Berlin', "45325`Berlin",
+                                   'Berlin-45325', "Berlin`45325", '45325Berlin'
+                                   '345-987', '345,987', '345:987'])
 def test_not_a_postcode(pc_config, query):
     parser = PostcodeParser(pc_config)
 
@@ -157,10 +162,10 @@ def test_postcode_inside_postcode_phrase(pc_config):
     parser = PostcodeParser(pc_config)
 
     query = QueryStruct([])
-    query.add_node('<', PHRASE_STREET, '12345', '12345')
-    query.add_node(',', PHRASE_POSTCODE, 'xz', 'xz')
-    query.add_node(',', PHRASE_POSTCODE, '4444', '4444')
-    query.add_node('>', PHRASE_ANY)
+    add_node(query, '<', PHRASE_STREET, '12345')
+    add_node(query, ',', PHRASE_POSTCODE, 'xz')
+    add_node(query, ',', PHRASE_POSTCODE, '4444')
+    add_node(query, '>', PHRASE_ANY)
 
     assert parser.parse(query) == {(2, 3, '4444')}
 
@@ -169,8 +174,8 @@ def test_partial_postcode_in_postcode_phrase(pc_config):
     parser = PostcodeParser(pc_config)
 
     query = QueryStruct([])
-    query.add_node('<', PHRASE_POSTCODE, '2224', '2224')
-    query.add_node(' ', PHRASE_POSTCODE, '12345', '12345')
-    query.add_node('>', PHRASE_ANY)
+    add_node(query, '<', PHRASE_POSTCODE, '2224')
+    add_node(query, ' ', PHRASE_POSTCODE, '12345')
+    add_node(query, '>', PHRASE_ANY)
 
     assert not parser.parse(query)

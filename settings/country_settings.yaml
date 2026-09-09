@@ -547,7 +547,7 @@ fk:
     languages: en
     names: !include country-names/fk.yaml
     postcode:
-      pattern: "FIQQ 1ZZ"
+      pattern: "FIQQ ?1ZZ"
 
 
 # Federated States of Micronesia (Micronesia)

@@ -67,28 +67,34 @@ class PostcodeParser:
 
             subnodes = nodes[start:end]
             if ptype == qmod.PHRASE_POSTCODE:
-                self._match_word(''.join(f"{n.btype}{n.partial.lookup_word.upper()}"
-                                         for n in subnodes)[1:] + nodes[end].btype,
-                                 start, True, outcodes)
+                word = ''
+                for n in subnodes:
+                    if n.btype in ' -':
+                        word += n.btype
+                    word += n.partial.lookup_word.upper()
+                word += ','
+                self._match_word(word, [start, end], True, outcodes)
             elif ptype == qmod.PHRASE_ANY:
                 subnodes.reverse()
-                word = nodes[end].btype
+                word = ','
+                space_pos = [end]
                 substart = end - 1
                 for n in subnodes:
-                    if n.btype == '`' or word == '`':
-                        word = n.btype
-                    else:
-                        word = n.partial.lookup_word.upper() + word
-                        if n.btype in '<,: ':
-                            self._match_word(word, substart, False, outcodes)
+                    word = n.partial.lookup_word.upper() + word
+                    if n.btype in '<,: ':
+                        space_pos = [substart] + space_pos
+                        self._match_word(word, space_pos, False, outcodes)
                         word = n.btype + word
+                    elif n.btype == '-':
+                        space_pos = [substart] + space_pos
+                        word = '-' + word
                     substart -= 1
 
             start = end
 
         return outcodes
 
-    def _match_word(self, word: str, pos: int, fullmatch: bool,
+    def _match_word(self, word: str, space_pos: list[int], fullmatch: bool,
                     outcodes: Set[Tuple[int, int, str]]) -> None:
         # Use global pattern to check for presence of any postcode.
         m = self.global_pattern.fullmatch(word)
@@ -101,7 +107,10 @@ class PostcodeParser:
             for pattern, info in self.local_patterns:
                 lm = pattern.fullmatch(pc_word) if fullmatch else pattern.match(pc_word)
                 if lm:
-                    trange = (pos, pos + cc_spaces + sum(c in ' ,-:>' for c in lm.group(0)))
+                    if fullmatch:
+                        trange = (space_pos[0], space_pos[-1])
+                    else:
+                        trange = (space_pos[0], space_pos[cc_spaces + sum(c in ' ,-:>' for c in lm.group(0))])
                     for out, out_ccs in info:
                         if cc is None or cc in out_ccs:
                             if out:

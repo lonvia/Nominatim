@@ -191,7 +191,8 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         if HOUSENUMBER_RE.fullmatch(name.name):
             return name.name, [int(name.name)]
 
-        norm = self.name_proc.normalize_place_name(name, country_code)
+        norm = self.name_proc.normalize_place_name(name, country_code,
+                                                   strip_breaks=True)
 
         if len(norm.token) <= 4 and norm.token.isdecimal():
             return norm.token, [int(norm.token)]
