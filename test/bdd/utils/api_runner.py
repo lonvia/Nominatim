@@ -9,6 +9,7 @@ Various helper classes for running Nominatim commands.
 """
 from collections import namedtuple
 from nominatim_db.utils.asyncio_utils import asyncio_run
+from nominatim_api.search import query_analyzer_factory
 
 APIResponse = namedtuple('APIResponse', ['endpoint', 'status', 'body', 'headers'])
 
@@ -17,6 +18,10 @@ class APIRunner:
     """ Execute a call to an API endpoint.
     """
     def __init__(self, environ, api_engine):
+        module = query_analyzer_factory.get_tokenizer_module('fuzzy')
+        if hasattr(module, 'flush_caches'):
+            module.flush_caches()
+
         create_func = getattr(self, f"create_engine_{api_engine}")
         self.exec_engine = create_func(environ)
 
