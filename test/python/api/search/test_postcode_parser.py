@@ -61,6 +61,10 @@ gb:
 
     return project_env
 
+def add_node(query, btype, ptype, word=''):
+    query.add_node(btype, ptype,
+                   PartialToken(penalty=0.3, token=-1, count=1, addr_count=1,
+                                lookup_word=word, transliterated=word))
 
 def add_node(query, btype, ptype, word):
     query.add_node(btype, ptype,
@@ -114,7 +118,7 @@ def test_contained_postcode(pc_config):
                                                   (0, 2, '12345 DX')}
 
 
-@pytest.mark.parametrize('query,frm,to', [('345987', 0, 1), ('345 987', 0, 2),
+@pytest.mark.parametrize('query,frm,to', [('345`987', 0, 2), ('345987', 0, 1), ('345 987', 0, 2),
                                           ('Aina 345 987', 1, 3),
                                           ('Aina 23 345 987 ff', 2, 4)])
 def test_postcode_with_space(pc_config, query, frm, to):
@@ -132,8 +136,8 @@ def test_overlapping_postcode(pc_config):
 
 
 @pytest.mark.parametrize('query', ['45325-Berlin', "45325`Berlin",
-                                   'Berlin-45325', "Berlin'45325", '45325Berlin'
-                                   '345-987', "345'987", '345,987', '345:987'])
+                                   'Berlin-45325', "Berlin`45325", '45325Berlin'
+                                   '345-987', '345,987', '345:987'])
 def test_not_a_postcode(pc_config, query):
     parser = PostcodeParser(pc_config)
 

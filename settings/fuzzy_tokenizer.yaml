@@ -7,18 +7,18 @@ normalization:
     - "'nº' > 'no'"
     - "ª > a"
     - "º > o"
-    - "[’‘׳] > \\'"
-    - "[[:Punctuation:][:Symbol:][\u02bc] - [-:']]+  > '-'"
+    - "[’‘׳\\'] > '`'"
+    - "[[:Punctuation:][:Symbol:][\u02bc] - [`:]]+  > '-'"
     - "ß > 'ss'" # German szet is unambiguously equal to double ss
-    - "[^[:alnum:] [:Canonical_Combining_Class=Virama:] [:Space:] [-:']] >"
+    - "[^[:alnum:] [:Canonical_Combining_Class=Virama:] [:Space:] [-:`]] >"
     - "[:Lm:] >"
     - ":: [[:Number:]] Latin ()"
     - ":: [[:Number:]] Ascii ()"
     - ":: [[:Number:]] NFD ()"
     - "[[:Nonspacing Mark:] [:Cf:]] >"
-    - "[:Letter:] } {([:Number:]) > '-'"
-    - "[:Number:] } {([:Letter:]) > '-'"
-    - "[-:']?[:Space:]+[-:']? > ' '"
+    - "[:Letter:] } {([:Number:]) > '`'"
+    - "[:Number:] } {([:Letter:]) > '`'"
+    - "[-:`]?[:Space:]+[-:`]? > ' '"
 transliteration:
     - ":: Latin ()"
     - !include icu-rules/extended-unicode-to-asccii.yaml
@@ -88,13 +88,5 @@ variants:
               - pattern: '([äöü])'
                 replacement: '\1e'
         - mutations:
-              - pattern: "'"
-                replacement: ""
-    - applies-to: name
-      type: mutation
-      mode: replace
-      scope: global
-      rules:
-        - mutations:
-              - pattern: "'"
+              - pattern: "`"
                 replacement: " "

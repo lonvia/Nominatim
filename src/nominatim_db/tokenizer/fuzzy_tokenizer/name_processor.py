@@ -60,7 +60,7 @@ class VariantTree:
         self.default: Any
         self.nodes: dict[str, Any] = {}
 
-        if not attributes:
+        if not attributes or not attributes[0]:
             self.default = []
         elif len(attributes[0]) == 1:
             self.default = []
@@ -72,10 +72,10 @@ class VariantTree:
                 self.nodes[attr] = VariantTree([a[1:] for a in attributes if a[0] == attr or a[0] is None])
 
     def add_processor(self, attr_values: list[Optional[str]], proc: ttyp.VariantProcessor) -> None:
-        attr = attr_values[0]
         if not attr_values:
             self.default.append(proc)
         elif len(attr_values) == 1:
+            attr = attr_values[0]
             assert isinstance(self.default, list)
             if attr is None:
                 self.default.append(proc)
@@ -84,6 +84,7 @@ class VariantTree:
             else:
                 self.nodes[attr].append(proc)
         else:
+            attr = attr_values[0]
             remain = attr_values[1:]
             assert isinstance(self.default, VariantTree)
             if attr is None:
@@ -348,31 +349,36 @@ class FuzzyNameProcessor:
 
         self.token_type_data = [TokenTypeData(vp) for vp in varprocs]
 
-    def normalize(self, name: str) -> str:
+    def normalize(self, name: str, strip_breaks: bool = False) -> str:
         """ Runs normalization and word-breaking on the input name.
         """
         normed = self.normalizer.transliterate(f" {name} ")
         len_normed = len(normed)
         self.breaker.setText(normed)
         lastpos = 0
-        parts = []
+        parts = ''
+        boundary = ''
         while (bnd := self.breaker.nextBoundary()) >= 0:
             if bnd > len_normed:
                 bnd = len_normed
-            if bnd > lastpos \
-                    and (lastpos + 1 > bnd or normed[lastpos] not in (' ', '-', ':')):
-                parts.append(normed[lastpos:bnd])
+            if bnd > lastpos:
+                if (lastpos + 1 > bnd or normed[lastpos] not in '` -:'):
+                    parts += boundary + normed[lastpos:bnd]
+                    boundary = ' '
+                elif not strip_breaks and (lastpos + 1 == bnd and normed[lastpos] == '`'):
+                    boundary = '`'
             lastpos = bnd
             if lastpos >= len_normed:
                 break
 
-        return ' '.join(parts)
+        return parts
 
     def get_word_partials(self, normalized_name: str) -> Iterable[str]:
         return filter(None, (self.transliteration.transliterate(s).strip()
                              for s in normalized_name.split()))
 
-    def normalize_place_name(self, name: PlaceName, country_code: Optional[str]) -> ttyp.FuzzyName:
+    def normalize_place_name(self, name: PlaceName, country_code: Optional[str],
+                             strip_breaks: bool = False) -> ttyp.FuzzyName:
         """ Takes a list of PlaceName items and converts it into the
             internally used FuzzyName list, normalizing the names
             on the way.
@@ -382,7 +388,7 @@ class FuzzyNameProcessor:
             attr.update(name.attr)
         else:
             attr = name.attr
-        return ttyp.FuzzyName(name_attr=attr, token=self.normalize(name.name))
+        return ttyp.FuzzyName(name_attr=attr, token=self.normalize(name.name, strip_breaks))
 
     def apply_variants(self, token_type: str, names: Iterable[ttyp.FuzzyName], conn: Connection) -> ttyp.AnalyzedWord:
         """ Apply variant processing for the given type of tokens to
