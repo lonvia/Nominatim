@@ -2,12 +2,12 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2024 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Factory for creating a query analyzer for the configured tokenizer.
 """
-from typing import List, cast, TYPE_CHECKING
+from typing import List, cast, Any, TYPE_CHECKING
 from abc import ABC, abstractmethod
 from pathlib import Path
 import importlib
@@ -38,16 +38,21 @@ class AbstractQueryAnalyzer(ABC):
         """
 
 
-async def make_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer:
-    """ Create a query analyzer for the tokenizer used by the database.
+def get_tokenizer_module(name: str) -> Any:
+    """ Load the module for the given tokenizer.
     """
-    name = await conn.get_property('tokenizer')
-
     src_file = Path(__file__).parent / f'{name}_tokenizer.py'
     if not src_file.is_file():
         log().comment(f"No tokenizer named '{name}' available. Database not set up properly.")
         raise RuntimeError('Tokenizer not found')
 
-    module = importlib.import_module(f'nominatim_api.search.{name}_tokenizer')
+    return importlib.import_module(f'nominatim_api.search.{name}_tokenizer')
+
+
+async def make_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer:
+    """ Create a query analyzer for the tokenizer used by the database.
+    """
+    name = await conn.get_property('tokenizer')
+    module = get_tokenizer_module(name)
 
     return cast(AbstractQueryAnalyzer, await module.create_query_analyzer(conn))

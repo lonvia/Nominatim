@@ -59,6 +59,12 @@ fuzzy_category_tokens: dict[int, CategoryInfo] = {}
 
 MISSING_CATEGORY_INFO = CategoryInfo(('place', 'yes'), '')
 
+
+def flush_caches() -> str:
+    fuzzy_country_tokens.clear()
+    fuzzy_category_tokens.clear()
+
+
 @dataclasses.dataclass
 class FuzzyToken(qmod.Token):
     """ Specialised token for the Fuzzy tokenizer.
@@ -296,7 +302,7 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
 
 async def create_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer:
     """ Create and set up a new query analyzer for a database based
-        on the fuxxy tokenizer.
+        on the fuzzy tokenizer.
     """
     async def _get_config() -> FuzzyAnalyzerConfig:
         if 'word' not in conn.t.meta.tables:
@@ -316,19 +322,19 @@ async def create_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer
                          sa.Column('token', sa.Text, nullable=False),
                          sa.Column('attributes', KeyValueStore))
 
-            if not fuzzy_country_tokens:
-                sql = sa.select(t.c.id, t.c.token).where(t.c.type == 'C')
+        if not fuzzy_country_tokens:
+            sql = sa.select(t.c.id, t.c.token).where(t.c.type == 'C')
 
-                for row in await conn.execute(sql):
-                    fuzzy_country_tokens[row.id] = row.token
+            for row in await conn.execute(sql):
+                fuzzy_country_tokens[row.id] = row.token
 
-            if not fuzzy_category_tokens:
-                sql = sa.select(t.c.id, t.c.token, t.c.attributes).where(t.c.type == 'S')
+        if not fuzzy_category_tokens:
+            sql = sa.select(t.c.id, t.c.token, t.c.attributes).where(t.c.type == 'S')
 
-                for row in await conn.execute(sql):
-                    fuzzy_category_tokens[row.id] = \
-                        CategoryInfo(tuple(row.token.split('.', 2)),
-                                     row.attributes.get('op', ''))
+            for row in await conn.execute(sql):
+                fuzzy_category_tokens[row.id] = \
+                    CategoryInfo(tuple(row.token.split('.', 2)),
+                                 row.attributes.get('op', ''))
 
 
         return await FuzzyAnalyzerConfig.create(conn)
