@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Tests for import command of the command-line interface wrapper.
@@ -49,6 +49,7 @@ class TestCliImportWithDb:
             mock_func_factory(nominatim_db.tools.refresh, 'load_address_levels_from_config'),
             mock_func_factory(nominatim_db.tools.postcodes, 'update_postcodes'),
             async_mock_func_factory(nominatim_db.indexer.indexer.Indexer, 'index_full'),
+            mock_func_factory(nominatim_db.tools.refresh, 'create_functions')
         ]
 
         params = ['import', '--osm-file', __file__]
@@ -57,12 +58,8 @@ class TestCliImportWithDb:
             mocks.append(mock_func_factory(nominatim_db.tools.freeze, 'drop_update_tables'))
             params.append('--no-updates')
 
-        cf_mock = mock_func_factory(nominatim_db.tools.refresh, 'create_functions')
-
         assert self.call_nominatim(*params) == 0
         assert self.tokenizer_mock.finalize_import_called
-
-        assert cf_mock.called > 1
 
         for mock in mocks:
             assert mock.called == 1, "Mock '{}' not called".format(mock.func_name)

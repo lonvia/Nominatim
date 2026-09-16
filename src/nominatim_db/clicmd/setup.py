@@ -192,19 +192,15 @@ class SetupAll:
 
         with connect(config.get_libpq_dsn()) as conn:
             conn.autocommit = True
-            LOG.warning('Create functions (1st pass)')
-            refresh.create_functions(conn, config, False, False)
             LOG.warning('Create tables')
             database_import.create_tables(conn, config, reverse_only=reverse_only)
             refresh.load_address_levels_from_config(conn, config)
-            LOG.warning('Create functions (2nd pass)')
+            LOG.warning('Create partition tables')
+            database_import.create_partition_tables(conn, config)
+            LOG.warning('Create functions')
             refresh.create_functions(conn, config, False, False)
             LOG.warning('Create table triggers')
             database_import.create_table_triggers(conn, config)
-            LOG.warning('Create partition tables')
-            database_import.create_partition_tables(conn, config)
-            LOG.warning('Create functions (3rd pass)')
-            refresh.create_functions(conn, config, False, False)
 
     def _get_tokenizer(self, continue_at: Optional[str],
                        config: Configuration) -> AbstractTokenizer:
