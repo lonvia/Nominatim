@@ -15,6 +15,7 @@ from icu import Transliterator
 from ...errors import UsageError
 from . import types as ttyp
 
+
 class MutationProcessor(ttyp.VariantProcessor):
     RESERVED_RULE_KEYS = ('mutations', )
 
@@ -57,4 +58,3 @@ class MutationProcessor(ttyp.VariantProcessor):
             return None
 
         return [name, mutated] if self.mode == 'append' else [mutated]
-

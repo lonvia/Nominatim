@@ -61,10 +61,6 @@ gb:
 
     return project_env
 
-def add_node(query, btype, ptype, word=''):
-    query.add_node(btype, ptype,
-                   PartialToken(penalty=0.3, token=-1, count=1, addr_count=1,
-                                lookup_word=word, transliterated=word))
 
 def add_node(query, btype, ptype, word):
     query.add_node(btype, ptype,

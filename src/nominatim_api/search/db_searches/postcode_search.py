@@ -2,7 +2,7 @@
 #
 # This file is part of Nominatim. (https://nominatim.org)
 #
-# Copyright (C) 2025 by the Nominatim developer community.
+# Copyright (C) 2026 by the Nominatim developer community.
 # For a full list of authors see the git log.
 """
 Implementation of search for a postcode.
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 from . import base
 from ...typing import SaBind, SaExpression
-from ...sql.sqlalchemy_types import Geometry, IntArray
+from ...sql.sqlalchemy_types import Geometry
 from ...connection import SearchConnection
 from ...types import SearchDetails, Bbox
 from ... import results as nres

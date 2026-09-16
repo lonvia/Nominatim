@@ -247,8 +247,6 @@ class SearchBuilder:
                            dbf.FieldLookup('nameaddress_partials', addr_partials,
                                            lookups.PartialRestrict)]
 
-
-
     def get_name_ranking(self, trange: qmod.TokenRange,
                          db_field: str = 'name_vector') -> dbf.FieldRanking:
         """ Create a ranking expression for a name term in the given range.

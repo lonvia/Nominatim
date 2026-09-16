@@ -103,6 +103,7 @@ class ForwardGeocoder:
 
         searches: List[AbstractSearch] = []
         if query.num_token_slots() > 0:
+            # 2. Compute all possible search interpretations
             log().section('Compute abstract searches')
             search_builder = SearchBuilder(query, self.params)
             num_searches = 0

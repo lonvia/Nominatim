@@ -18,11 +18,13 @@ from ...errors import UsageError
 from . import types as ttyp
 from ..token_analysis.simple_trie import SimpleTrie
 
+
 class ICUVariant(NamedTuple):
     """ A single replacement rule for variant creation.
     """
     source: str
     replacement: str
+
 
 class LexicalProcessor(ttyp.VariantProcessor):
     RESERVED_RULE_KEYS = ('words', )

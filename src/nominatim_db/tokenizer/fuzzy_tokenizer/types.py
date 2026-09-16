@@ -11,9 +11,6 @@ from typing import Optional, cast
 from abc import ABC, abstractmethod
 import dataclasses
 
-from icu import Transliterator
-from .config import FuzzyVariantConfig
-
 TOKEN_WORD = 'W'
 TOKEN_HOUSENUMBER = 'H'
 TOKEN_COUNTRY = 'C'
@@ -23,6 +20,7 @@ TOKEN_LABELS = {
     TOKEN_HOUSENUMBER: 'housenumber',
     TOKEN_COUNTRY: 'country'
 }
+
 
 @dataclasses.dataclass
 class FuzzyToken:

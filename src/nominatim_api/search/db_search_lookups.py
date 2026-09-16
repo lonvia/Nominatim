@@ -122,12 +122,14 @@ class PartialLookup(LookupType):
     def __init__(self, table: SaFromClause, column: str, tokens: List[str]) -> None:
         super().__init__(getattr(table.c, column), ' & '.join(tokens))
 
+
 @compiles(PartialLookup)
 def _default_partial_lookup(element: PartialLookup,
                             compiler: 'sa.Compiled', **kw: Any) -> str:
     arg1, arg2 = list(element.clauses)
     return "%s::tsvector @@ %s::tsquery" % (compiler.process(arg1, **kw),
-                                  compiler.process(arg2, **kw))
+                                            compiler.process(arg2, **kw))
+
 
 class PartialRestrict(LookupType):
     """ Find entries in a tsvector without using the index.
@@ -136,6 +138,7 @@ class PartialRestrict(LookupType):
 
     def __init__(self, table: SaFromClause, column: str, tokens: List[str]) -> None:
         super().__init__(getattr(table.c, column), ' & '.join(tokens))
+
 
 @compiles(PartialRestrict)
 def _default_partial_restrict(element: PartialLookup,

@@ -15,7 +15,6 @@ from collections import defaultdict
 
 from ...db.connection import connect, Connection, register_hstore
 from ..base import AbstractAnalyzer
-from ...config import Configuration
 from ...data.place_info import PlaceInfo
 from ...data.place_name import PlaceName, PlaceNames
 from .name_processor import FuzzyNameProcessor
@@ -26,6 +25,7 @@ LOG = logging.getLogger()
 SpKey = tuple[str, str]
 
 HOUSENUMBER_RE = re.compile('[0-9]{1,4}')
+
 
 class FuzzyAnalyzer(AbstractAnalyzer):
 
@@ -48,7 +48,7 @@ class FuzzyAnalyzer(AbstractAnalyzer):
         return postcode.strip().upper()
 
     def update_postcodes_from_db(self) -> None:
-        pass # not needed
+        pass  # not needed
 
     def update_special_phrases(self, phrases: Collection[tuple[str, str, str, str]],
                                should_replace: bool) -> None:
@@ -76,8 +76,8 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                                    VALUES (%s, 'S', %s, %s)""", to_add)
             if to_delete:
                 cur.executemany("""DELETE FROM word
-                                   WHERE type = 'S' AND word_id = %s AND src = %s""", 
-                                 to_delete)
+                                   WHERE type = 'S' AND word_id = %s AND src = %s""",
+                                to_delete)
 
         LOG.info("Total phrases: %s. Added: %s. Deleted: %s",
                  len(phrases), len(to_add), len(to_delete))
@@ -154,7 +154,6 @@ class FuzzyAnalyzer(AbstractAnalyzer):
                                                     False, self.conn)
         else:
             token_info = _TokenInfo(set(), set())
-
 
         if place.searchable_address:
             address_names: dict[str, ttyp.FuzzyNames] = defaultdict(list)

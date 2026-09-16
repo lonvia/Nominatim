@@ -25,6 +25,7 @@ DBCFG_TRANS_RULES = "tokenizer_transliteration_rules"
 DBCFG_BREAKER_RULES = "tokenizer_breaker_rules"
 DBCFG_VARIANT_GROUPING = "tokenizer_variant_grouping"
 
+
 def _get_section(rules: Mapping[str, Any], section: str, dtype: Any,
                  base_section: str = 'tokenizer config') -> Any:
     """ Get the section named 'section' from the rules. If the section does
@@ -121,7 +122,7 @@ class FuzzyTokenizerConfig:
                     applies_to = []
 
                 rule_type = _get_section(vconfig, 'type', str, 'variants configuration')
-                rule_config = {k: v for k,v in vconfig.items()
+                rule_config = {k: v for k, v in vconfig.items()
                                if k not in ('rules', 'applies-to', 'type')}
 
                 for rule in flatten_config_list(_get_section(vconfig, 'rules', list,
@@ -140,7 +141,6 @@ class FuzzyTokenizerConfig:
                 self.word_grouping = 'by-attribute'
         else:
             self.word_grouping = get_property(conn, DBCFG_VARIANT_GROUPING)
-
 
     def save_to_db(self, conn: Connection) -> None:
         """ Save all parts of the configuration to the database that

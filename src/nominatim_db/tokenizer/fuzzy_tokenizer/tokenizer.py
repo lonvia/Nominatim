@@ -7,7 +7,7 @@
 """
 Tokenizer using pg_search to allow for fuzzy search.
 """
-from typing import Optional, Iterable, Any
+from typing import Optional
 import logging
 
 from psycopg import sql as pysql
@@ -16,10 +16,9 @@ from ...db.connection import connect, Connection, drop_tables, table_exists
 from ...db.sql_preprocessor import SQLPreprocessor
 from ..base import AbstractAnalyzer, AbstractTokenizer
 from ...config import Configuration
-from ...data.place_info import PlaceInfo
 from .analyzer import FuzzyAnalyzer
 from .config import FuzzyTokenizerConfig
-from  .name_processor import FuzzyNameProcessor
+from .name_processor import FuzzyNameProcessor
 from . import types as ttyp
 
 LOG = logging.getLogger()
@@ -41,7 +40,7 @@ class FuzzyTokenizer(AbstractTokenizer):
         self.config = FuzzyTokenizerConfig(config)
 
         with connect(self.dsn) as conn:
-            #conn.execute('CREATE EXTENSION IF NOT EXISTS pg_search')
+            # conn.execute('CREATE EXTENSION IF NOT EXISTS pg_search')
             self.update_sql_functions(config)
             self._setup_db_tables(conn, config)
             self._create_base_indices(config, 'word')
@@ -66,7 +65,7 @@ class FuzzyTokenizer(AbstractTokenizer):
             sqlp.run_sql_file(conn, 'tokenizer/fuzzy_tokenizer.sql')
 
     def check_database(self, config: Configuration) -> Optional[str]:
-        pass # no other checks at the moment
+        pass  # no other checks at the moment
 
     def update_statistics(self, config: Configuration, threads: int = 1) -> None:
         """ Recompute frequencies of full words.
@@ -77,8 +76,8 @@ class FuzzyTokenizer(AbstractTokenizer):
 
             conn.execute('ANALYSE search_name')
             if threads > 1:
-                    conn.execute(pysql.SQL('SET max_parallel_workers_per_gather TO {}')
-                                     .format(pysql.Literal(min(threads, 6),)))
+                conn.execute(pysql.SQL('SET max_parallel_workers_per_gather TO {}')
+                                  .format(pysql.Literal(min(threads, 6),)))
 
             LOG.info('Computing word frequencies')
             drop_tables(conn, 'word_frequencies')
@@ -139,7 +138,7 @@ class FuzzyTokenizer(AbstractTokenizer):
     def update_word_tokens(self) -> None:
         """ Remove unused tokens.
         """
-        #TODO: clean housenumbers at least
+        # TODO: clean housenumbers at least
 
     def name_analyzer(self) -> AbstractAnalyzer:
         assert self.config is not None

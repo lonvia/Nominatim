@@ -10,7 +10,6 @@ Implementation of query analysis for the Fuzzy tokenizer.
 from typing import Optional, Any, cast, Iterator
 import dataclasses
 import re
-from itertools import zip_longest
 
 import icu
 import sqlalchemy as sa
@@ -33,24 +32,16 @@ DB_TO_TOKEN_TYPE = {
     'C': qmod.TOKEN_COUNTRY
 }
 
-PENALTY_BREAK = {
-     qmod.BREAK_START: -0.5,
-     qmod.BREAK_END: -0.5,
-     qmod.BREAK_PHRASE: -0.5,
-     qmod.BREAK_SOFT_PHRASE: -0.5,
-     qmod.BREAK_WORD: 0.1,
-     qmod.BREAK_PART: 0.2,
-     qmod.BREAK_TOKEN: 0.4
-}
-
 BREAK_CHARS = qmod.BREAK_PART + qmod.BREAK_WORD + qmod.BREAK_SOFT_PHRASE + qmod.BREAK_TOKEN
 
 TOKEN_SPLIT_RE = re.compile(f"([{BREAK_CHARS}])")
+
 
 @dataclasses.dataclass
 class CategoryInfo:
     classtype: tuple[str, str]
     operator: Optional[str]
+
 
 # Lookup from token ID to country code
 fuzzy_country_tokens: dict[int, str] = {}
@@ -60,7 +51,7 @@ fuzzy_category_tokens: dict[int, CategoryInfo] = {}
 MISSING_CATEGORY_INFO = CategoryInfo(('place', 'yes'), '')
 
 
-def flush_caches() -> str:
+def flush_caches() -> None:
     fuzzy_country_tokens.clear()
     fuzzy_category_tokens.clear()
 
@@ -174,8 +165,8 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
                 if row.type == 'w':
                     assert trange.start + 1 == trange.end
                     partial = query.nodes[trange.start].partial
-                    partial.count=row.name_count
-                    partial.addr_count=row.address_count
+                    partial.count = row.name_count
+                    partial.addr_count = row.address_count
                 else:
                     # Create a new token for each position because the token
                     # penalty can vary depending on the position in the query.
@@ -196,9 +187,6 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
 
         self._add_extra_tokens(query)
         self._rerank_tokens(query)
-        # Set the break penalties for the nodes in the query.
-        for node in query.nodes:
-            node.penalty = PENALTY_BREAK[node.btype]
 
         log().table_dump('Word tokens', _dump_word_tokens(query))
 
@@ -222,9 +210,7 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
                     breakchar = None
             breakchar = qmod.BREAK_PHRASE
 
-        query.add_node(qmod.BREAK_END, qmod.PHRASE_ANY,
-                       qmod.PartialToken(penalty=10.0, token=-1, count=1, addr_count=1,
-                                         lookup_word='', transliterated=''))
+        query.add_final_node()
 
     async def _lookup_in_db(self, words: list[str]) -> 'sa.Result[Any]':
         """ Return the token information from the database for the
@@ -249,7 +235,8 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
                                     FuzzyToken(penalty=0.0, token=int(candidate),
                                                count=1, addr_count=1,
                                                lookup_word=candidate))
-                if len(node.partial.transliterated) <= 4 and node.partial.transliterated.isdecimal():
+                if len(node.partial.transliterated) <= 4 \
+                        and node.partial.transliterated.isdecimal():
                     candidate = node.partial.transliterated
                 else:
                     candidate = None
@@ -299,7 +286,6 @@ class FuzzyQueryAnalyzer(AbstractQueryAnalyzer):
                                         (1 if ttype == qmod.TOKEN_WORD else 2)
 
 
-
 async def create_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer:
     """ Create and set up a new query analyzer for a database based
         on the fuzzy tokenizer.
@@ -336,7 +322,6 @@ async def create_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer
                     CategoryInfo(tuple(row.token.split('.', 2)),
                                  row.attributes.get('op', ''))
 
-
         return await FuzzyAnalyzerConfig.create(conn)
 
     config = await conn.get_cached_value('FUZZYTOK', 'config', _get_config)
@@ -345,7 +330,8 @@ async def create_query_analyzer(conn: SearchConnection) -> AbstractQueryAnalyzer
 
 
 def _dump_word_tokens(query: qmod.QueryStruct) -> Iterator[list[Any]]:
-    yield ['type', 'from', 'to', 'token', 'word', 'src', 'penalty', 'name_count', 'addr_count', 'extra']
+    yield ['type', 'from', 'to', 'token', 'word', 'src', 'penalty',
+           'name_count', 'addr_count', 'extra']
     for i, node in enumerate(query.nodes):
         pt = node.partial
         yield [qmod.TOKEN_PARTIAL, i, i + 1, pt.token, pt.transliterated, pt.lookup_word,
@@ -364,4 +350,3 @@ def _dump_word_tokens(query: qmod.QueryStruct) -> Iterator[list[Any]]:
                     extra = ''
                 yield [tlist.ttype, i, tlist.end, t.token, lookup,
                        t.lookup_word or '', t.penalty, t.count, t.addr_count, extra]
-
