@@ -120,14 +120,14 @@ class PartialLookup(LookupType):
     inherit_cache = True
 
     def __init__(self, table: SaFromClause, column: str, tokens: List[str]) -> None:
-        super().__init__(getattr(table.c, column), ' & '.join(tokens))
+        super().__init__(getattr(table.c, column), ' '.join(tokens))
 
 
 @compiles(PartialLookup)
 def _default_partial_lookup(element: PartialLookup,
                             compiler: 'sa.Compiled', **kw: Any) -> str:
     arg1, arg2 = list(element.clauses)
-    return "%s::tsvector @@ %s::tsquery" % (compiler.process(arg1, **kw),
+    return "%s &&& %s::pdb.fuzzy(1, f, t)" % (compiler.process(arg1, **kw),
                                             compiler.process(arg2, **kw))
 
 
@@ -137,14 +137,14 @@ class PartialRestrict(LookupType):
     inherit_cache = True
 
     def __init__(self, table: SaFromClause, column: str, tokens: List[str]) -> None:
-        super().__init__(getattr(table.c, column), ' & '.join(tokens))
+        super().__init__(getattr(table.c, column), ' '.join(tokens))
 
 
 @compiles(PartialRestrict)
 def _default_partial_restrict(element: PartialLookup,
                               compiler: 'sa.Compiled', **kw: Any) -> str:
     arg1, arg2 = list(element.clauses)
-    return "COALESCE(null, %s::tsvector) @@ %s::tsquery" % (
+    return "%s &&& %s::pdb.fuzzy(1, f, t)" % (
             compiler.process(arg1, **kw), compiler.process(arg2, **kw))
 
 
@@ -155,13 +155,13 @@ class CombinedPartialLookup(LookupType):
 
     def __init__(self, table: SaFromClause, _: str, tokens: List[str]) -> None:
         super().__init__(table.c['name_partials'], table.c['nameaddress_partials'],
-                         ' & '.join(tokens))
+                         ' '.join(tokens))
 
 
 @compiles(CombinedPartialLookup)
 def _default_combined_partial_lookup(element: PartialLookup,
                                      compiler: 'sa.Compiled', **kw: Any) -> str:
     col1, col2, tokens = list(element.clauses)
-    return "(%s || %s) @@ %s::tsquery" % (
+    return "(%s || %s) &&& %s::pdb.fuzzy(1, f, t)" % (
             compiler.process(col1, **kw), compiler.process(col2, **kw),
             compiler.process(tokens, **kw))
