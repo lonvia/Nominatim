@@ -21,7 +21,7 @@ Feature: Entrance nodes are recorded
         When updating entrances
           | osm | type  | geometry    |
           | N1  | main  | 1           |
-        And updating places
+        Given the places
           | osm  | class    | type  | geometry    |
           | W1   | building | yes   | (1,2,3,4,1) |
         When updating
@@ -55,7 +55,7 @@ Feature: Entrance nodes are recorded
         And updating entrances
           | osm | type  | geometry    |
           | N1  | main  | 1           |
-        And updating places
+        Given the places
           | osm | class    | type  | geometry    |
           | W1  | building | yes   | (1,2,3,4,1) |
         When updating
@@ -88,7 +88,7 @@ Feature: Entrance nodes are recorded
          | 1        | 1      | main | 1            | -         |
 
         When marking for delete N1
-        And updating places
+        Given the places
           | osm | class    | type  | geometry  |
           | W1  | building | yes   | (1,2,3,4,1) |
         When updating
@@ -122,7 +122,7 @@ Feature: Entrance nodes are recorded
          | 1        | 3      | yes  | 3            | -         |
 
         When marking for delete N1
-        And updating places
+        Given the places
           | osm | class    | type  | geometry  |
           | W1  | building | yes   | (1,2,3,4,1) |
         When updating

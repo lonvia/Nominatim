@@ -23,10 +23,10 @@ Feature: Update parenting of objects
          | W1     | W2              | 3 |
          | N1     | W2              | 3 |
 
-        When updating places
+        Given the places
          | osm | class    | type | street | addr_place | housenr | geometry    |
          | W1  | building | yes  | foo    | nowhere    | 3       | (5,6,7,8,5) |
-        And updating places
+        And the places
          | osm | class   | type | name |
          | N1  | amenity | bank | well |
         When updating
@@ -54,7 +54,7 @@ Feature: Update parenting of objects
          | object | parent_place_id |
          | N1     | W1              |
 
-        When updating places
+        Given the places
          | osm | class   | type        | name     | geometry |
          | W2  | highway | residential | X street | 3,4      |
         When updating
@@ -81,7 +81,7 @@ Feature: Update parenting of objects
          | object | parent_place_id |
          | N1     | W2              |
 
-        When updating places
+        Given the places
          | osm | class   | type        | name     | geometry |
          | W2  | highway | residential | B street | 3,4      |
         When updating
@@ -108,7 +108,7 @@ Feature: Update parenting of objects
          | object | parent_place_id |
          | N1     | W1              |
 
-        When updating places
+        Given the places
          | osm | class   | type        | name     | geometry |
          | W2  | highway | residential | X street | 3,4      |
         When updating
@@ -136,7 +136,7 @@ Feature: Update parenting of objects
          | object | parent_place_id |
          | N1     | N4              |
 
-        When updating places
+        Given the places
          | osm | class   | type        | name     | geometry |
          | N5  | place   | village     | Cdorf    | 5        |
         When updating
@@ -164,7 +164,7 @@ Feature: Update parenting of objects
          | object | parent_place_id |
          | N1     | N5              |
 
-        When updating places
+        Given the places
          | osm | class   | type        | name     | geometry |
          | N5  | place   | village     | Cdorf    | 5        |
         When updating

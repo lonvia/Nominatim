@@ -19,7 +19,7 @@ Feature: Updates for address computation
             | N1     | R1      |
             | R2     | R1      |
 
-        When updating places
+        Given the places
             | osm | class    | type           | admin | name | geometry    |
             | R2  | boundary | administrative | 8     | Barr | (2,4,5,7,2) |
         When updating
@@ -48,7 +48,7 @@ Feature: Updates for address computation
             | N1     | R2      |
             | R2     | R1      |
 
-        When updating places
+        Given the places
             | osm | class    | type           | admin | name | geometry    |
             | R2  | boundary | administrative | 8     | Barr | (3,4,5,6,3) |
         When updating
@@ -76,7 +76,7 @@ Feature: Updates for address computation
             | N1     | R2      |
             | R2     | R1      |
 
-        When updating places
+        Given the places
             | osm | class    | type           | admin | name | geometry    |
             | R2  | boundary | administrative | 15    | Barr | (2,4,5,7,2) |
         When updating
@@ -105,7 +105,7 @@ Feature: Updates for address computation
             | N1     | R2      | 16 |
             | R2     | R1      | 12 |
 
-        When updating places
+        Given the places
             | osm | class    | type           | admin | name | geometry    |
             | R1  | boundary | administrative | 5     | Fooo | (1,4,5,8,1) |
         When updating

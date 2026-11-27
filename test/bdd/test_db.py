@@ -103,14 +103,15 @@ def update_config(def_config):
 
 
 @given(step_parse('the (?P<named>named )?places'), target_fixture=None)
-def import_places(db_conn, named, datatable, node_grid):
+def import_places(row_factory, datatable, node_grid, named):
     """ Insert todo rows into the place table.
         When 'named' is given, then a random name will be generated for all
         objects.
     """
-    with db_conn.cursor() as cur:
-        for row in datatable[1:]:
-            PlaceColumn(node_grid).add_row(datatable[0], row, named is not None).db_insert(cur)
+    for row in datatable[1:]:
+        data = PlaceColumn(node_grid).add_row(datatable[0], row)
+        row_factory('place', **data.get_row_params(with_categories=True,
+                                                   with_name=named is not None))
 
 
 @given(step_parse('the entrances'), target_fixture=None)
@@ -118,7 +119,7 @@ def import_place_entrances(row_factory, datatable, node_grid):
     """ Insert todo rows into the place_entrance table.
     """
     for row in datatable[1:]:
-        data = PlaceColumn(node_grid).add_row(datatable[0], row, False)
+        data = PlaceColumn(node_grid).add_row(datatable[0], row)
         assert data.columns['osm_type'] == 'N'
 
         params = {'osm_id': data.columns['osm_id'],
@@ -134,7 +135,7 @@ def import_place_interpolations(row_factory, datatable, node_grid):
     """ Insert todo rows into the place_interpolation table.
     """
     for row in datatable[1:]:
-        data = PlaceColumn(node_grid).add_row(datatable[0], row, False)
+        data = PlaceColumn(node_grid).add_row(datatable[0], row)
         assert data.columns['osm_type'] == 'W'
 
         params = {'osm_id': data.columns['osm_id'],
@@ -254,6 +255,8 @@ def do_import(db_conn, def_config):
 def do_update(db_conn, update_config, do_postcodes):
     """ Run a simplified version of a single Nominatim update run.
     """
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT flush_deleted_places()')
     db_conn.commit()
 
     cli.nominatim(['index', '-q'], update_config.environ)
@@ -262,17 +265,6 @@ def do_update(db_conn, update_config, do_postcodes):
         cli.nominatim(['refresh', '--postcodes'], update_config.environ)
 
     return _collect_place_ids(db_conn)
-
-
-@when('updating places', target_fixture=None)
-def do_update(db_conn, update_config, node_grid, datatable):
-    """ Update the place table with the given data. Also runs all triggers
-        related to updates and reindexes the new data.
-    """
-    with db_conn.cursor() as cur:
-        for row in datatable[1:]:
-            PlaceColumn(node_grid).add_row(datatable[0], row, False).db_insert(cur)
-        cur.execute('SELECT flush_deleted_places()')
 
 
 @when('updating relations', target_fixture=None)
@@ -310,7 +302,7 @@ def update_place_entrances(db_conn, datatable, node_grid):
     """
     with db_conn.cursor() as cur:
         for row in datatable[1:]:
-            data = PlaceColumn(node_grid).add_row(datatable[0], row, False)
+            data = PlaceColumn(node_grid).add_row(datatable[0], row)
             assert data.columns['osm_type'] == 'N'
 
             cur.execute("DELETE FROM place_entrance WHERE osm_id = %s",
@@ -326,7 +318,7 @@ def update_place_interpolations(db_conn, row_factory, update_config, datatable, 
     """ Update rows in the place_entrance table.
     """
     for row in datatable[1:]:
-        data = PlaceColumn(node_grid).add_row(datatable[0], row, False)
+        data = PlaceColumn(node_grid).add_row(datatable[0], row)
         assert data.columns['osm_type'] == 'W'
 
         params = {'osm_id': data.columns['osm_id'],

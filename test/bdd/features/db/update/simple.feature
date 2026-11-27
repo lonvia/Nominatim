@@ -68,7 +68,7 @@ Feature: Update of simple objects
           | object | class | type | centroid!wkt |
           | N3     | shop  | toys | 1 -1 |
 
-        When updating places
+        Given the places
           | osm | class | type    | geometry |
           | N3  | shop  | grocery | 1 -1 |
         When updating
@@ -89,7 +89,7 @@ Feature: Update of simple objects
           | object | rank_address |
           | W1     | 10           |
 
-        When updating places
+        Given the places
           | osm | class    | type           | name | admin | geometry        |
           | W1  | boundary | historic       | Haha | 5     | (1, 2, 4, 3, 1) |
         When updating

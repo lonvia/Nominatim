@@ -11,6 +11,8 @@ import ast
 import random
 import string
 
+import psycopg.sql as pysql
+
 from .geometry_alias import ALIASES
 from .grid import Grid
 
@@ -24,22 +26,13 @@ class PlaceColumn:
         self.grid = grid or Grid()
         self.geometry = None
 
-    def add_row(self, headings, row, force_name):
+    def add_row(self, headings, row):
         """ Parse the content from the given behave row as place column data.
         """
         for name, value in zip(headings, row):
             self._add(name, value)
 
         assert 'osm_type' in self.columns, "osm column missing"
-
-        if force_name and 'name' not in self.columns:
-            self._add_hstore(
-                'name',
-                'name',
-                ''.join(random.choices(string.ascii_uppercase)
-                        + random.choices(string.printable, k=random.randrange(30))),
-            )
-
         return self
 
     def _add(self, key, value):
@@ -116,23 +109,28 @@ class PlaceColumn:
         assert self.geometry is not None, "Geometry missing"
         return self.geometry
 
+    def get_row_params(self, with_geometry=True, with_categories=False, with_name=False):
+        params = dict(self.columns)
+        if with_geometry:
+            params['geometry'] = pysql.SQL(self.get_wkt())
+        if with_categories and 'categories' not in params:
+            cls = self.columns.get('class')
+            typ = self.columns.get('type')
+            if cls and typ:
+                params['categories'] = [f"osm.{cls}.{typ}"]
+        if with_name and 'name' not in params:
+            params['name'] = {
+                'name':
+                ''.join(random.choices(string.ascii_uppercase)
+                        + random.choices(string.printable, k=random.randrange(30))),
+            }
+
+
+
+        return params
+
     def db_delete(self, cursor):
         """ Issue a delete for the given OSM object.
         """
         cursor.execute('DELETE FROM place WHERE osm_type = %s and osm_id = %s',
                        (self.columns['osm_type'], self.columns['osm_id']))
-
-    def db_insert(self, cursor):
-        """ Insert the collected data into the database.
-        """
-        if 'categories' not in self.columns:
-            cls = self.columns.get('class')
-            typ = self.columns.get('type')
-            if cls and typ:
-                self.columns['categories'] = [f'osm.{cls}.{typ}']
-
-        query = 'INSERT INTO place ({}, geometry) values({}, {})'.format(
-            ','.join(self.columns.keys()),
-            ','.join(['%s' for x in range(len(self.columns))]),
-            self.get_wkt())
-        cursor.execute(query, list(self.columns.values()))

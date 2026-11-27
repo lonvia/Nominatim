@@ -38,7 +38,7 @@ Feature: Update of postcode
         Given the postcodes
            | osm | postcode | centroid   |
            | N66 | 99201    | country:fr |
-        When updating places
+        And the places
            | osm | class | type  | addr+postcode | addr+housenumber | geometry |
            | N35 | place | house | 4567          | 5                | country:ch |
         When updating with postcodes
@@ -80,7 +80,7 @@ Feature: Update of postcode
            | N34 | place | postcode | 01982         | country:de |
         When importing
 
-        And updating places
+        Given the places
            | osm | class | type     | addr+postcode |  geometry |
            | N34 | place | postcode | 20453         | country:de |
         When updating with postcodes

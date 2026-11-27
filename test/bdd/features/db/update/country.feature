@@ -20,7 +20,7 @@ Feature: Country handling
             | object |
             | N10 |
 
-        When updating places
+        Given the places
             | osm | class    | type           | admin | name+name:xy | country | geometry |
             | R1  | boundary | administrative | 2     | Germany      | de      | (1,2,3,4,1) |
         When updating
@@ -40,7 +40,7 @@ Feature: Country handling
             | object |
             | N10 |
 
-        When updating places
+        Given the places
             | osm | class    | type           | admin | name+name:en | country | geometry |
             | R1  | boundary | administrative | 2     | Germany      | de      | (1,2,3,4,1) |
         When updating
@@ -68,7 +68,7 @@ Feature: Country handling
             | object |
             | N10 |
 
-        When updating places
+        Given the places
             | osm  | class    | type           | admin | name+name:en | country | geometry |
             | R1   | boundary | administrative | 2     | Lilly        | de      | (1,2,3,4,1) |
         When updating
@@ -101,7 +101,7 @@ Feature: Country handling
             | object | display_name |
             | N10 | Wenig, Loudou |
 
-        When updating places
+        Given the places
             | osm | class    | type           | admin | name+name:en | country | geometry |
             | R1  | boundary | administrative | 2     | Germany      | de      | (1,2,3,4,1) |
         When updating

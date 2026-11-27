@@ -17,7 +17,7 @@ Feature: Updates of linked places
          | object | linked_place_id |
          | N1     | R1 |
 
-        When updating places
+        Given the places
          | osm | class    | type           | name | name+name:de | admin | geometry |
          | R1  | boundary | administrative | foo  | Dingens      | 8     | (10,11,12,13,10) |
         When updating
@@ -48,7 +48,7 @@ Feature: Updates of linked places
          | object |
          | R1 |
 
-        When updating places
+        Given the places
          | osm | class    | type           | name   | admin | geometry |
          | R1  | boundary | administrative | foobar | 8     | (10,11,12,13,10) |
         When updating
@@ -109,7 +109,7 @@ Feature: Updates of linked places
          | object |
          | N1 |
 
-        When updating places
+        Given the places
          | osm | class    | type           | name   | admin | geometry |
          | R1  | boundary | administrative | foo    | 8     | (10,11,12,13,10) |
         When updating
@@ -142,7 +142,7 @@ Feature: Updates of linked places
          | object |
          | N1 |
 
-        When updating places
+        Given the places
          | osm | class    | type           | name   | admin | geometry |
          | R1  | boundary | administrative | foo    | 8     | (10,11,12,13,10) |
         When updating
@@ -178,7 +178,7 @@ Feature: Updates of linked places
          | object | linked_place_id | name+name:de |
          | N3     | R1              | greeny  |
 
-        When updating places
+        Given the places
          | osm | class    | type        | name+name:de |
          | N3  | place    | city        | newname      |
         When updating
@@ -215,7 +215,7 @@ Feature: Updates of linked places
           | object |
           | R1  |
 
-        When updating places
+        Given the places
          | osm | class    | type        | name+name:de |
          | N3  | place    | city        | depnt        |
         When updating
@@ -247,7 +247,7 @@ Feature: Updates of linked places
          | object | extratags!dict |
          | R1     | 'wikidata' : '34', 'linked_place' : 'city' |
 
-        When updating places
+        Given the places
          | osm | class    | type        | name    | extra+oneway |
          | N3  | place    | city        | newname | yes          |
         When updating
@@ -293,7 +293,7 @@ Feature: Updates of linked places
             | object | extratags!dict |
             | R1     | 'linked_place' : 'city' |
 
-        When updating places
+        Given the places
             | osm | class | type | name |
             | N1  | place | town | foo  |
         When updating
@@ -319,7 +319,7 @@ Feature: Updates of linked places
             | N1     | R1              | 16           |
             | R1     | -               | 16           |
 
-        When updating places
+        Given the places
             | osm | class | type | name | geometry |
             | N1  | place | town | foo  | 9        |
         When updating
@@ -351,7 +351,7 @@ Feature: Updates of linked places
             | R1     | -               | 16           |
             | N2     | -               | 18           |
 
-        When updating places
+        Given the places
             | osm | class | type   | name | geometry |
             | N1  | place | suburb | foo  | 9        |
         When updating
