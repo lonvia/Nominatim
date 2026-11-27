@@ -10,7 +10,6 @@ Collector for BDD import acceptance tests.
 These tests check the Nominatim import chain after the osm2pgsql import.
 """
 import re
-from collections import defaultdict
 
 import psycopg
 import psycopg.sql as pysql
@@ -21,7 +20,6 @@ from pytest_bdd.parsers import re as step_parse
 
 from utils.place_inserter import PlaceColumn
 from utils.checks import check_table_content
-from utils.geometry_alias import ALIASES
 
 from nominatim_db.config import Configuration
 from nominatim_db import cli
@@ -109,9 +107,16 @@ def import_places(row_factory, datatable, node_grid, named):
         objects.
     """
     for row in datatable[1:]:
-        data = PlaceColumn(node_grid).add_row(datatable[0], row)
-        row_factory('place', **data.get_row_params(with_categories=True,
-                                                   with_name=named is not None))
+        data = PlaceColumn(node_grid)\
+                .add('admin_level', 15)\
+                .add_row(datatable[0], row)\
+                .with_categories()\
+                .assert_osm_type()
+
+        if named is not None:
+            data.with_name()
+
+        row_factory('place', **data.columns)
 
 
 @given(step_parse('the entrances'), target_fixture=None)
@@ -119,15 +124,8 @@ def import_place_entrances(row_factory, datatable, node_grid):
     """ Insert todo rows into the place_entrance table.
     """
     for row in datatable[1:]:
-        data = PlaceColumn(node_grid).add_row(datatable[0], row)
-        assert data.columns['osm_type'] == 'N'
-
-        params = {'osm_id': data.columns['osm_id'],
-                  'type': data.columns['type'],
-                  'extratags': data.columns.get('extratags'),
-                  'geometry': pysql.SQL(data.get_wkt())}
-
-        row_factory('place_entrance', **params)
+        data = PlaceColumn(node_grid).add_row(datatable[0], row).assert_osm_type('N')
+        row_factory('place_entrance', **data.columns)
 
 
 @given(step_parse('the interpolations'), target_fixture=None)
@@ -135,51 +133,25 @@ def import_place_interpolations(row_factory, datatable, node_grid):
     """ Insert todo rows into the place_interpolation table.
     """
     for row in datatable[1:]:
-        data = PlaceColumn(node_grid).add_row(datatable[0], row)
-        assert data.columns['osm_type'] == 'W'
-
-        params = {'osm_id': data.columns['osm_id'],
-                  'type': data.columns['type'],
-                  'address': data.columns.get('address'),
-                  'nodes': [int(x) for x in data.columns['nodes'].split(',')],
-                  'geometry': pysql.SQL(data.get_wkt())}
-
-        row_factory('place_interpolation', **params)
+        data = PlaceColumn(node_grid).add_row(datatable[0], row).assert_osm_type('W')
+        row_factory('place_interpolation', **data.columns)
 
 
 @given(step_parse('the postcodes'), target_fixture=None)
-def import_place_postcode(db_conn, datatable, node_grid):
+def import_place_postcode(db_conn, row_factory, datatable, node_grid):
     """ Insert todo rows into the place_postcode table. If a row for the
         requested object already exists it is overwritten.
     """
     with db_conn.cursor() as cur:
         for row in datatable[1:]:
-            data = defaultdict(lambda: None)
-            data.update((k, v) for k, v in zip(datatable[0], row))
-
-            if data['centroid'].startswith('country:'):
-                ccode = data['centroid'][8:].upper()
-                data['centroid'] = 'srid=4326;POINT({} {})'.format(*ALIASES[ccode])
-            else:
-                data['centroid'] = f"srid=4326;{node_grid.geometry_to_wkt(data['centroid'])}"
-
-            data['osm_type'] = data['osm'][0]
-            data['osm_id'] = data['osm'][1:]
-
-            if 'geometry' in data:
-                geom = f"'srid=4326;{node_grid.geometry_to_wkt(data['geometry'])}'::geometry"
-            else:
-                geom = 'null'
+            data = PlaceColumn(node_grid, has_address_field=False)\
+                    .add_row(datatable[0], row, with_geometry=False)\
+                    .assert_osm_type()
 
             cur.execute(""" DELETE FROM place_postcode
                             WHERE osm_type = %(osm_type)s and osm_id = %(osm_id)s""",
-                        data)
-            cur.execute(f"""INSERT INTO place_postcode
-                            (osm_type, osm_id, country_code, postcode, centroid, geometry)
-                            VALUES (%(osm_type)s, %(osm_id)s,
-                                    %(country)s, %(postcode)s,
-                                    %(centroid)s, {geom})""", data)
-    db_conn.commit()
+                        data.columns)
+            row_factory('place_postcode', **data.columns)
 
 
 @given('the ways', target_fixture=None)
@@ -297,20 +269,17 @@ def do_update_relations(db_conn, update_config, datatable):
 
 
 @when('updating entrances', target_fixture=None)
-def update_place_entrances(db_conn, datatable, node_grid):
+def update_place_entrances(db_conn, row_factory, datatable, node_grid):
     """ Update rows in the place_entrance table.
     """
     with db_conn.cursor() as cur:
         for row in datatable[1:]:
-            data = PlaceColumn(node_grid).add_row(datatable[0], row)
-            assert data.columns['osm_type'] == 'N'
+            data = PlaceColumn(node_grid).add_row(datatable[0], row).assert_osm_type('N')
 
             cur.execute("DELETE FROM place_entrance WHERE osm_id = %s",
                         (data.columns['osm_id'],))
-            cur.execute("""INSERT INTO place_entrance (osm_id, type, extratags, geometry)
-                           VALUES (%s, %s, %s, {})""".format(data.get_wkt()),
-                        (data.columns['osm_id'], data.columns['type'],
-                         data.columns.get('extratags')))
+
+            row_factory('place_entrance', **data.columns)
 
 
 @when('updating interpolations', target_fixture=None)
@@ -318,16 +287,9 @@ def update_place_interpolations(db_conn, row_factory, update_config, datatable, 
     """ Update rows in the place_entrance table.
     """
     for row in datatable[1:]:
-        data = PlaceColumn(node_grid).add_row(datatable[0], row)
-        assert data.columns['osm_type'] == 'W'
+        data = PlaceColumn(node_grid).add_row(datatable[0], row).assert_osm_type('W')
 
-        params = {'osm_id': data.columns['osm_id'],
-                  'type': data.columns['type'],
-                  'address': data.columns.get('address'),
-                  'nodes': [int(x) for x in data.columns['nodes'].split(',')],
-                  'geometry': pysql.SQL(data.get_wkt())}
-
-        row_factory('place_interpolation', **params)
+        row_factory('place_interpolation', **data.columns)
 
 
 @when(step_parse(r'marking for delete (?P<otype>[NRW])(?P<oid>\d+)'),
