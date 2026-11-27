@@ -326,17 +326,6 @@ def then_check_table_content(db_conn, place_ids, datatable, node_grid, table, ex
     check_table_content(db_conn, table, datatable, grid=node_grid, exact=bool(exact))
 
 
-@then(step_parse(r'(DISABLED?P<table>placex?) has no entry for (?P<oid>[NRW]\d+(?::\S+)?)'))
-def then_check_place_missing_lines(db_conn, place_ids, table, oid):
-    assert oid in place_ids
-
-    sql = pysql.SQL("""SELECT count(*) FROM {}
-                       WHERE place_id = %s""").format(pysql.Identifier(tablename))
-
-    with conn.cursor(row_factory=tuple_row) as cur:
-        assert cur.execute(sql, [place_ids[oid]]).fetchone()[0] == 0
-
-
 @then(step_parse(r'W(?P<oid>\d+) expands to interpolation'),
       converters={'oid': int})
 def then_check_interpolation_table(db_conn, node_grid, place_ids, oid, datatable):
