@@ -51,10 +51,13 @@ def _collect_place_ids(conn):
 
 @pytest.fixture
 def row_factory(db_conn):
-    def _insert_row(table, **data):
+    def _insert_row(table, update_rows=None, **data):
         columns = []
         placeholders = []
         values = []
+        delete_where = []
+        delete_values = []
+
         for k, v in data.items():
             columns.append(pysql.Identifier(k))
             if isinstance(v, tuple):
@@ -65,6 +68,17 @@ def row_factory(db_conn):
             else:
                 placeholders.append(pysql.Placeholder())
                 values.append(v)
+
+            if update_rows and k in update_rows:
+                delete_where.append(pysql.SQL('=').join([columns[-1], placeholders[-1]]))
+                if not isinstance(v, (pysql.Literal, pysql.SQL)):
+                    delete_values.append(values[-1])
+
+        if delete_where:
+            sql = pysql.SQL("DELETE FROM {} WHERE {}")\
+                       .format(pysql.Identifier(table),
+                               pysql.SQL(' AND ').join(delete_where))
+            db_conn.execute(sql, delete_values)
 
         sql = pysql.SQL("INSERT INTO {table} ({columns}) VALUES({values})")\
                    .format(table=pysql.Identifier(table),
@@ -100,7 +114,7 @@ def update_config(def_config):
     return def_config
 
 
-@given(step_parse('the (?P<named>named )?places'), target_fixture=None)
+@given(step_parse('the (?P<named>named )?place(?:s| updates)'), target_fixture=None)
 def import_places(row_factory, datatable, node_grid, named):
     """ Insert todo rows into the place table.
         When 'named' is given, then a random name will be generated for all
@@ -119,16 +133,18 @@ def import_places(row_factory, datatable, node_grid, named):
         row_factory('place', **data.columns)
 
 
-@given(step_parse('the entrances'), target_fixture=None)
-def import_place_entrances(row_factory, datatable, node_grid):
+@given(step_parse('the entrance(?P<update>s| updates)'), target_fixture=None)
+def import_place_entrances(row_factory, datatable, node_grid, update):
     """ Insert todo rows into the place_entrance table.
     """
+    update_rows = None if update == 's' else ['osm_id']
+
     for row in datatable[1:]:
         data = PlaceColumn(node_grid).add_row(datatable[0], row).assert_osm_type('N')
-        row_factory('place_entrance', **data.columns)
+        row_factory('place_entrance', **data.columns, update_rows=update_rows)
 
 
-@given(step_parse('the interpolations'), target_fixture=None)
+@given(step_parse('the interpolation(?:s| updates)'), target_fixture=None)
 def import_place_interpolations(row_factory, datatable, node_grid):
     """ Insert todo rows into the place_interpolation table.
     """
@@ -137,21 +153,18 @@ def import_place_interpolations(row_factory, datatable, node_grid):
         row_factory('place_interpolation', **data.columns)
 
 
-@given(step_parse('the postcodes'), target_fixture=None)
-def import_place_postcode(db_conn, row_factory, datatable, node_grid):
+@given(step_parse('the postcode(?P<update>s| updates)'), target_fixture=None)
+def import_place_postcode(row_factory, datatable, node_grid, update):
     """ Insert todo rows into the place_postcode table. If a row for the
         requested object already exists it is overwritten.
     """
-    with db_conn.cursor() as cur:
-        for row in datatable[1:]:
-            data = PlaceColumn(node_grid, has_address_field=False)\
-                    .add_row(datatable[0], row, with_geometry=False)\
-                    .assert_osm_type()
+    update_rows = None if update == 's' else ['osm_type', 'osm_id']
+    for row in datatable[1:]:
+        data = PlaceColumn(node_grid, has_address_field=False)\
+                .add_row(datatable[0], row, with_geometry=False)\
+                .assert_osm_type()
 
-            cur.execute(""" DELETE FROM place_postcode
-                            WHERE osm_type = %(osm_type)s and osm_id = %(osm_id)s""",
-                        data.columns)
-            row_factory('place_postcode', **data.columns)
+        row_factory('place_postcode', **data.columns, update_rows=update_rows)
 
 
 @given('the ways', target_fixture=None)
@@ -268,47 +281,25 @@ def do_update_relations(db_conn, update_config, datatable):
                         (relation_id, m[1], int(m[2]), m[3] or ''))
 
 
-@when('updating entrances', target_fixture=None)
-def update_place_entrances(db_conn, row_factory, datatable, node_grid):
-    """ Update rows in the place_entrance table.
-    """
-    with db_conn.cursor() as cur:
-        for row in datatable[1:]:
-            data = PlaceColumn(node_grid).add_row(datatable[0], row).assert_osm_type('N')
-
-            cur.execute("DELETE FROM place_entrance WHERE osm_id = %s",
-                        (data.columns['osm_id'],))
-
-            row_factory('place_entrance', **data.columns)
-
-
-@when('updating interpolations', target_fixture=None)
-def update_place_interpolations(db_conn, row_factory, update_config, datatable, node_grid):
-    """ Update rows in the place_entrance table.
-    """
-    for row in datatable[1:]:
-        data = PlaceColumn(node_grid).add_row(datatable[0], row).assert_osm_type('W')
-
-        row_factory('place_interpolation', **data.columns)
-
-
 @when(step_parse(r'marking for delete (?P<otype>[NRW])(?P<oid>\d+)'),
       converters={'oid': int})
 def do_delete_place(db_conn, update_config, node_grid, otype, oid):
-    """ Remove the given place from the database.
+    """ Remove the given OSM object from the database.
     """
     with db_conn.cursor() as cur:
-        cur.execute('TRUNCATE place_to_be_deleted')
         cur.execute('DELETE FROM place WHERE osm_type = %s and osm_id = %s',
                     (otype, oid))
-        cur.execute('DELETE FROM place_interpolation WHERE osm_id = %s',
-                    (oid, ))
-        cur.execute('SELECT flush_deleted_places()')
+        cur.execute('DELETE FROM place_postcode WHERE osm_type = %s and osm_id = %s',
+                    (otype, oid))
         if otype == 'N':
             cur.execute('DELETE FROM place_entrance WHERE osm_id = %s',
                         (oid, ))
-        cur.execute('DELETE FROM place_postcode WHERE osm_type = %s and osm_id = %s',
-                    (otype, oid))
+        if otype == 'W':
+            cur.execute('DELETE FROM place_interpolation WHERE osm_id = %s',
+                        (oid, ))
+        if otype == 'R':
+            cur.execute('DELETE FROM place_label_members WHERE relation_id = %s',
+                        (oid, ))
 
 
 @then(step_parse(r'(?P<table>\w+) contains(?P<exact> exactly)?'))

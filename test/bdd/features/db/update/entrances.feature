@@ -18,10 +18,10 @@ Feature: Entrance nodes are recorded
         Then placex_entrance contains exactly
          | place_id | osm_id | type | location!wkt | extratags |
 
-        When updating entrances
+        Given the entrance updates
           | osm | type  | geometry    |
           | N1  | main  | 1           |
-        Given the places
+        And the place updates
           | osm  | class    | type  | geometry    |
           | W1   | building | yes   | (1,2,3,4,1) |
         When updating
@@ -52,10 +52,10 @@ Feature: Entrance nodes are recorded
          | place_id | osm_id | type | location!wkt | extratags |
 
         When marking for delete N1
-        And updating entrances
+        Given the entrance updates
           | osm | type  | geometry    |
           | N1  | main  | 1           |
-        Given the places
+        And the place updates
           | osm | class    | type  | geometry    |
           | W1  | building | yes   | (1,2,3,4,1) |
         When updating
@@ -88,7 +88,7 @@ Feature: Entrance nodes are recorded
          | 1        | 1      | main | 1            | -         |
 
         When marking for delete N1
-        Given the places
+        Given the place updates
           | osm | class    | type  | geometry  |
           | W1  | building | yes   | (1,2,3,4,1) |
         When updating
@@ -122,7 +122,7 @@ Feature: Entrance nodes are recorded
          | 1        | 3      | yes  | 3            | -         |
 
         When marking for delete N1
-        Given the places
+        Given the place updates
           | osm | class    | type  | geometry  |
           | W1  | building | yes   | (1,2,3,4,1) |
         When updating
