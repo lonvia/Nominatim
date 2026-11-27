@@ -250,7 +250,21 @@ def do_import(db_conn, def_config):
     return _collect_place_ids(db_conn)
 
 
-@when('updating places', target_fixture='place_ids')
+@when(step_parse('updating(?P<do_postcodes> with postcodes)?'), target_fixture='place_ids')
+def do_update(db_conn, update_config, do_postcodes):
+    """ Run a simplified version of a single Nominatim update run.
+    """
+    db_conn.commit()
+
+    cli.nominatim(['index', '-q'], update_config.environ)
+
+    if do_postcodes is not None:
+        cli.nominatim(['refresh', '--postcodes'], update_config.environ)
+
+    return _collect_place_ids(db_conn)
+
+
+@when('updating places', target_fixture=None)
 def do_update(db_conn, update_config, node_grid, datatable):
     """ Update the place table with the given data. Also runs all triggers
         related to updates and reindexes the new data.
@@ -259,11 +273,6 @@ def do_update(db_conn, update_config, node_grid, datatable):
         for row in datatable[1:]:
             PlaceColumn(node_grid).add_row(datatable[0], row, False).db_insert(cur)
         cur.execute('SELECT flush_deleted_places()')
-    db_conn.commit()
-
-    cli.nominatim(['index', '-q'], update_config.environ)
-
-    return _collect_place_ids(db_conn)
 
 
 @when('updating relations', target_fixture=None)
@@ -293,8 +302,6 @@ def do_update_relations(db_conn, update_config, datatable):
                                (relation_id, member_type, member_id, member_role)
                                VALUES (%s, %s, %s, %s)""",
                         (relation_id, m[1], int(m[2]), m[3] or ''))
-    db_conn.commit()
-    cli.nominatim(['index', '-q'], update_config.environ)
 
 
 @when('updating entrances', target_fixture=None)
@@ -312,7 +319,6 @@ def update_place_entrances(db_conn, datatable, node_grid):
                            VALUES (%s, %s, %s, {})""".format(data.get_wkt()),
                         (data.columns['osm_id'], data.columns['type'],
                          data.columns.get('extratags')))
-    db_conn.commit()
 
 
 @when('updating interpolations', target_fixture=None)
@@ -330,18 +336,6 @@ def update_place_interpolations(db_conn, row_factory, update_config, datatable, 
                   'geometry': pysql.SQL(data.get_wkt())}
 
         row_factory('place_interpolation', **params)
-
-    db_conn.execute('SELECT flush_deleted_places()')
-    db_conn.commit()
-
-    cli.nominatim(['index', '-q', '--minrank', '30'], update_config.environ)
-
-
-@when('refreshing postcodes')
-def do_postcode_update(update_config):
-    """ Recompute the postcode centroids.
-    """
-    cli.nominatim(['refresh', '--postcodes'], update_config.environ)
 
 
 @when(step_parse(r'marking for delete (?P<otype>[NRW])(?P<oid>\d+)'),
@@ -361,9 +355,6 @@ def do_delete_place(db_conn, update_config, node_grid, otype, oid):
                         (oid, ))
         cur.execute('DELETE FROM place_postcode WHERE osm_type = %s and osm_id = %s',
                     (otype, oid))
-    db_conn.commit()
-
-    cli.nominatim(['index', '-q'], update_config.environ)
 
 
 @then(step_parse(r'(?P<table>\w+) contains(?P<exact> exactly)?'))

@@ -22,6 +22,7 @@ Feature: Updates for address computation
         When updating places
             | osm | class    | type           | admin | name | geometry    |
             | R2  | boundary | administrative | 8     | Barr | (2,4,5,7,2) |
+        When updating
         Then place_addressline contains exactly
             | object | address |
             | N1     | R1      |
@@ -50,6 +51,7 @@ Feature: Updates for address computation
         When updating places
             | osm | class    | type           | admin | name | geometry    |
             | R2  | boundary | administrative | 8     | Barr | (3,4,5,6,3) |
+        When updating
         Then place_addressline contains exactly
             | object | address |
             | N1     | R1      |
@@ -77,6 +79,7 @@ Feature: Updates for address computation
         When updating places
             | osm | class    | type           | admin | name | geometry    |
             | R2  | boundary | administrative | 15    | Barr | (2,4,5,7,2) |
+        When updating
         Then place_addressline contains exactly
             | object | address |
             | N1     | R1      |
@@ -105,6 +108,7 @@ Feature: Updates for address computation
         When updating places
             | osm | class    | type           | admin | name | geometry    |
             | R1  | boundary | administrative | 5     | Fooo | (1,4,5,8,1) |
+        When updating
         Then place_addressline contains exactly
             | object | address | cached_rank_address |
             | N1     | R1      | 10 |

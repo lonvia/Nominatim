@@ -13,6 +13,7 @@ Feature: Update of address interpolations
           | W3  | highway | unclassified | Cloud Street | 20,21    |
       When importing
       Then W10 expands to no interpolation
+
       When updating places
           | osm | class | type  | housenr |
           | N1  | place | house | 2       |
@@ -20,6 +21,7 @@ Feature: Update of address interpolations
       And updating interpolations
           | osm | type | geometry | nodes |
           | W10 | even | 1,2      | 1,2   |
+      When updating
       Then placex contains
           | object | parent_place_id |
           | N1     | W2 |
@@ -53,9 +55,11 @@ Feature: Update of address interpolations
       And W10 expands to interpolation
           | parent_place_id | start | end |
           | W2              | 4     | 4   |
+
       When updating interpolations
           | osm | type | street       | nodes | geometry |
           | W10 | even | Cloud Street | 1,2   | 1,2      |
+      When updating
       Then placex contains
           | object | parent_place_id |
           | N1     | W3 |
@@ -89,10 +93,12 @@ Feature: Update of address interpolations
       And W10 expands to interpolation
           | parent_place_id | start | end |
           | W2              | 4     | 4 |
+
       When updating places
           | osm | class | type  | street      | housenr |
           | N1  | place | house | Cloud Street| 2       |
           | N2  | place | house | Cloud Street| 6       |
+      When updating
       Then placex contains
           | object | parent_place_id |
           | N1     | W3 |
@@ -126,7 +132,9 @@ Feature: Update of address interpolations
       And W10 expands to interpolation
           | parent_place_id | start | end |
           | W2              | 4     | 4   |
+
       When marking for delete W10
+      When updating
       Then W10 expands to no interpolation
       And placex contains
           | object | parent_place_id |
@@ -157,9 +165,11 @@ Feature: Update of address interpolations
       And W10 expands to interpolation
           | parent_place_id | start | end |
           | W2              | 4     | 4 |
+
       When updating places
           | osm | class   | type         | name         | geometry |
           | W3  | highway | unclassified | Cloud Street | 20,21    |
+      When updating
       Then placex contains
           | object | parent_place_id |
           | N1     | W3 |
@@ -193,7 +203,9 @@ Feature: Update of address interpolations
       And W10 expands to interpolation
           | parent_place_id | start | end |
           | W3              | 4     | 4   |
+
       When marking for delete W3
+      When updating
       Then placex contains
           | object | parent_place_id |
           | N1     | W2 |
@@ -214,6 +226,7 @@ Feature: Update of address interpolations
           | W1  | even | 1,2      | 1,2   |
       When importing
       Then W1 expands to no interpolation
+
       When updating places
           | osm | class | type  | housenr |
           | N1  | place | house | 2       |
@@ -221,6 +234,7 @@ Feature: Update of address interpolations
       And updating interpolations
           | osm | type | geometry | nodes |
           | W1  | even | 1,2      | 1,2   |
+      When updating
       Then W1 expands to interpolation
           | parent_place_id | start | end |
           | W2              | 4     | 4   |
@@ -243,12 +257,14 @@ Feature: Update of address interpolations
       Then W2 expands to interpolation
           | parent_place_id | start | end |
           | W1              | 4     | 8  |
+
       When updating places
           | osm | class | type  | housenr |
           | N4  | place | house | 6       |
       And updating interpolations
           | osm | type | geometry | nodes |
           | W2  | even | 3,4,5    | 3,4,5 |
+      When updating
       Then W2 expands to interpolation
           | parent_place_id | start | end |
           | W1              | 4     | 4   |
@@ -274,10 +290,12 @@ Feature: Update of address interpolations
           | parent_place_id | start | end |
           | W1              | 4     | 4   |
           | W1              | 8     | 8   |
+
       When marking for delete N4
       And updating interpolations
           | osm | type | geometry | nodes |
           | W2  | even | 3,4,5    | 3,4,5 |
+      When updating
       Then W2 expands to interpolation
           | parent_place_id | start | end |
           | W1              | 4     | 8   |
@@ -300,12 +318,14 @@ Feature: Update of address interpolations
       Then W2 expands to interpolation
           | parent_place_id | start | end |
           | W1              | 4     | 4   |
+
       When updating places
           | osm | class | type  | housenr |
           | N4  | place | house | 8       |
       And updating interpolations
           | osm | type | geometry | nodes |
           | W2  | even | 3,4      | 3,4   |
+      When updating
       Then W2 expands to interpolation
           | parent_place_id | start | end |
           | W1              | 4     | 6   |

@@ -19,9 +19,11 @@ Feature: Country handling
         Then all results contain
             | object |
             | N10 |
+
         When updating places
             | osm | class    | type           | admin | name+name:xy | country | geometry |
             | R1  | boundary | administrative | 2     | Germany      | de      | (1,2,3,4,1) |
+        When updating
         When geocoding "Wenig, Loudou"
         Then exactly 0 results are returned
 
@@ -37,9 +39,11 @@ Feature: Country handling
         Then all results contain
             | object |
             | N10 |
+
         When updating places
             | osm | class    | type           | admin | name+name:en | country | geometry |
             | R1  | boundary | administrative | 2     | Germany      | de      | (1,2,3,4,1) |
+        When updating
         When geocoding "Wenig, Loudou"
         Then exactly 0 results are returned
         When geocoding "Wenig"
@@ -63,9 +67,11 @@ Feature: Country handling
         Then all results contain
             | object |
             | N10 |
+
         When updating places
             | osm  | class    | type           | admin | name+name:en | country | geometry |
             | R1   | boundary | administrative | 2     | Lilly        | de      | (1,2,3,4,1) |
+        When updating
         When geocoding "Wenig, Germany"
             | accept-language |
             | en,de |
@@ -94,9 +100,11 @@ Feature: Country handling
         Then all results contain
             | object | display_name |
             | N10 | Wenig, Loudou |
+
         When updating places
             | osm | class    | type           | admin | name+name:en | country | geometry |
             | R1  | boundary | administrative | 2     | Germany      | de      | (1,2,3,4,1) |
+        When updating
         When geocoding "Wenig, Loudou"
         Then exactly 0 results are returned
         When geocoding "Wenig"

@@ -16,9 +16,11 @@ Feature: Updates of linked places
         Then placex contains
          | object | linked_place_id |
          | N1     | R1 |
+
         When updating places
          | osm | class    | type           | name | name+name:de | admin | geometry |
          | R1  | boundary | administrative | foo  | Dingens      | 8     | (10,11,12,13,10) |
+        When updating
         Then placex contains
          | object | linked_place_id |
          | N1     | R1 |
@@ -45,9 +47,11 @@ Feature: Updates of linked places
         Then all results contain
          | object |
          | R1 |
+
         When updating places
          | osm | class    | type           | name   | admin | geometry |
          | R1  | boundary | administrative | foobar | 8     | (10,11,12,13,10) |
+        When updating
         Then placex contains
          | object | linked_place_id |
          | N1     | - |
@@ -76,7 +80,9 @@ Feature: Updates of linked places
         Then all results contain
          | object |
          | R1 |
+
         When marking for delete R1
+        When updating
         Then placex contains
          | object | linked_place_id |
          | N1     | - |
@@ -102,9 +108,11 @@ Feature: Updates of linked places
         Then all results contain
          | object |
          | N1 |
+
         When updating places
          | osm | class    | type           | name   | admin | geometry |
          | R1  | boundary | administrative | foo    | 8     | (10,11,12,13,10) |
+        When updating
         Then placex contains
          | object | linked_place_id |
          | N1     | R1 |
@@ -133,9 +141,11 @@ Feature: Updates of linked places
         Then all results contain
          | object |
          | N1 |
+
         When updating places
          | osm | class    | type           | name   | admin | geometry |
          | R1  | boundary | administrative | foo    | 8     | (10,11,12,13,10) |
+        When updating
         Then placex contains
          | object | linked_place_id |
          | N1     | R1 |
@@ -167,9 +177,11 @@ Feature: Updates of linked places
         And placex contains
          | object | linked_place_id | name+name:de |
          | N3     | R1              | greeny  |
+
         When updating places
          | osm | class    | type        | name+name:de |
          | N3  | place    | city        | newname      |
+        When updating
         Then placex contains
          | object | linked_place_id | name+name:de |
          | N3     | R1              | newname  |
@@ -202,9 +214,11 @@ Feature: Updates of linked places
         Then all results contain
           | object |
           | R1  |
+
         When updating places
          | osm | class    | type        | name+name:de |
          | N3  | place    | city        | depnt        |
+        When updating
         Then placex contains
          | object | linked_place_id | name+name:de |
          | N3     | R1              | depnt  |
@@ -232,9 +246,11 @@ Feature: Updates of linked places
         Then placex contains
          | object | extratags!dict |
          | R1     | 'wikidata' : '34', 'linked_place' : 'city' |
+
         When updating places
          | osm | class    | type        | name    | extra+oneway |
          | N3  | place    | city        | newname | yes          |
+        When updating
         Then placex contains
          | object | extratags!dict |
          | R1     | 'wikidata' : '34', 'oneway' : 'yes', 'linked_place' : 'city' |
@@ -254,7 +270,9 @@ Feature: Updates of linked places
         Then placex contains
             | object | extratags!dict |
             | R1     | 'linked_place' : 'city' |
+
         When marking for delete N1
+        When updating
         Then placex contains
             | object | extratags |
             | R1     | - |
@@ -274,9 +292,11 @@ Feature: Updates of linked places
         Then placex contains
             | object | extratags!dict |
             | R1     | 'linked_place' : 'city' |
+
         When updating places
             | osm | class | type | name |
             | N1  | place | town | foo  |
+        When updating
         Then placex contains
             | object | extratags!dict |
             | R1     | 'linked_place' : 'town' |
@@ -302,6 +322,7 @@ Feature: Updates of linked places
         When updating places
             | osm | class | type | name | geometry |
             | N1  | place | town | foo  | 9        |
+        When updating
         Then placex contains
             | object | linked_place_id | rank_address |
             | N1     | R1              | 16           |
@@ -333,6 +354,7 @@ Feature: Updates of linked places
         When updating places
             | osm | class | type   | name | geometry |
             | N1  | place | suburb | foo  | 9        |
+        When updating
         Then placex contains
             | object | linked_place_id | rank_address |
             | N1     | R1              | 20           |

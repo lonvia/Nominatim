@@ -17,12 +17,14 @@ Feature: Entrance nodes are recorded
          | W1     | 1        |
         Then placex_entrance contains exactly
          | place_id | osm_id | type | location!wkt | extratags |
+
         When updating entrances
           | osm | type  | geometry    |
           | N1  | main  | 1           |
         And updating places
           | osm  | class    | type  | geometry    |
           | W1   | building | yes   | (1,2,3,4,1) |
+        When updating
         Then placex contains exactly
          | object | place_id |
          | W1     | 1        |
@@ -48,6 +50,7 @@ Feature: Entrance nodes are recorded
          | W1     | 2        |
         Then placex_entrance contains exactly
          | place_id | osm_id | type | location!wkt | extratags |
+
         When marking for delete N1
         And updating entrances
           | osm | type  | geometry    |
@@ -55,6 +58,7 @@ Feature: Entrance nodes are recorded
         And updating places
           | osm | class    | type  | geometry    |
           | W1  | building | yes   | (1,2,3,4,1) |
+        When updating
         Then placex contains exactly
          | object | place_id |
          | W1     | 2        |
@@ -82,10 +86,12 @@ Feature: Entrance nodes are recorded
         And placex_entrance contains exactly
          | place_id | osm_id | type | location!wkt | extratags |
          | 1        | 1      | main | 1            | -         |
+
         When marking for delete N1
         And updating places
           | osm | class    | type  | geometry  |
           | W1  | building | yes   | (1,2,3,4,1) |
+        When updating
         Then placex contains exactly
          | object | place_id |
          | W1     | 1        |
@@ -114,10 +120,12 @@ Feature: Entrance nodes are recorded
          | place_id | osm_id | type | location!wkt | extratags |
          | 1        | 1      | main | 1            | -         |
          | 1        | 3      | yes  | 3            | -         |
+
         When marking for delete N1
         And updating places
           | osm | class    | type  | geometry  |
           | W1  | building | yes   | (1,2,3,4,1) |
+        When updating
         Then placex contains exactly
          | object | place_id |
          | W1     | 1        |

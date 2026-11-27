@@ -12,7 +12,9 @@ Feature: Update of simple objects
         Then placex contains
           | object | rank_search |
           | R1     | 6 |
+
         When marking for delete R1
+        When updating
         Then placex has no entry for R1
 
     Scenario: Do not delete large boundary features
@@ -26,7 +28,9 @@ Feature: Update of simple objects
         Then placex contains
           | object | rank_search |
           | R1     | 6 |
+
         When marking for delete R1
+        When updating
         Then placex contains
           | object | rank_search |
           | R1     | 6 |
@@ -46,9 +50,11 @@ Feature: Update of simple objects
           | R1     | 0 |
           | R2     | 26 |
           | W1     | 30 |
+
         When marking for delete R1
         And marking for delete R2
         And marking for delete W1
+        When updating
         Then placex has no entry for W1
         Then placex has no entry for R1
         Then placex has no entry for R2
@@ -61,9 +67,11 @@ Feature: Update of simple objects
         Then placex contains
           | object | class | type | centroid!wkt |
           | N3     | shop  | toys | 1 -1 |
+
         When updating places
           | osm | class | type    | geometry |
           | N3  | shop  | grocery | 1 -1 |
+        When updating
         Then placex contains
           | object | class | type    | centroid!wkt |
           | N3     | shop  | grocery | 1 -1 |
@@ -80,9 +88,11 @@ Feature: Update of simple objects
         Then placex contains
           | object | rank_address |
           | W1     | 10           |
+
         When updating places
           | osm | class    | type           | name | admin | geometry        |
           | W1  | boundary | historic       | Haha | 5     | (1, 2, 4, 3, 1) |
+        When updating
         Then placex contains
           | object | rank_address |
           | W1     | 0            |
